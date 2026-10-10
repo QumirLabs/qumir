@@ -949,23 +949,44 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         if (!operand.Value) {
             co_return TError(bitcast->Operand->Location, "bitcast operand must be a value");
         }
-        int sourceTypeId = FromAstType(
-            NAst::UnwrapNamedType(bitcast->Operand->Type),
-            Module.Types);
-        int targetTypeId = FromAstType(NAst::UnwrapNamedType(bitcast->Type), Module.Types);
-        auto isPtrLike = [&](int typeId) {
-            auto kind = Module.Types.GetKind(typeId);
-            return kind == EKind::Ptr || kind == EKind::Func;
+        const auto& types = Module.Types;
+        auto sourceType = NAst::UnwrapNamedType(NAst::UnwrapReferenceType(bitcast->Operand->Type));
+        auto targetType = NAst::UnwrapNamedType(bitcast->Type);
+        int sourceTypeId = FromAstType(sourceType, Module.Types);
+        int targetTypeId = FromAstType(targetType, Module.Types);
+        // An address travels as a 64-bit integer whatever the pointer width, and
+        // codegen converts it with inttoptr/ptrtoint (see "bitcast"_op in
+        // llvm_codegen.cpp), so such a pair is exempt from the same-size rule.
+        auto isAddress = [](const NAst::TTypePtr& type) {
+            auto integer = NAst::TMaybeType<NAst::TIntegerType>(type);
+            return NAst::TMaybeType<NAst::TPointerType>(type) || NAst::TMaybeType<NAst::TStringType>(type)
+                || (integer && integer.Cast()->BitWidth() == 64);
         };
-        // Ptr/Func <-> Integer bitcasts go through inttoptr/ptrtoint at codegen
-        // (see "bitcast"_op in llvm_codegen.cpp), which widens/narrows like any
-        // other integer-pointer conversion, so they are exempt from the
-        // same-size requirement below (pointer size is target-dependent).
-        bool isPtrIntConversion = (isPtrLike(sourceTypeId) && Module.Types.IsInteger(targetTypeId))
-            || (isPtrLike(targetTypeId) && Module.Types.IsInteger(sourceTypeId));
-        if (!isPtrIntConversion
-            && Module.Types.SizeInBytes(sourceTypeId) != Module.Types.SizeInBytes(targetTypeId)) {
-            co_return TError(bitcast->Location, "bitcast types must have the same size");
+        // Plain data is an integer or a float, alone or as vector lanes. A boolean
+        // must stay 0 or 1: its lane, a byte, can be read, but nothing becomes one.
+        auto isPlain = [&](int typeId, bool readOnly) {
+            int lane = types.IsVector(typeId) ? types.UnderlyingType(typeId) : typeId;
+            if (!types.IsInteger(lane)) {
+                return types.IsFloat(lane);
+            }
+            return types.GetKind(lane) != EKind::I1 || (readOnly && types.IsVector(typeId));
+        };
+        bool plain = isPlain(sourceTypeId, true) && isPlain(targetTypeId, false);
+        if (!isAddress(sourceType) || !isAddress(targetType)) {
+            if (!plain) {
+                co_return TError(bitcast->Location, TErrorString::Get<EErrorId::UNSUPPORTED_CAST_TYPES>(
+                    NAst::TypeDiagnosticName(bitcast->Operand->Type),
+                    NAst::TypeDiagnosticName(bitcast->Type)));
+            }
+            if (types.SizeInBytes(sourceTypeId) != types.SizeInBytes(targetTypeId)) {
+                co_return TError(bitcast->Location, "bitcast types must have the same size");
+            }
+        }
+        if (plain && operand.Value->Type == TOperand::EType::Imm && !types.IsVector(targetTypeId)) {
+            // An immediate already holds raw bits, so a scalar one only changes its type.
+            co_return TValueWithBlock{
+                TImm{.Value = operand.Value->Imm.Value, .TypeId = targetTypeId},
+                Builder.CurrentBlockLabel()};
         }
         auto tmp = emitter.Emit1("bitcast"_op, {*operand.Value});
         Builder.SetType(tmp, targetTypeId);

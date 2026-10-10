@@ -624,9 +624,13 @@ Casts, indexing, and slicing:
 (slice collection [start end])
 ```
 
-`bitcast` preserves the operand's representation and requires integer, float,
-symbol, or pointer source and target types with the same byte size. Numeric
-literal bitcasts are folded during the transformation pipeline.
+`bitcast` preserves the operand's representation. Integer, float, and symbol
+types and vectors of them convert between each other when their byte sizes
+match: `(bitcast v i64)` packs a `<vec i32 2>`, lane 0 into the low bytes. A
+vector of `bool` is a source only, each lane reading as a byte 0 or 1; scalar
+`bool` and structs are not supported. A pointer or string converts to or from
+`i64`, `u64`, or another pointer, whatever the pointer width of the target.
+The check runs at lowering, where sizes are known.
 
 Single-index access creates `TIndexExpr`; vector index access creates
 `TMultiIndexExpr`. `(slice collection [start])` with a single bound is a

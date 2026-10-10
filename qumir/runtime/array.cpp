@@ -18,10 +18,9 @@ void array_destroy(void* ptr) {
     operator delete(ptr, std::align_val_t(8));
 }
 
-void array_str_destroy(void* ptr, size_t arraySize) {
+void array_str_destroy(void* ptr, size_t elements) {
     if (!ptr) return;
     char** strArray = static_cast<char**>(ptr);
-    auto elements = arraySize / sizeof(char*);
     for (size_t i = 0; i < elements; ++i) {
         str_release(strArray[i]);
     }

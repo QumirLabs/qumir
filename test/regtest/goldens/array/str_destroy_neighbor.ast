@@ -1,0 +1,31 @@
+(block
+  (fun соседство ()
+    (block
+      (var i i64)
+      (call прогреть)
+      (var соседи <array string 1> [1 20000])
+      (var __lifetime_0 = (* 1 (+ (- 20000 1) 1)))
+      (for i 1 20000 1 (block (replace (index соседи i) (own-literal "живая"))))
+      (call занять)
+      (block
+        (call output_string (borrow (index соседи 1)))
+        (call output_symbol (cast 32 char))
+        (call output_string (borrow (index соседи 2)))
+        (call output_symbol (cast 32 char))
+        (call output_string (borrow (index соседи 16383)))
+        (call output_symbol (cast 32 char))
+        (call output_string (borrow (index соседи 20000)))
+        (call output_string "\n"))
+      (cleanup-exit (return) (destroy соседи __lifetime_0))))
+  (fun прогреть ()
+    (block
+      (var блок <array string 1> [1 16384])
+      (var __lifetime_1 = (* 1 (+ (- 16384 1) 1)))
+      (replace (index блок 1) (move (call str_from_unicode (cast 1072 char))))
+      (cleanup-exit (return) (destroy блок __lifetime_1))))
+  (fun занять ()
+    (block
+      (var блок <array string 1> [1 16384])
+      (var __lifetime_2 = (* 1 (+ (- 16384 1) 1)))
+      (replace (index блок 16384) (move (call str_from_unicode (cast 1103 char))))
+      (cleanup-exit (return) (destroy блок __lifetime_2)))))

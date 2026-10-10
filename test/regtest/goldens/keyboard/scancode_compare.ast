@@ -6,22 +6,24 @@
       (var n i64)
       (= к (: 40 <named сканкод>))
       (if
-        (== (bitcast (: к <named сканкод>) i64) 40)
+        (== (bitcast (: к <named сканкод>) i64) (bitcast (: 40 <named сканкод>) i64))
         (block
           (block
             (call output_string "вниз")
             (call output_string "\n"))))
       (block
-        (call output_bool (!= (bitcast (: к <named сканкод>) i64) 38))
+        (call output_bool (!= (bitcast (: к <named сканкод>) i64) (bitcast (: 38 <named сканкод>) i64)))
         (call output_symbol (cast 32 char))
-        (call output_bool (== (bitcast (: к <named сканкод>) i64) 40))
+        (call
+          output_bool
+          (== (bitcast (: к <named сканкод>) i64) (bitcast (bitcast 40 <named сканкод>) i64)))
         (call output_string "\n"))
       (= n (bitcast (: к <named сканкод>) i64))
       (block
         (call output_int64 n 0)
         (call output_string "\n"))
-      (= к (: 13 <named сканкод>))
+      (= к (bitcast 13 <named сканкод>))
       (block
-        (call output_bool (== (bitcast (: к <named сканкод>) i64) 13))
+        (call output_bool (== (bitcast (: к <named сканкод>) i64) (bitcast (: 13 <named сканкод>) i64)))
         (call output_string "\n"))
       (cleanup-exit (return)))))

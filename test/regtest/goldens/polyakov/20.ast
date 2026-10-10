@@ -6,7 +6,7 @@
       (var N i64)
       (= N 10)
       (var S <array string 1> [1 N])
-      (var __lifetime_0 = (* (* 1 (+ (- N 1) 1)) 8))
+      (var __lifetime_0 = (* 1 (+ (- N 1) 1)))
       (var s1 = (bitcast 0 string))
       (replace (index S 1) (own-literal "AAAbc"))
       (replace (index S 2) (own-literal "123_33123"))

@@ -1,0 +1,43 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    mov tmp(0,ptr to i8) = imm(1234,i64) 
+    stre local(0,ptr to i8) tmp(0,ptr to i8) 
+    load tmp(1,ptr to i8) = local(0,ptr to i8) 
+    bitcast tmp(2,ptr to i64) = tmp(1,ptr to i8) 
+    stre local(1,ptr to i64) tmp(2,ptr to i64) 
+    load tmp(3,ptr to i8) = local(0,ptr to i8) 
+    bitcast tmp(4,i64) = tmp(3,ptr to i8) 
+    arg tmp(4,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(5,ptr to i64) = local(1,ptr to i64) 
+    bitcast tmp(6,u64) = tmp(5,ptr to i64) 
+    mov tmp(7,i64) = tmp(6,u64) 
+    arg tmp(7,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    bitcast tmp(8,ptr to i8) = imm(0,i64) 
+    bitcast tmp(9,i64) = tmp(8,ptr to i8) 
+    arg tmp(9,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    bitcast tmp(10,i64) = imm(3,ptr to i8) 
+    != tmp(11,i1) = tmp(10,i64) imm(0,i64) 
+    arg tmp(11,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}

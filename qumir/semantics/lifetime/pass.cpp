@@ -61,6 +61,7 @@ TExprPtr Binary(
     return result;
 }
 
+// In elements, not bytes: the width of an element belongs to the target.
 TExprPtr ArrayAllocationSize(const TVarStmt& variable) {
     TExprPtr elements = Integer(variable.Location, 1);
     for (const auto& [lower, upper] : variable.Bounds) {
@@ -75,11 +76,7 @@ TExprPtr ArrayAllocationSize(const TVarStmt& variable) {
             std::move(elements),
             std::move(dimension));
     }
-    return Binary(
-        variable.Location,
-        '*',
-        std::move(elements),
-        Integer(variable.Location, sizeof(char*)));
+    return elements;
 }
 
 bool IsReusableArrayBound(const TExprPtr& expr) {

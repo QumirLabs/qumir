@@ -137,7 +137,7 @@ Local `лит` variables get a pending destructor that calls `str_release` on
 scope exit. The synthetic `$$return` variable is excluded because its value is
 owned by the caller after function return.
 
-Arrays of strings use `array_str_destroy(ptr, sizeInBytes)`. It walks the flat
+Arrays of strings use `array_str_destroy(ptr, elements)`. It walks the flat
 array of `char*` elements, calls `str_release` for each stored pointer, and
 then frees the array buffer.
 

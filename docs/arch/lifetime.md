@@ -184,12 +184,13 @@ destruction.
 For `array<string>`, destruction must release every element before freeing the
 buffer. Bounds may be expressions and may change later, so the pass computes
 allocation size once at declaration time and saves it in a synthetic integer
-local. Non-reusable bound expressions are similarly saved so allocation and
+local. The size is in elements: the width of one belongs to the target.
+Non-reusable bound expressions are similarly saved so allocation and
 cleanup use the same evaluated bounds.
 
 ```text
 (var words <array string 1> [lower upper])
-(var __lifetime_size = (* (+ (- upper lower) 1) sizeof_pointer))
+(var __lifetime_size = (+ (- upper lower) 1))
 ...
 (destroy words __lifetime_size)
 ```

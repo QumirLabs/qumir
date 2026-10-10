@@ -135,16 +135,17 @@ export function array_destroy(_ptr) {
   ALLOC_MAP.delete(p);
 }
 
-export function array_str_destroy(ptr, arraySize) {
-  // Walk the memory region [ptr, ptr+arraySize) with 8-byte stride,
+export function array_str_destroy(ptr, elements) {
+  // Walk the cells from ptr, one pointer wide each (a BigInt ptr means wasm64),
   // read an int32 at each cell and call string.str_release(handle).
+  const stride = (typeof ptr === 'bigint') ? 8 : 4;
   const p = toU32(ptr);
-  const n = toU32(arraySize);
+  const n = toU32(elements) * stride;
   if (n === 0) return;
   const i32 = new Int32Array(MEMORY.buffer);
   const start = p >>> 0;
   const end = (start + n) >>> 0;
-  for (let off = start; off + 4 <= end; off += 8) {
+  for (let off = start; off + 4 <= end; off += stride) {
     const idx = off >>> 2;
     if (idx >= 0 && idx < i32.length) {
       const handle = i32[idx];

@@ -35,8 +35,7 @@ function $$module_constructor () { ; void
     - tmp(16,i64) = imm(2,i64) imm(1,i64) 
     + tmp(17,i64) = tmp(16,i64) imm(1,i64) 
     * tmp(18,i64) = imm(1,i64) tmp(17,i64) 
-    * tmp(19,i64) = tmp(18,i64) imm(8,i64) 
-    stre slot(89,i64) tmp(19,i64) 
+    stre slot(89,i64) tmp(18,i64) 
     ret 
   }
 }

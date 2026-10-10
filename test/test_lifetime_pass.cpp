@@ -437,7 +437,7 @@ TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
     ASSERT_EQ(body->Stmts.size(), 6u);
     EXPECT_EQ(
         Print(body->Stmts[3]),
-        "(var __lifetime_0 = (* (* (* 1 (+ (- upper lower) 1)) (+ (- 2 0) 1)) 8))");
+        "(var __lifetime_0 = (* (* 1 (+ (- upper lower) 1)) (+ (- 2 0) 1)))");
     EXPECT_EQ(
         Print(body->Stmts[5]),
         "(cleanup-exit (return) (destroy grid __lifetime_0))");

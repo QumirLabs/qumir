@@ -222,11 +222,25 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
                 out.Operands[2] = TUntypedImm{types.SizeInBytes(destElement)};
                 return true;
             }
-            const bool compatible = instr.Op == "bitcast"_op
+            const bool isBitcast = instr.Op == "bitcast"_op;
+            const bool compatible = isBitcast
                 ? types.SizeInBytes(destType) == types.SizeInBytes(sourceType)
                 : destType == sourceType;
-            if ((!isZero && source.Type != TOperand::EType::Tmp) || (!isZero && !compatible)) {
+            // A scalar immediate reinterpreted as a vector is just its bits.
+            if ((!isZero && !isBitcast && source.Type != TOperand::EType::Tmp) || (!isZero && !compatible)) {
                 throw std::runtime_error("Unsupported VM vector copy or cast");
+            }
+            const auto destSize = static_cast<unsigned>(types.SizeInBytes(destType));
+            if (isBitcast && !types.IsVector(destType) && destSize < 8) {
+                // Read as one lane: that writes the whole register, extended by
+                // the result type, where a plain copy would leave its top stale.
+                out.Op = EVMOp::VIndex;
+                out.Format = TVMInstr::MakeFormat(std::countr_zero(destSize));
+                if (types.IsSigned(destType)) {
+                    out.Format |= TVMInstr::SignedElement;
+                }
+                out.Operands[2] = TUntypedImm{0};
+                return true;
             }
             out.Op = EVMOp::Mov;
             return true;

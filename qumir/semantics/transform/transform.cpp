@@ -11,7 +11,6 @@
 #include <qumir/semantics/return_normalization/pass.h>
 
 #include <algorithm>
-#include <bit>
 #include <limits>
 #include <sstream>
 #include <unordered_map>
@@ -26,26 +25,6 @@ namespace {
 bool IsFileType(const NAst::TTypePtr& type) {
     auto named = NAst::TMaybeType<NAst::TNamedType>(type);
     return named && named.Cast()->Name == "file";
-}
-
-std::optional<int> ScalarSizeInBytes(const NAst::TTypePtr& inputType) {
-    auto type = NAst::UnwrapNamedType(NAst::UnwrapReferenceType(inputType));
-    if (auto integer = NAst::TMaybeType<NAst::TIntegerType>(type)) {
-        return integer.Cast()->BitWidth() / 8;
-    }
-    if (NAst::TMaybeType<NAst::TFloatType>(type)) {
-        return 8;
-    }
-    if (NAst::TMaybeType<NAst::TSymbolType>(type)) {
-        return 4;
-    }
-    if (NAst::TMaybeType<NAst::TPointerType>(type)) {
-        return 8;
-    }
-    if (NAst::TMaybeType<NAst::TStringType>(type)) {
-        return 8;
-    }
-    return std::nullopt;
 }
 
 } // namespace
@@ -113,38 +92,6 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
     std::list<TError> errors;
     bool changed = TransformAst(expr, expr,
         [&](const NAst::TExprPtr& node) -> NAst::TExprPtr {
-            if (auto maybeBitcast = NAst::TMaybeNode<NAst::TBitcastExpr>(node)) {
-                auto bitcast = maybeBitcast.Cast();
-                auto sourceSize = ScalarSizeInBytes(bitcast->Operand->Type);
-                auto targetSize = ScalarSizeInBytes(bitcast->Type);
-                if (!sourceSize || !targetSize) {
-                    errors.push_back(TError(
-                        bitcast->Location,
-                        "bitcast supports integer, float, symbol, pointer, and string types only"));
-                    return node;
-                }
-                if (*sourceSize != *targetSize) {
-                    errors.push_back(TError(bitcast->Location, "bitcast types must have the same size"));
-                    return node;
-                }
-
-                if (auto maybeNumber = NAst::TMaybeNode<NAst::TNumberExpr>(bitcast->Operand)) {
-                    auto number = maybeNumber.Cast();
-                    bool sourceIsFloat = NAst::TMaybeType<NAst::TFloatType>(
-                        NAst::UnwrapNamedType(number->Type));
-                    bool targetIsFloat = NAst::TMaybeType<NAst::TFloatType>(
-                        NAst::UnwrapNamedType(bitcast->Type));
-                    if (sourceIsFloat && !targetIsFloat) {
-                        number->IntValue = std::bit_cast<int64_t>(number->FloatValue);
-                    } else if (!sourceIsFloat && targetIsFloat) {
-                        number->FloatValue = std::bit_cast<double>(number->IntValue);
-                    }
-                    number->Type = bitcast->Type;
-                    return number;
-                }
-                return node;
-            }
-
             // Inline substitution: replace TCallExpr to functions with InlineFactory with their AST.
             // Args must be annotated (Type set) so the factory receives typed expressions.
             // The loop then re-runs type annotation on the replacement.
