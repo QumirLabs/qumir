@@ -107,6 +107,7 @@ private:
         TLLVMDebugInfo* debugInfo);
     llvm::Value* LowerInstr(const NIR::TInstr& instr, NIR::TModule& module);
     llvm::Value* LowerVectorInstr(const NIR::TInstr& instr, NIR::TModule& module, int outputTypeId);
+    void EnsureVectorIndices(llvm::Value* indices, unsigned count);
     llvm::Value* LowerVectorIndex(llvm::Value* vector, llvm::Value* index, llvm::Type* resultType);
     llvm::Value* EmitPhi(const NIR::TPhi& instr, NIR::TModule& module);
     void AddIncomingPhiEdges(const NIR::TPhi& instr, NIR::TModule& module);

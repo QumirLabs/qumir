@@ -112,6 +112,95 @@ void BuildVectorKernel(TModule& module, EKind kind, int count, TOp opcode, int b
     builder.Emit0("ret"_op, {});
 }
 
+void BuildVectorMemoryKernel(TModule& module, EKind kind, int count, TOp opcode, EKind indexKind = EKind::I64) {
+    TBuilder builder(module);
+    const int element = module.Types.I(kind);
+    const int vector = module.Types.Vec(element, count);
+    const int mask = module.Types.Vec(module.Types.I(EKind::I1), count);
+    const int indices = module.Types.Vec(module.Types.I(indexKind), count);
+    const int resultType = opcode == "movemask"_op
+        ? module.Types.I(EKind::U32)
+        : vector;
+    std::array<int, 4> pointerTypes{
+        module.Types.Ptr(resultType),
+        module.Types.Ptr(opcode == "gather"_op ? element : vector),
+        module.Types.Ptr(opcode == "select"_op ? vector : indices),
+        module.Types.Ptr(mask)};
+    builder.NewFunction("kernel", {TLocal{0}, TLocal{1}, TLocal{2}, TLocal{3}}, 1);
+    builder.SetReturnType(module.Types.I(EKind::Void));
+    auto emit = [&](TOp op, std::initializer_list<TOperand> args, int type) {
+        auto tmp = builder.Emit1(op, args);
+        builder.SetType(tmp, type);
+        return tmp;
+    };
+    std::array<TTmp, 4> pointers;
+    for (int i = 0; i < 4; ++i) {
+        builder.SetType(TLocal{i}, pointerTypes[i], {});
+        pointers[i] = emit("load"_op, {TLocal{i}}, pointerTypes[i]);
+    }
+    TTmp result;
+    if (opcode == "gather"_op) {
+        builder.Emit0("prefetch"_op, {pointers[1]});
+        auto offsets = emit("lde"_op, {pointers[2]}, indices);
+        result = emit(opcode, {pointers[1], offsets}, resultType);
+    } else {
+        auto left = emit("lde"_op, {pointers[1]}, vector);
+        if (opcode == "movemask"_op) {
+            result = emit(opcode, {left}, resultType);
+        } else {
+            auto right = emit("lde"_op, {pointers[2]}, opcode == "select"_op ? vector : indices);
+            if (opcode == "select"_op) {
+                auto predicates = emit("lde"_op, {pointers[3]}, mask);
+                result = emit(opcode, {predicates, left, right}, resultType);
+            } else {
+                result = emit(opcode, {left, right}, resultType);
+            }
+        }
+    }
+    builder.Emit0("ste"_op, {pointers[0], result});
+    builder.Emit0("ret"_op, {});
+}
+
+void CheckVectorMemoryKernel(
+    EKind kind,
+    int count,
+    TOp opcode,
+    const void* left,
+    const void* right,
+    const void* mask,
+    const std::vector<uint8_t>& expected,
+    EKind indexKind = EKind::I64)
+{
+    for (int optLevel : {0, 3}) {
+        SCOPED_TRACE(opcode.ToString());
+        SCOPED_TRACE(static_cast<int>(kind));
+        SCOPED_TRACE(count);
+        SCOPED_TRACE(optLevel);
+        TModule module;
+        BuildVectorMemoryKernel(module, kind, count, opcode, indexKind);
+        std::vector<uint8_t> output(expected.size() + 16, 42);
+        auto expectedWithTail = expected;
+        expectedWithTail.resize(output.size(), 42);
+        NCodeGen::TLLVMCodeGen codegen;
+        NCodeGen::TLlvmRunner runner;
+        std::string error;
+        auto* address = runner.Lookup(codegen.Emit(module, optLevel), "kernel", &error);
+        ASSERT_NE(address, nullptr) << error;
+        using TKernel = void (*)(void*, const void*, const void*, const void*);
+        reinterpret_cast<TKernel>(address)(output.data(), left, right, mask);
+        EXPECT_EQ(output, expectedWithTail) << "LLVM";
+
+        std::fill(output.begin(), output.end(), 42);
+        TVMCompiler compiler(module);
+        std::ostringstream out;
+        std::istringstream in;
+        TInterpreter interpreter(module, compiler, out, in);
+        interpreter.EvalRaw(module.Functions[0], {reinterpret_cast<int64_t>(output.data()),
+            reinterpret_cast<int64_t>(left), reinterpret_cast<int64_t>(right), reinterpret_cast<int64_t>(mask)}, {});
+        EXPECT_EQ(output, expectedWithTail) << "VM";
+    }
+}
+
 template<typename T>
 void CheckVectorKernels(EKind kind, int count = 4) {
     SCOPED_TRACE(static_cast<int>(kind));
@@ -621,5 +710,231 @@ TEST(LLVMVector, NativeBitwiseMasksAndShuffleUseSIMD) {
     }
 #else
     GTEST_SKIP() << "SIMD mnemonic checks cover AArch64 and x86-64";
+#endif
+}
+
+TEST(LLVMVector, MovemaskPacksLaneOrderForEverySize) {
+    for (int count : {2, 4, 8, 16, 32}) {
+        for (int pattern : {0, 1, 2}) {
+            std::vector<uint8_t> mask(count);
+            uint32_t bits = 0;
+            for (int i = 0; i < count; ++i) {
+                mask[i] = pattern == 2
+                    ? (i % 2 == 0 ? 255 : 0)
+                    : pattern;
+                if (mask[i] != 0) {
+                    bits |= uint32_t{1} << i;
+                }
+            }
+            std::vector<uint8_t> expected(sizeof(bits));
+            std::memcpy(expected.data(), &bits, sizeof(bits));
+            CheckVectorMemoryKernel(EKind::I1, count, "movemask"_op, mask.data(), nullptr, nullptr, expected);
+        }
+    }
+}
+
+TEST(LLVMVector, GatherSelectAndDynamicShufflePreserveBits) {
+    constexpr int count = 32;
+    std::array<uint8_t, count> mask;
+    std::array<int64_t, count> indices;
+    for (int i = 0; i < count; ++i) {
+        mask[i] = (i % 3 == 0);
+        indices[i] = (i * 7) % count;
+    }
+    for (auto kind : {EKind::I1, EKind::I8, EKind::U16, EKind::I32, EKind::U64, EKind::F32, EKind::F64}) {
+        TTypeTable types;
+        const int size = types.SizeInBytes(types.I(kind));
+        std::vector<uint8_t> left((count + 4) * size);
+        std::vector<uint8_t> right(count * size);
+        for (size_t i = 0; i < left.size(); ++i) {
+            left[i] = static_cast<uint8_t>(i * 13 + 1);
+        }
+        for (size_t i = 0; i < right.size(); ++i) {
+            right[i] = static_cast<uint8_t>(i * 3 + 9);
+        }
+        for (auto opcode : {"select"_op, "shuffle"_op, "gather"_op}) {
+            std::vector<uint8_t> expected(count * size);
+            std::array<int64_t, count> offsets = indices;
+            for (int i = 0; i < count; ++i) {
+                if (opcode == "gather"_op) {
+                    offsets[i] -= 2;
+                }
+                const auto* source = (opcode == "select"_op && !mask[i])
+                    ? right.data() + i * size
+                    : left.data() + (opcode == "select"_op ? i : indices[i]) * size;
+                std::memcpy(expected.data() + i * size, source, size);
+            }
+            CheckVectorMemoryKernel(kind, count, opcode,
+                left.data() + (opcode == "gather"_op ? 2 * size : 0),
+                opcode == "select"_op ? static_cast<const void*>(right.data()) : offsets.data(),
+                mask.data(), expected);
+        }
+    }
+}
+
+TEST(LLVMVector, GatherSupportsUnalignedMemory) {
+    std::array<uint8_t, 25> bytes;
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        bytes[i] = static_cast<uint8_t>(i * 7);
+    }
+    std::array<int64_t, 4> indices{4, 0, 1, 4};
+    std::vector<uint8_t> expected(16);
+    for (size_t i = 0; i < indices.size(); ++i) {
+        std::memcpy(expected.data() + i * 4, bytes.data() + 1 + indices[i] * 4, 4);
+    }
+    CheckVectorMemoryKernel(EKind::U32, 4, "gather"_op, bytes.data() + 1, indices.data(), nullptr, expected);
+}
+
+TEST(LLVMVector, ZeroVectorImmediatesWorkInIntrinsics) {
+    for (auto opcode : {"select"_op, "shuffle"_op, "movemask"_op}) {
+        for (int optLevel : {0, 3}) {
+            SCOPED_TRACE(opcode.ToString());
+            SCOPED_TRACE(optLevel);
+            TModule module;
+            BuildVectorMemoryKernel(module, EKind::I1, 4, opcode);
+            const int vector = module.Types.Vec(module.Types.I(EKind::I1), 4);
+            for (auto& instr : module.Functions[0].Blocks[0].Instrs) {
+                if (instr.Op == opcode) {
+                    instr.Operands[0] = TImm{0, vector};
+                }
+            }
+            std::array<uint8_t, 4> left{1, 1, 1, 1};
+            std::array<uint8_t, 4> right{1, 0, 1, 0};
+            std::array<int64_t, 4> indices{3, 0, 1, 2};
+            std::array<uint8_t, 4> output{42, 42, 42, 42};
+            const void* second = opcode == "select"_op
+                ? static_cast<const void*>(right.data())
+                : indices.data();
+            const std::array<uint8_t, 4> expected = opcode == "select"_op
+                ? right
+                : std::array<uint8_t, 4>{};
+            NCodeGen::TLLVMCodeGen codegen;
+            NCodeGen::TLlvmRunner runner;
+            auto* address = runner.Lookup(codegen.Emit(module, optLevel), "kernel");
+            ASSERT_NE(address, nullptr);
+            using TKernel = void (*)(void*, const void*, const void*, const void*);
+            reinterpret_cast<TKernel>(address)(output.data(), left.data(), second, left.data());
+            EXPECT_EQ(output, expected) << "LLVM";
+            output.fill(42);
+            TVMCompiler compiler(module);
+            std::ostringstream out;
+            std::istringstream in;
+            TInterpreter interpreter(module, compiler, out, in);
+            interpreter.EvalRaw(module.Functions[0], {reinterpret_cast<int64_t>(output.data()),
+                reinterpret_cast<int64_t>(left.data()), reinterpret_cast<int64_t>(second),
+                reinterpret_cast<int64_t>(left.data())}, {});
+            EXPECT_EQ(output, expected) << "VM";
+        }
+    }
+}
+
+TEST(LLVMVector, DynamicShuffleSupportsNarrowUnsignedIndices) {
+    std::array<uint64_t, 4> values{1, 2, 3, std::numeric_limits<uint64_t>::max()};
+    std::array<uint8_t, 4> indices{3, 0, 3, 1};
+    std::array<uint64_t, 4> result{values[3], values[0], values[3], values[1]};
+    std::vector<uint8_t> expected(sizeof(result));
+    std::memcpy(expected.data(), result.data(), expected.size());
+    CheckVectorMemoryKernel(EKind::U64, 4, "shuffle"_op, values.data(), indices.data(), nullptr, expected, EKind::U8);
+}
+
+TEST(LLVMVector, InvalidDynamicShuffleIndicesRaiseRuntimeError) {
+    for (int optLevel : {0, 3}) {
+        for (int64_t bad : std::array<int64_t, 3>{-1, 4, std::numeric_limits<int64_t>::max()}) {
+            SCOPED_TRACE(optLevel);
+            SCOPED_TRACE(bad);
+            TModule module;
+            BuildVectorMemoryKernel(module, EKind::I32, 4, "shuffle"_op);
+            std::array<int32_t, 4> values{1, 2, 3, 4};
+            std::array<int64_t, 4> indices{0, 1, 2, bad};
+            std::array<int32_t, 4> result{42, 42, 42, 42};
+            NCodeGen::TLLVMCodeGen codegen;
+            NCodeGen::TLlvmRunner runner;
+            auto* address = runner.Lookup(codegen.Emit(module, optLevel), "kernel");
+            ASSERT_NE(address, nullptr);
+            using TKernel = void (*)(void*, const void*, const void*, const void*);
+            EXPECT_THROW(reinterpret_cast<TKernel>(address)(result.data(), values.data(), indices.data(), nullptr), std::runtime_error);
+            TVMCompiler compiler(module);
+            std::ostringstream out;
+            std::istringstream in;
+            TInterpreter interpreter(module, compiler, out, in);
+            EXPECT_THROW(interpreter.EvalRaw(module.Functions[0], {reinterpret_cast<int64_t>(result.data()),
+                reinterpret_cast<int64_t>(values.data()), reinterpret_cast<int64_t>(indices.data()), 0}, {}), std::runtime_error);
+            EXPECT_EQ(result, (std::array<int32_t, 4>{42, 42, 42, 42}));
+        }
+    }
+}
+
+TEST(LLVMVector, VMCompilerOmitsPrefetchAndKeepsBranchTargets) {
+    TModule module;
+    TBuilder builder(module);
+    const int i64 = module.Types.I(EKind::I64);
+    const int pointer = module.Types.Ptr(module.Types.I(EKind::I8));
+    builder.NewFunction("hints", {TLocal{0}}, 1);
+    builder.SetReturnType(i64);
+    builder.SetType(TLocal{0}, pointer, {});
+    auto address = builder.Emit1("load"_op, {TLocal{0}});
+    builder.SetType(address, pointer);
+    builder.Emit0("prefetch"_op, {address});
+    builder.Emit0("jmp"_op, {TLabel{1}});
+    builder.NewBlock(TLabel{1});
+    builder.Emit0("prefetch"_op, {address});
+    builder.Emit0("ret"_op, {TImm{42, i64}});
+    TVMCompiler compiler(module);
+    const auto& function = compiler.Compile(module.Functions[0]);
+    ASSERT_EQ(function.VMCode.size(), 3);
+    EXPECT_EQ(function.VMCode[1].Op, EVMOp::Jmp);
+    EXPECT_EQ(function.VMCode[1].Operands[0].Imm.Value, reinterpret_cast<int64_t>(&function.VMCode[2]));
+    std::ostringstream out;
+    std::istringstream in;
+    TInterpreter interpreter(module, compiler, out, in);
+    EXPECT_EQ(interpreter.EvalRaw(module.Functions[0], {0}, {}), 42);
+}
+
+TEST(LLVMVector, X86ByteComparisonMovemaskUsesPmovmskb) {
+#if defined(__x86_64__)
+    TModule module;
+    TBuilder builder(module);
+    const int byte = module.Types.I(EKind::U8);
+    const int vector = module.Types.Vec(byte, 16);
+    const int mask = module.Types.Vec(module.Types.I(EKind::I1), 16);
+    const int pointer = module.Types.Ptr(byte);
+    const int resultType = module.Types.I(EKind::U32);
+    builder.NewFunction("match", {TLocal{0}, TLocal{1}}, 1);
+    builder.SetReturnType(resultType);
+    builder.SetType(TLocal{0}, pointer, {});
+    builder.SetType(TLocal{1}, byte, {});
+    auto emit = [&](TOp op, std::initializer_list<TOperand> args, int type) {
+        auto tmp = builder.Emit1(op, args);
+        builder.SetType(tmp, type);
+        return tmp;
+    };
+    auto data = emit("load"_op, {TLocal{0}}, pointer);
+    auto needle = emit("load"_op, {TLocal{1}}, byte);
+    auto values = emit("lde"_op, {data}, vector);
+    auto matches = emit("=="_op, {values, needle}, mask);
+    auto result = emit("movemask"_op, {matches}, resultType);
+    builder.Emit0("ret"_op, {result});
+    NCodeGen::TLLVMCodeGen codegen({.TargetTriple = "x86_64-unknown-linux-gnu"});
+    auto artifacts = codegen.Emit(module, 3);
+    std::ostringstream assembly;
+    artifacts->Generate(assembly, true, false);
+    EXPECT_TRUE(std::regex_search(assembly.str(), std::regex("\\bpmovmskb\\s"))) << assembly.str();
+    EXPECT_TRUE(std::regex_search(assembly.str(), std::regex("\\bpcmpeqb\\s"))) << assembly.str();
+#else
+    GTEST_SKIP() << "x86 assembly check runs on x86-64";
+#endif
+}
+
+TEST(LLVMVector, X86PrefetchEmitsCacheHint) {
+#if defined(__x86_64__)
+    TModule module;
+    BuildVectorMemoryKernel(module, EKind::I32, 4, "gather"_op);
+    NCodeGen::TLLVMCodeGen codegen({.TargetTriple = "x86_64-unknown-linux-gnu"});
+    auto artifacts = codegen.Emit(module, 3);
+    std::ostringstream assembly;
+    artifacts->Generate(assembly, true, false);
+    EXPECT_TRUE(std::regex_search(assembly.str(), std::regex("\\bprefetcht0\\s"))) << assembly.str();
+#else
+    GTEST_SKIP() << "x86 assembly check runs on x86-64";
 #endif
 }

@@ -419,7 +419,7 @@ TLabel TBuilder::NewLabel() {
     return TLabel{CurrentFunction->NextLabelIdx++};
 }
 
-TTmp TBuilder::Emit1(TOp op, std::initializer_list<TOperand> operands, const TInstrDebugInfo& debugInfo) {
+TTmp TBuilder::Emit1(TOp op, std::span<const TOperand> operands, const TInstrDebugInfo& debugInfo) {
     if (!CurrentBlock) {
         throw std::runtime_error("No current block");
     }
@@ -431,29 +431,16 @@ TTmp TBuilder::Emit1(TOp op, std::initializer_list<TOperand> operands, const TIn
         CurrentBlock->Phis.push_back(TPhi {
             .Op = op,
             .Dest = t,
-            .Operands = operands,
+            .Operands = {operands.begin(), operands.end()},
         });
     } else {
-        CurrentBlock->Instrs.push_back(TInstr {
-            .Op = op, .Dest = t
-        });
-        auto& instr = CurrentBlock->Instrs.back();
-        instr.OperandCount = 0;
-        for (size_t i = 0; i < operands.size() && i < instr.Operands.size(); ++i) {
-            instr.Operands[i] = *(operands.begin() + i);
-            instr.OperandCount++;
-        }
-        if (debugInfo) {
-            if (CurrentBlock->InstrDebugInfo.size() < CurrentBlock->Instrs.size()) {
-                CurrentBlock->InstrDebugInfo.resize(CurrentBlock->Instrs.size());
-            }
-            CurrentBlock->InstrDebugInfo[CurrentBlock->Instrs.size() - 1] = debugInfo;
-        }
+        Emit0(op, operands, debugInfo);
+        CurrentBlock->Instrs.back().Dest = t;
     }
     return t;
 }
 
-void TBuilder::Emit0(TOp op, std::initializer_list<TOperand> operands, const TInstrDebugInfo& debugInfo) {
+void TBuilder::Emit0(TOp op, std::span<const TOperand> operands, const TInstrDebugInfo& debugInfo) {
     if (!CurrentBlock) {
         throw std::runtime_error("No current block");
     }

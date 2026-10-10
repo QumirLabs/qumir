@@ -463,7 +463,11 @@ TEST(VectorTypeAnnotation, IntrinsicsKeepCallsAndInferResults) {
         {"(call builtin::all (vec #t #f))", "Bool"},
         {"(call builtin::any (vec #t #f))", "Bool"},
         {"(call builtin::shuffle (: (vec 1 2) <vec i8 2>) (vec 1 0))", "Vector::i8::2"},
-        {"(call builtin::shuffle (vec 1.5 2.5) (vec 0 0))", "Vector::Float::2"}})
+        {"(call builtin::shuffle (vec 1.5 2.5) (vec 0 0))", "Vector::Float::2"},
+        {"(call builtin::movemask (vec #t #f))", "u32"},
+        {"(call builtin::select (vec #t #f) (vec 1 2) (vec 3 4))", "Vector::i64::2"},
+        {"(call builtin::gather (cast 0 <ptr f64>) (: (vec 0 1) <vec u8 2>))", "Vector::Float::2"},
+        {"(call builtin::prefetch (cast 0 <ptr i8>))", "Void"}})
     {
         SCOPED_TRACE(source);
         auto result = Annotate(source);
@@ -497,11 +501,31 @@ TEST(VectorTypeAnnotation, RejectsInvalidIntrinsicArguments) {
         "(call builtin::shuffle (vec 1 2) (vec -1 0))",
         "(call builtin::shuffle (vec 1 2) (vec 0 2))",
         "(call builtin::shuffle (vec 1 2) (vec 0.0 1.0))",
-        "(block (var i = 0) (call builtin::shuffle (vec 1 2) (vec i 1)))",
-        "(block (var mask = (vec 0 1)) (call builtin::shuffle (vec 1 2) mask))"})
+        "(call builtin::movemask (vec 1 2))", "(call builtin::movemask)",
+        "(call builtin::select (vec 1 2) (vec 1 2) (vec 3 4))",
+        "(call builtin::select (vec #t #f) (vec 1 2) (vec 1.0 2.0))",
+        "(call builtin::select (vec #t #f) (vec 1 2 3 4) (vec 1 2 3 4))",
+        "(call builtin::select (vec #t #f) 1 2)",
+        "(call builtin::gather 1 (vec 0 1))",
+        "(call builtin::gather (cast 0 <ptr i128>) (vec 0 1))",
+        "(call builtin::gather (cast 0 <ptr <ptr i8>>) (vec 0 1))",
+        "(call builtin::gather (cast 0 <ptr i8>) (vec #t #f))",
+        "(call builtin::prefetch 0)", "(call builtin::prefetch)"})
     {
         SCOPED_TRACE(source);
         EXPECT_FALSE(Annotate(source));
+    }
+}
+
+TEST(VectorTypeAnnotation, ShuffleAcceptsDynamicIntegerMasks) {
+    for (const auto& source : {
+        "(block (var i = 0) (call builtin::shuffle (vec 1 2) (vec i 1)))",
+        "(block (var mask = (: (vec 0 1) <vec u8 2>)) (call builtin::shuffle (vec 1 2) mask))"})
+    {
+        auto result = Annotate(source);
+        ASSERT_TRUE(result) << result.error().ToString();
+        EXPECT_EQ(TypeName((*result)->Type), "Vector::i64::2");
+        EXPECT_TRUE(Annotate(NCore::PrintAst(*result)));
     }
 }
 

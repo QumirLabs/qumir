@@ -102,6 +102,13 @@ protected:
     fs::path Dir;
 };
 
+TEST_F(SourceModuleLoaderTest, DefaultVectorAlias) {
+    TSourceModuleLoader loader;
+    auto module = loader.Load("Vector");
+    ASSERT_TRUE(module) << module.error().ToString();
+    EXPECT_EQ((*module)->Path.filename(), "vector.oz");
+}
+
 TEST_F(SourceModuleLoaderTest, SingleModuleNoDeps) {
     Write("a", "(block (type t i64) (fun foo () (block)) (fun bar () (block)))");
 

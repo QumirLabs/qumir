@@ -2859,51 +2859,107 @@ TTask AnnotateOverloadedCall(
     co_return call;
 }
 
+std::expected<TTypePtr, TError> VectorIntrinsicResult(
+    const TCallExpr& call,
+    std::string_view op,
+    const std::vector<TTypePtr>& types)
+{
+    auto error = [&](const std::string& message) {
+        return std::unexpected(TError(call.Location, std::string(op) + ": " + message));
+    };
+    auto pointer = TMaybeType<TPointerType>(types[0]).Cast();
+    if (op == "prefetch") {
+        if (!pointer) {
+            return error("ожидается указатель.");
+        }
+        return std::make_shared<TVoidType>();
+    }
+    if (op == "gather") {
+        auto indices = TMaybeType<TVectorType>(types[1]).Cast();
+        if (!pointer || !indices || !TMaybeType<TIntegerType>(UnwrapNamedType(indices->ElementType))) {
+            return error("ожидаются указатель и вектор целых индексов.");
+        }
+        auto element = UnwrapNamedType(pointer->PointeeType);
+        if ((!IsNumericType(element) && !TMaybeType<TBoolType>(element)) || IsWideIntegerType(element)) {
+            return error("тип элемента должен быть числом не шире 64 бит или bool.");
+        }
+        return std::make_shared<TVectorType>(element, indices->Size);
+    }
+    auto vector = TMaybeType<TVectorType>(types[0]).Cast();
+    if (!vector) {
+        return error("ожидается вектор.");
+    }
+    if (op == "shuffle") {
+        auto mask = TMaybeType<TVectorType>(types[1]).Cast();
+        if (!mask || mask->Size != vector->Size
+            || !TMaybeType<TIntegerType>(UnwrapNamedType(mask->ElementType)))
+        {
+            return error("маска должна быть вектором целых индексов той же длины.");
+        }
+        if (auto literal = TMaybeNode<TVectorExpr>(call.Args[1]).Cast()) {
+            for (const auto& element : literal->Elements) {
+                auto number = TMaybeNode<TNumberExpr>(element).Cast();
+                if (number && (number->IntValue < 0 || number->IntValue >= vector->Size)) {
+                    return error("индекс должен быть в пределах вектора.");
+                }
+            }
+        }
+        return types[0];
+    }
+    if (!TMaybeType<TBoolType>(UnwrapNamedType(vector->ElementType))) {
+        return error("ожидается вектор bool.");
+    }
+    if (op == "select") {
+        auto values = TMaybeType<TVectorType>(types[1]).Cast();
+        if (!values || values->Size != vector->Size || !EqualTypes(types[1], types[2])) {
+            return error("ожидаются два вектора одного типа с длиной маски.");
+        }
+        return types[1];
+    }
+    if (op == "movemask") {
+        return std::make_shared<TIntegerType>(TIntegerType::U32);
+    }
+    return std::make_shared<TBoolType>();
+}
+
 TTask AnnotateVectorIntrinsic(
     std::shared_ptr<TCallExpr> call,
     std::string_view op,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
-    const size_t count = op == "shuffle"
-        ? 2
-        : 1;
+    const size_t count = op == "select"
+        ? 3
+        : (op == "shuffle" || op == "gather" ? 2 : 1);
     if (call->Args.size() != count) {
         co_return TError(call->Location, std::string(op) + ": неверное число аргументов.");
     }
     std::vector<TTypePtr> argTypes;
-    std::vector<TParam> params;
     for (auto& arg : call->Args) {
         arg = co_await DoAnnotate(arg, context, scopeId);
-        auto type = UnwrapNamedType(UnwrapReferenceType(arg->Type));
-        argTypes.push_back(type);
-        params.push_back(std::make_shared<TVarStmt>(arg->Location, "$arg" + std::to_string(params.size()), type));
+        argTypes.push_back(UnwrapNamedType(UnwrapReferenceType(arg->Type)));
     }
-    auto vector = TMaybeType<TVectorType>(argTypes[0]).Cast();
-    if (!vector) {
-        co_return TError(call->Location, std::string(op) + ": ожидается вектор.");
+    auto resultType = VectorIntrinsicResult(*call, op, argTypes);
+    if (!resultType) {
+        co_return resultType.error();
     }
-    TTypePtr result = std::make_shared<TBoolType>();
-    if (op == "shuffle") {
-        auto mask = TMaybeNode<TVectorExpr>(call->Args[1]).Cast();
-        if (!mask || mask->Elements.size() != static_cast<size_t>(vector->Size)) {
-            co_return TError(call->Location, "shuffle: маска должна быть векторным литералом той же длины.");
+    if (op == "gather") {
+        auto indices = TMaybeType<TVectorType>(argTypes[1]).Cast();
+        auto indexType = std::make_shared<TVectorType>(std::make_shared<TIntegerType>(), indices->Size);
+        if (!EqualTypes(argTypes[1], indexType)) {
+            call->Args[1] = MakeCast(call->Args[1], indexType);
+            argTypes[1] = indexType;
         }
-        for (const auto& element : mask->Elements) {
-            auto number = TMaybeNode<TNumberExpr>(element).Cast();
-            if (!number || number->IsFloat() || number->IntValue < 0 || number->IntValue >= vector->Size) {
-                co_return TError(element->Location, "shuffle: индекс должен быть целой константой в пределах вектора.");
-            }
-        }
-        result = argTypes[0];
-    } else if (!TMaybeType<TBoolType>(UnwrapNamedType(vector->ElementType))) {
-        co_return TError(call->Location, std::string(op) + ": ожидается вектор bool.");
     }
-
+    auto result = *resultType;
     const std::string builtin = "builtin::" + std::string(op);
     const std::string name = MangleGenericInstance(builtin, result, argTypes);
     const auto root = context.GetOrCreateRootScope()->Id;
     if (!context.Lookup(name, root)) {
+        std::vector<TParam> params;
+        for (size_t i = 0; i < argTypes.size(); ++i) {
+            params.push_back(std::make_shared<TVarStmt>(call->Args[i]->Location, "$arg" + std::to_string(i), argTypes[i]));
+        }
         // Typed declarations keep ordinary call validation and lifetime handling.
         auto function = std::make_shared<TFunDecl>(call->Location, name, std::vector<TGenericParam>{},
             std::move(params), nullptr, result);

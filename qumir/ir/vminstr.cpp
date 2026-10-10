@@ -147,6 +147,10 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::VAll: return os << "VAll";
     case EVMOp::VAny: return os << "VAny";
     case EVMOp::VShuffle: return os << "VShuffle";
+    case EVMOp::VShuffleDynamic: return os << "VShuffleDynamic";
+    case EVMOp::VMovemask: return os << "VMovemask";
+    case EVMOp::VSelect: return os << "VSelect";
+    case EVMOp::VGather: return os << "VGather";
     default: return os << "EVMOp(" << static_cast<int>(op) << ")";
     }
 }
@@ -158,14 +162,17 @@ std::ostream& operator<<(std::ostream& os, const TVMInstr& instr) {
         os << '<' << instr.ElementSizeInBytes() << 'x' << instr.LaneCount() << '>';
         const bool conversion = instr.Op == EVMOp::VICast || instr.Op == EVMOp::VI2F
             || instr.Op == EVMOp::VF2I || instr.Op == EVMOp::VFCast;
+        if (instr.Op == EVMOp::VShuffleDynamic) {
+            os << "[index-bytes=" << instr.IndexElementSizeInBytes() << ']';
+        }
         if ((instr.Op == EVMOp::VIndex || conversion) && (instr.Format & TVMInstr::SignedElement)) {
             os << "[signed]";
-        } else if (!conversion && (instr.Format & TVMInstr::BroadcastLeft)) {
+        } else if (!conversion && instr.Op != EVMOp::VShuffleDynamic && (instr.Format & TVMInstr::BroadcastLeft)) {
             os << "[broadcast-left]";
         }
         if (conversion && (instr.Format & TVMInstr::SignedResult)) {
             os << "[signed-result]";
-        } else if (!conversion && (instr.Format & TVMInstr::BroadcastRight)) {
+        } else if (!conversion && instr.Op != EVMOp::VShuffleDynamic && (instr.Format & TVMInstr::BroadcastRight)) {
             os << "[broadcast-right]";
         }
     }
@@ -178,6 +185,9 @@ std::ostream& operator<<(std::ostream& os, const TVMInstr& instr) {
         } else if (instr.Operands[i].Type == TVMOperand::EType::Imm) {
             os << "imm(" << instr.Operands[i].Imm.Value << ") ";
         }
+    }
+    if (instr.Mask.Idx >= 0) {
+        os << "mask-reg(" << instr.Mask.Idx << ") ";
     }
     return os;
 }

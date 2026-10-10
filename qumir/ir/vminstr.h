@@ -168,6 +168,10 @@ enum class EVMOp : uint8_t {
     VAll,
     VAny,
     VShuffle,
+    VShuffleDynamic,
+    VMovemask,
+    VSelect,
+    VGather,
 };
 
 std::ostream& operator<<(std::ostream& os, EVMOp op);
@@ -214,6 +218,8 @@ struct TVMInstr {
     EVMOp Op;
     // Bits 0..2: log2(element bytes), 3..5: log2(lanes), 6..7: opcode flags.
     uint8_t Format = 3;
+    // Select needs a fourth register; this occupies existing instruction padding.
+    TTmp Mask{-1};
 
     static constexpr uint8_t BroadcastLeft = 1 << 6;
     static constexpr uint8_t BroadcastRight = 1 << 7;
@@ -228,6 +234,10 @@ struct TVMInstr {
     constexpr size_t ElementSizeInBytes() const {
         assert((Format & 7) <= 4);
         return size_t{1} << (Format & 7);
+    }
+
+    constexpr size_t IndexElementSizeInBytes() const {
+        return size_t{1} << (Format >> 6);
     }
 
     constexpr size_t LaneCount() const {

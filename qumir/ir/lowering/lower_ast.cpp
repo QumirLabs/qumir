@@ -28,6 +28,10 @@ struct TInstrEmitter {
     bool EmitInfo;
 
     TTmp Emit1(TOp op, std::initializer_list<TOperand> operands) {
+        return Emit1(op, std::span<const TOperand>(operands));
+    }
+
+    TTmp Emit1(TOp op, std::span<const TOperand> operands) {
         Points.Before(op, DebugInfo);
         auto result = Builder.Emit1(op, operands, EmitInfo ? DebugInfo : TInstrDebugInfo{});
         Points.After(op, DebugInfo);
@@ -786,23 +790,40 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
 TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerVectorIntrinsic(
     const NAst::TCallExpr& call, std::string_view op, TBlockScope scope)
 {
-    auto value = co_await Lower(call.Args[0], scope);
-    if (!value.Value) {
-        co_return TError(call.Location, "Vector intrinsic argument must produce a value");
+    std::vector<int> mask;
+    if (op == "shuffle") {
+        if (auto literal = NAst::TMaybeNode<NAst::TVectorExpr>(call.Args[1]).Cast()) {
+            for (const auto& element : literal->Elements) {
+                auto number = NAst::TMaybeNode<NAst::TNumberExpr>(element).Cast();
+                if (!number) {
+                    mask.clear();
+                    break;
+                }
+                mask.push_back(static_cast<int>(number->IntValue));
+            }
+        }
+    }
+    std::vector<TOperand> args;
+    for (size_t i = 0; i < call.Args.size(); ++i) {
+        if (i == 1 && !mask.empty()) {
+            const auto id = static_cast<int64_t>(Module.VectorShuffleMasks.size());
+            Module.VectorShuffleMasks.push_back(std::move(mask));
+            args.push_back(TImm{id, Module.Types.I(EKind::I64)});
+        } else {
+            auto value = co_await Lower(call.Args[i], scope);
+            if (!value.Value) {
+                co_return TError(call.Location, "Vector intrinsic argument must produce a value");
+            }
+            args.push_back(*value.Value);
+        }
     }
     TInstrEmitter emitter{Builder, InstDebugInfo(call.Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
-    TTmp tmp;
-    if (op == "shuffle") {
-        std::vector<int> mask;
-        for (const auto& element : NAst::TMaybeNode<NAst::TVectorExpr>(call.Args[1]).Cast()->Elements) {
-            mask.push_back(static_cast<int>(NAst::TMaybeNode<NAst::TNumberExpr>(element).Cast()->IntValue));
-        }
-        const auto id = static_cast<int64_t>(Module.VectorShuffleMasks.size());
-        Module.VectorShuffleMasks.push_back(std::move(mask));
-        tmp = emitter.Emit1("shuffle"_op, {*value.Value, TImm{id, Module.Types.I(EKind::I64)}});
-    } else {
-        tmp = emitter.Emit1(op == "all" ? "all"_op : "any"_op, {*value.Value});
+    const TOp opcode{std::string(op).c_str()};
+    if (op == "prefetch") {
+        emitter.Emit0(opcode, {args[0]});
+        co_return TValueWithBlock{std::nullopt, Builder.CurrentBlockLabel()};
     }
+    const auto tmp = emitter.Emit1(opcode, args);
     Builder.SetType(tmp, FromAstType(call.Type, Module.Types));
     co_return TValueWithBlock{tmp, Builder.CurrentBlockLabel()};
 }

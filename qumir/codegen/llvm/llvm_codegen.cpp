@@ -478,6 +478,24 @@ int ByteMatchBackend(const llvm::TargetMachine& tm) {
     return 0;
 }
 
+llvm::Value* PackVectorBits(llvm::IRBuilder<>& irb, llvm::Value* lanes, llvm::IntegerType* resultType) {
+    auto* type = llvm::cast<llvm::FixedVectorType>(lanes->getType());
+    const unsigned count = type->getNumElements();
+    const unsigned bits = type->getElementType()->getIntegerBitWidth();
+    if (!irb.GetInsertBlock()->getModule()->getDataLayout().isBigEndian()) {
+        // This pattern lets x86 select PMOVMSKB for byte comparisons.
+        auto* packed = irb.CreateBitCast(lanes, irb.getIntNTy(count * bits), "mask.bits");
+        return irb.CreateZExtOrTrunc(packed, resultType, "mask");
+    }
+    // Pack lanes from low to high bits independently of target endianness.
+    llvm::Value* result = llvm::ConstantInt::get(resultType, 0);
+    for (unsigned i = 0; i < count; ++i) {
+        auto* bit = irb.CreateZExt(irb.CreateExtractElement(lanes, i), resultType);
+        result = irb.CreateOr(result, irb.CreateShl(bit, i * bits));
+    }
+    return result;
+}
+
 template<class TCast>
 llvm::Value* EmitBuiltinByteMatch(
     llvm::IRBuilder<>& irb,
@@ -503,26 +521,11 @@ llvm::Value* EmitBuiltinByteMatch(
     bytes->setAlignment(llvm::Align(1));
     auto* matches = irb.CreateICmpEQ(bytes, irb.CreateVectorSplat(width, byte));
 
-    if (irb.GetInsertBlock()->getModule()->getDataLayout().isBigEndian()) {
-        // Scalar lane packing preserves the same memory-to-mask order on every target.
-        llvm::Value* mask = llvm::ConstantInt::get(resultTy, 0);
-        for (unsigned i = 0; i < width; ++i) {
-            auto* predicate = irb.CreateExtractElement(matches, i);
-            auto* bit = compact
-                ? irb.CreateZExt(predicate, resultTy)
-                : irb.CreateAnd(
-                    irb.CreateSExt(predicate, resultTy),
-                    llvm::ConstantInt::get(resultTy, 0xff));
-            mask = irb.CreateOr(mask, irb.CreateShl(bit, compact ? i : 8 * i));
-        }
-        return mask;
-    }
-    if (compact) {
-        // A <16 x i1> bitcast lets x86 select PMOVMSKB without manual ISA intrinsics.
-        return irb.CreateZExt(irb.CreateBitCast(matches, llvm::Type::getInt16Ty(ctx)), resultTy);
-    }
     // NEON CMEQ already produces the eight 0x00/0xff bytes represented by u64.
-    return irb.CreateBitCast(irb.CreateSExt(matches, bytesTy), resultTy);
+    auto* lanes = compact
+        ? matches
+        : irb.CreateSExt(matches, bytesTy);
+    return PackVectorBits(irb, lanes, resultTy);
 }
 
 template<class TCast>
@@ -1645,15 +1648,14 @@ void TLLVMCodeGen::AddIncomingPhiEdges(const NIR::TPhi& instr, NIR::TModule& mod
     }
 }
 
-llvm::Value* TLLVMCodeGen::LowerVectorIndex(llvm::Value* vector, llvm::Value* index, llvm::Type* resultType) {
+void TLLVMCodeGen::EnsureVectorIndices(llvm::Value* indices, unsigned count) {
     auto* irb = static_cast<llvm::IRBuilder<>*>(BuilderBase.get());
-    auto* type = llvm::dyn_cast<llvm::FixedVectorType>(vector->getType());
-    if (!type || !index->getType()->isIntegerTy(64)) {
-        throw std::runtime_error("Invalid LLVM vector index types");
-    }
     auto& ctx = irb->getContext();
-    auto* valid = irb->CreateICmpULT(index,
-        llvm::ConstantInt::get(index->getType(), type->getNumElements()), "index.valid");
+    auto* bound = llvm::ConstantInt::get(indices->getType(), count);
+    auto* valid = irb->CreateICmpULT(indices, bound, "index.valid");
+    if (valid->getType()->isVectorTy()) {
+        valid = irb->CreateAndReduce(valid);
+    }
     auto* success = llvm::BasicBlock::Create(ctx, "index.ok", CurFun->LFun);
     auto* failure = llvm::BasicBlock::Create(ctx, "index.fail", CurFun->LFun);
     irb->CreateCondBr(valid, success, failure);
@@ -1668,6 +1670,15 @@ llvm::Value* TLLVMCodeGen::LowerVectorIndex(llvm::Value* vector, llvm::Value* in
     irb->CreateUnreachable();
 
     irb->SetInsertPoint(success);
+}
+
+llvm::Value* TLLVMCodeGen::LowerVectorIndex(llvm::Value* vector, llvm::Value* index, llvm::Type* resultType) {
+    auto* irb = static_cast<llvm::IRBuilder<>*>(BuilderBase.get());
+    auto* type = llvm::dyn_cast<llvm::FixedVectorType>(vector->getType());
+    if (!type || !index->getType()->isIntegerTy(64)) {
+        throw std::runtime_error("Invalid LLVM vector index types");
+    }
+    EnsureVectorIndices(index, type->getNumElements());
     auto* value = irb->CreateExtractElement(vector, index, "element");
     if (resultType->isIntegerTy(1) && value->getType()->isIntegerTy(8)) {
         return irb->CreateTrunc(value, resultType, "element.bool");
@@ -1687,6 +1698,9 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
             ? CurFun->Fun->GetTmpType(op.Tmp.Idx)
             : op.Imm.TypeId;
     };
+    if (opcode == "movemask"_op) {
+        return PackVectorBits(*irb, TruthValue(*irb, GetOp(instr.Operands[0], module)), irb->getInt32Ty());
+    }
     if (opcode == "all"_op || opcode == "any"_op) {
         auto* mask = TruthValue(*irb, GetOp(instr.Operands[0], module));
         return opcode == "all"_op
@@ -1695,9 +1709,29 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
     }
     if (auto* vector = llvm::dyn_cast_or_null<llvm::FixedVectorType>(outputType)) {
         switch (opcode) {
+            case "select"_op:
+                return irb->CreateSelect(TruthValue(*irb, GetOp(instr.Operands[0], module)),
+                    GetOp(instr.Operands[1], module), GetOp(instr.Operands[2], module), "vselect");
+            case "gather"_op: {
+                auto* pointers = irb->CreateGEP(vector->getElementType(), GetOp(instr.Operands[0], module),
+                    GetOp(instr.Operands[1], module), "gather.ptrs");
+                return irb->CreateMaskedGather(vector, pointers, llvm::Align(1), nullptr, nullptr, "vgather");
+            }
             case "shuffle"_op: {
-                const auto& mask = module.VectorShuffleMasks.at(instr.Operands[1].Imm.Value);
-                return irb->CreateShuffleVector(GetOp(instr.Operands[0], module), mask, "vshuffle");
+                auto* source = GetOp(instr.Operands[0], module);
+                if (!module.Types.IsVector(operandTypeId(instr.Operands[1]))) {
+                    const auto& mask = module.VectorShuffleMasks.at(instr.Operands[1].Imm.Value);
+                    return irb->CreateShuffleVector(source, mask, "vshuffle");
+                }
+                auto* indices = GetOp(instr.Operands[1], module);
+                EnsureVectorIndices(indices, vector->getNumElements());
+                llvm::Value* result = llvm::PoisonValue::get(vector);
+                for (unsigned i = 0; i < vector->getNumElements(); ++i) {
+                    auto* index = irb->CreateExtractElement(indices, i);
+                    auto* element = irb->CreateExtractElement(source, index);
+                    result = irb->CreateInsertElement(result, element, i, "vshuffle");
+                }
+                return result;
             }
             case "+"_op:
             case "-"_op:
@@ -1916,13 +1950,20 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
         return irb->CreateBinOp(op, lhs, rhs, "bintmp");
     };
 
-    if ((outputType && outputType->isVectorTy()) || opcode == "all"_op || opcode == "any"_op) {
+    if ((outputType && outputType->isVectorTy()) || opcode == "all"_op || opcode == "any"_op || opcode == "movemask"_op) {
         if (auto* value = LowerVectorInstr(instr, module, outputTypeId)) {
             return storeTmp(value);
         }
     }
 
     switch (opcode) {
+        case "prefetch"_op: {
+            auto* pointer = GetOp(instr.Operands[0], module);
+            irb->CreateIntrinsic(llvm::Intrinsic::prefetch, {pointer->getType()},
+                {pointer, irb->getInt32(0), irb->getInt32(3), irb->getInt32(1)});
+            return nullptr;
+        }
+
         case "+"_op:
         case "-"_op:
         case "*"_op:

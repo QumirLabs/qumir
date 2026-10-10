@@ -14,7 +14,9 @@ inline std::string_view VectorIntrinsic(std::string_view name) {
         return {};
     }
     name.remove_prefix(9);
-    if (name == "all" || name == "any" || name == "shuffle") {
+    if (name == "all" || name == "any" || name == "shuffle" || name == "movemask"
+        || name == "select" || name == "gather" || name == "prefetch")
+    {
         return name;
     }
     return {};

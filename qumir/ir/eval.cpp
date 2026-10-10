@@ -516,6 +516,40 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         case EVMOp::VIndex:
             Runtime.Regs.Get<uint64_t>(instr.Operands[0].Tmp.Idx) = EvalVectorIndex(Runtime.Regs, instr);
             break;
+        case EVMOp::VMovemask: {
+            uint32_t result = 0;
+            for (size_t i = 0; i < instr.LaneCount(); ++i) {
+                if (ReadVectorOperand<uint8_t>(Runtime.Regs, instr.Operands[1], static_cast<int>(i)) != 0) {
+                    result |= uint32_t{1} << i;
+                }
+            }
+            Runtime.Regs.Get<uint64_t>(instr.Operands[0].Tmp.Idx) = result;
+            break;
+        }
+        case EVMOp::VSelect:
+            VisitVectorElement<false>(instr.ElementSizeInBytes(), [&]<typename T>() {
+                for (size_t i = 0; i < instr.LaneCount(); ++i) {
+                    const bool select = instr.Mask.Idx >= 0
+                        && Runtime.Regs.Get<uint8_t>(instr.Mask.Idx + static_cast<int>(i)) != 0;
+                    const auto& source = instr.Operands[select ? 1 : 2];
+                    const int offset = static_cast<int>(i * sizeof(T));
+                    Runtime.Regs.Get<T>(instr.Operands[0].Tmp.Idx + offset) =
+                        ReadVectorOperand<T>(Runtime.Regs, source, offset);
+                }
+            });
+            break;
+        case EVMOp::VGather: {
+            std::array<uint8_t, 256> result;
+            const auto base = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[1]);
+            const auto size = instr.ElementSizeInBytes();
+            for (size_t i = 0; i < instr.LaneCount(); ++i) {
+                const auto index = ReadVectorOperand<uint64_t>(Runtime.Regs, instr.Operands[2], static_cast<int>(i * 8));
+                const auto* source = reinterpret_cast<const void*>(base + index * size);
+                std::memcpy(result.data() + i * size, source, size);
+            }
+            std::memcpy(Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx, result.data(), instr.SizeInBytes());
+            break;
+        }
         case EVMOp::VAll:
         case EVMOp::VAny: {
             const bool all = instr.Op == EVMOp::VAll;
@@ -530,19 +564,34 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             Runtime.Regs.Get<uint64_t>(instr.Operands[0].Tmp.Idx) = result;
             break;
         }
-        case EVMOp::VShuffle: {
-            if (instr.Operands[1].Type == TVMOperand::EType::Imm) {
-                assert(instr.Operands[1].Imm.Value == 0);
-                std::memset(Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx, 0, instr.SizeInBytes());
-                break;
-            }
-            const auto* mask = reinterpret_cast<const int*>(instr.Operands[2].Imm.Value);
+        case EVMOp::VShuffle:
+        case EVMOp::VShuffleDynamic: {
             std::array<uint8_t, 256> result;
             const auto size = instr.ElementSizeInBytes();
-            const auto* source = Runtime.Regs.Data() + instr.Operands[1].Tmp.Idx;
-            for (size_t i = 0; i < instr.LaneCount(); ++i) {
-                assert(mask[i] >= 0 && static_cast<size_t>(mask[i]) < instr.LaneCount());
-                std::memcpy(result.data() + i * size, source + mask[i] * size, size);
+            auto shuffle = [&](auto indexAt) {
+                for (size_t i = 0; i < instr.LaneCount(); ++i) {
+                    const uint64_t index = indexAt(i);
+                    if (index >= instr.LaneCount()) {
+                        throw std::runtime_error("Vector index out of bounds");
+                    }
+                    if (instr.Operands[1].Type == TVMOperand::EType::Imm) {
+                        assert(instr.Operands[1].Imm.Value == 0);
+                        std::memset(result.data() + i * size, 0, size);
+                    } else {
+                        const auto* source = Runtime.Regs.Data() + instr.Operands[1].Tmp.Idx;
+                        std::memcpy(result.data() + i * size, source + index * size, size);
+                    }
+                }
+            };
+            if (instr.Op == EVMOp::VShuffle) {
+                const auto* mask = reinterpret_cast<const int*>(instr.Operands[2].Imm.Value);
+                shuffle([&](size_t i) { return mask[i]; });
+            } else {
+                VisitVectorElement<false>(instr.IndexElementSizeInBytes(), [&]<typename T>() {
+                    shuffle([&](size_t i) {
+                        return ReadVectorOperand<T>(Runtime.Regs, instr.Operands[2], static_cast<int>(i * sizeof(T)));
+                    });
+                });
             }
             std::memcpy(Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx, result.data(), instr.SizeInBytes());
             break;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <vector>
 #include <array>
 #include <optional>
@@ -348,7 +349,10 @@ public:
     void SetCurrentFunction(int idx = -1); // -1 = last
     void SetScopeDebugInfo(int scopeId, int parentScopeId);
 
-    TTmp Emit1(TOp op, std::initializer_list<TOperand> operands, const TInstrDebugInfo& debugInfo = {});
+    TTmp Emit1(TOp op, std::span<const TOperand> operands, const TInstrDebugInfo& debugInfo = {});
+    TTmp Emit1(TOp op, std::initializer_list<TOperand> operands, const TInstrDebugInfo& debugInfo = {}) {
+        return Emit1(op, std::span<const TOperand>(operands), debugInfo);
+    }
     void SetType(TTmp tmp, int typeId);
     int GetType(TTmp tmp) const;
     void SetType(TLocal local, int typeId, const TLocalVarDebugInfo& debugInfo);
@@ -356,7 +360,10 @@ public:
     TLocal AllocLocal(int typeId, const TLocalVarDebugInfo& debugInfo); // allocates a new unnamed local and returns its index
     void UnifyTypes(TTmp left, TTmp right);
     void SetReturnType(int typeId);
-    void Emit0(TOp op, std::initializer_list<TOperand> operands, const TInstrDebugInfo& debugInfo = {});
+    void Emit0(TOp op, std::span<const TOperand> operands, const TInstrDebugInfo& debugInfo = {});
+    void Emit0(TOp op, std::initializer_list<TOperand> operands, const TInstrDebugInfo& debugInfo = {}) {
+        return Emit0(op, std::span<const TOperand>(operands), debugInfo);
+    }
     int StringLiteral(const std::string& str); // string -> id, adds to current function's StringLiterals
 
     // Returns true if the last instruction in the current block unconditionally

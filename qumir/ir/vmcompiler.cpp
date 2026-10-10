@@ -149,19 +149,71 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
     switch (instr.Op) {
         case "all"_op:
         case "any"_op:
+        case "movemask"_op: {
+            const bool packed = instr.Op == "movemask"_op;
             if (types.GetKind(types.UnderlyingType(vectorType)) != EKind::I1
-                || types.GetKind(function.GetTmpType(instr.Dest.Idx)) != EKind::I1)
+                || types.GetKind(function.GetTmpType(instr.Dest.Idx)) != (packed ? EKind::U32 : EKind::I1))
             {
-                throw std::runtime_error("VM vector reduction requires bool lanes and result");
+                throw std::runtime_error("Invalid VM vector reduction types");
             }
-            out.Op = instr.Op == "all"_op ? EVMOp::VAll : EVMOp::VAny;
+            out.Op = packed
+                ? EVMOp::VMovemask
+                : (instr.Op == "all"_op ? EVMOp::VAll : EVMOp::VAny);
             return true;
+        }
+        case "select"_op: {
+            const int maskType = OperandType(function, Module, instr.Operands[0]);
+            const int resultType = function.GetTmpType(instr.Dest.Idx);
+            if (instr.OperandCount != 3 || resultType != vectorType
+                || OperandType(function, Module, instr.Operands[1]) != resultType
+                || !types.IsVector(maskType) || types.VectorSize(maskType) != types.VectorSize(resultType)
+                || types.GetKind(types.UnderlyingType(maskType)) != EKind::I1
+                || (instr.Operands[0].Type != TOperand::EType::Tmp
+                    && (instr.Operands[0].Type != TOperand::EType::Imm || instr.Operands[0].Imm.Value != 0)))
+            {
+                throw std::runtime_error("Invalid VM vector select types");
+            }
+            out.Op = EVMOp::VSelect;
+            if (instr.Operands[0].Type == TOperand::EType::Tmp) {
+                out.Mask = instr.Operands[0].Tmp;
+            }
+            return true;
+        }
+        case "gather"_op: {
+            const int resultType = function.GetTmpType(instr.Dest.Idx);
+            const int pointerType = OperandType(function, Module, instr.Operands[0]);
+            if (!types.IsPointer(pointerType) || types.UnderlyingType(pointerType) != types.UnderlyingType(resultType)
+                || types.VectorSize(resultType) != types.VectorSize(vectorType)
+                || types.GetKind(types.UnderlyingType(vectorType)) != EKind::I64)
+            {
+                throw std::runtime_error("Invalid VM vector gather types");
+            }
+            out.Op = EVMOp::VGather;
+            out.Format = VectorFormat(types, resultType);
+            return true;
+        }
         case "shuffle"_op: {
+            const int sourceType = OperandType(function, Module, instr.Operands[0]);
+            if (function.GetTmpType(instr.Dest.Idx) != sourceType) {
+                throw std::runtime_error("Invalid VM vector shuffle result");
+            }
+            out.Format = VectorFormat(types, sourceType);
+            const int maskType = OperandType(function, Module, instr.Operands[1]);
+            if (types.IsVector(maskType)) {
+                const int elementType = types.UnderlyingType(maskType);
+                if (!types.IsInteger(elementType) || types.GetKind(elementType) == EKind::I1
+                    || types.VectorSize(sourceType) != types.VectorSize(maskType))
+                {
+                    throw std::runtime_error("Invalid VM dynamic shuffle mask");
+                }
+                out.Op = EVMOp::VShuffleDynamic;
+                out.Format |= std::countr_zero(static_cast<unsigned>(types.SizeInBytes(elementType))) << 6;
+                return true;
+            }
             const auto& mask = Module.VectorShuffleMasks.at(instr.Operands[1].Imm.Value);
-            if (function.GetTmpType(instr.Dest.Idx) != vectorType
-                || mask.size() != static_cast<size_t>(types.VectorSize(vectorType))
+            if (mask.size() != static_cast<size_t>(types.VectorSize(sourceType))
                 || std::any_of(mask.begin(), mask.end(), [&](int index) {
-                    return index < 0 || index >= types.VectorSize(vectorType);
+                    return index < 0 || index >= types.VectorSize(sourceType);
                 }))
             {
                 throw std::runtime_error("Invalid VM vector shuffle shape");
@@ -419,6 +471,9 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
     for (const auto& block : function.Blocks) {
         labelToPC[block.Label.Idx] = code.size();
         for (const auto& instr : block.Instrs) {
+            if (instr.Op == "prefetch"_op) {
+                continue;
+            }
             if (instr.Dest.Idx >= 0) {
                 usedTmps.insert(instr.Dest.Idx);
             }
@@ -543,19 +598,27 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
     };
 
     auto ins2vm = [&](const TInstr& ins, TVMInstr*& ptr) {
+        if (ins.Op == "prefetch"_op) {
+            return;
+        }
         auto& out = *ptr++;
         int offset = 0;
         if (ins.Dest.Idx >= 0) {
             out.Operands[0] = ins.Dest;
             offset = 1;
         }
-        for (size_t i = 0; i < ins.OperandCount && i < out.Operands.size(); ++i) {
+        // Select stores its first argument in Mask; the two values use regular operands.
+        const size_t first = ins.Op == "select"_op
+            ? 1
+            : 0;
+        for (size_t i = first; i < ins.OperandCount && i - first + offset < out.Operands.size(); ++i) {
+            auto& operand = out.Operands[i - first + offset];
             switch (ins.Operands[i].Type) {
                 case TOperand::EType::Tmp:
-                    out.Operands[i + offset] = ins.Operands[i].Tmp;
+                    operand = ins.Operands[i].Tmp;
                     break;
                 case TOperand::EType::Slot:
-                    out.Operands[i + offset] = ins.Operands[i].Slot;
+                    operand = ins.Operands[i].Slot;
                     break;
                 case TOperand::EType::Local: {
                     // Translate var index -> byte offset in frame
@@ -564,15 +627,15 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                         throw std::runtime_error("Local variable index out of bounds");
                     }
                     int byteOffset = funcOut.LocalByteOffsets[varIdx];
-                    out.Operands[i + offset] = TLocal{byteOffset};
+                    operand = TLocal{byteOffset};
                     break;
                 }
                 case TOperand::EType::Imm:
-                    out.Operands[i + offset] = ins.Operands[i].Imm;
+                    operand = ins.Operands[i].Imm;
                     break;
                 case TOperand::EType::Label:
                     TVMInstr* pc = &code[labelToPC.at(ins.Operands[i].Label.Idx)];
-                    out.Operands[i + offset] = TImm{reinterpret_cast<int64_t>(pc)};
+                    operand = TImm{reinterpret_cast<int64_t>(pc)};
                     break;
             };
         }
@@ -1025,37 +1088,42 @@ void TVMCompiler::AllocateRegisters(
     TExecFunc& out)
 {
     int offset = 0;
+    auto allocate = [&](TTmp& tmp) {
+        if (tmp.Idx < 0) {
+            return;
+        }
+        const int tmpId = tmp.Idx;
+        if (auto it = out.TmpByteOffsets.find(tmpId); it != out.TmpByteOffsets.end()) {
+            tmp.Idx = it->second;
+            return;
+        }
+        const int typeId = function.GetTmpType(tmpId);
+        const bool isStruct = typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct;
+        // Existing scalar opcodes read/write a full machine word; struct values are addresses.
+        const int size = isStruct
+            ? 8
+            : std::max(8, Module.Types.SizeInBytes(typeId));
+        const int alignment = RegisterAlignment(Module.Types, typeId);
+        if (offset > std::numeric_limits<int32_t>::max() - alignment - size) {
+            throw std::runtime_error("VM register file is too large");
+        }
+        offset = AlignUp(offset, alignment);
+        out.TmpByteOffsets[tmpId] = offset;
+        if (isStruct) {
+            const int frameOffset = tmpFrameOffsets.at(tmpId);
+            out.StructRegisters[offset] = {frameOffset, Module.Types.SizeInBytes(typeId)};
+        }
+        tmp.Idx = offset;
+        offset += size;
+        out.RegisterFileAlignment = std::max(out.RegisterFileAlignment, alignment);
+    };
     for (auto& instr : out.VMCode) {
         for (auto& operand : instr.Operands) {
-            if (operand.Type != TVMOperand::EType::Tmp || operand.Tmp.Idx < 0) {
-                continue;
+            if (operand.Type == TVMOperand::EType::Tmp) {
+                allocate(operand.Tmp);
             }
-            const int tmpId = operand.Tmp.Idx;
-            if (auto it = out.TmpByteOffsets.find(tmpId); it != out.TmpByteOffsets.end()) {
-                operand.Tmp.Idx = it->second;
-                continue;
-            }
-
-            const int typeId = function.GetTmpType(tmpId);
-            const bool isStruct = typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct;
-            // Existing scalar opcodes read/write a full machine word; struct values are addresses.
-            const int size = isStruct
-                ? 8
-                : std::max(8, Module.Types.SizeInBytes(typeId));
-            const int alignment = RegisterAlignment(Module.Types, typeId);
-            if (offset > std::numeric_limits<int32_t>::max() - alignment - size) {
-                throw std::runtime_error("VM register file is too large");
-            }
-            offset = AlignUp(offset, alignment);
-            out.TmpByteOffsets[tmpId] = offset;
-            if (isStruct) {
-                const int frameOffset = tmpFrameOffsets.at(tmpId);
-                out.StructRegisters[offset] = {frameOffset, Module.Types.SizeInBytes(typeId)};
-            }
-            operand.Tmp.Idx = offset;
-            offset += size;
-            out.RegisterFileAlignment = std::max(out.RegisterFileAlignment, alignment);
         }
+        allocate(instr.Mask);
     }
     out.RegisterFileSize = offset;
 }

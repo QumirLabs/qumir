@@ -1,0 +1,22 @@
+(block
+  (use Vector)
+  (var hints = 0)
+  (fun touch ((var p <ptr i8>)) -> <ptr i8>
+    (block (= hints (+ hints 1)) (return p)))
+  (fun <main> ()
+    (block
+      (var storage = (call array_create 32))
+      (var p = (bitcast storage <ptr i32>))
+      (var i = 0)
+      (while (< i 8)
+        (block (= p [i] (cast (* i 10) i32)) (= i (+ i 1))))
+      (call builtin::prefetch (call touch (bitcast storage <ptr i8>)))
+      (var indices = (: (vec 7 0 5 2) <vec u8 4>))
+      (var values = (call builtin::gather p indices))
+      (output values "\n")
+      (var mask = (> values 25))
+      (output (call builtin::select mask values (: (vec -1 -2 -3 -4) <vec i32 4>)) "\n")
+      (output (call builtin::select (vec #t #f) (vec 1.5 -0.0) (vec 2.5 3.5)) "\n")
+      (output (call builtin::select (vec #f #t) (vec #t #f) (vec #f #t)) "\n")
+      (output hints "\n")
+      (call array_destroy storage))))
