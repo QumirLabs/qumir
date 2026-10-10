@@ -8,6 +8,7 @@
 #include <qumir/parser/type.h>
 #include <qumir/semantics/name_resolution/name_resolver.h>
 #include <qumir/semantics/return_analysis.h>
+#include <qumir/semantics/vector_intrinsics.h>
 
 #include <algorithm>
 #include <bit>
@@ -726,6 +727,19 @@ TTask AnnotateCast(std::shared_ptr<TCastExpr> cast, NSemantics::TNameResolver& c
 TTask AnnotateUnary(std::shared_ptr<TUnaryExpr> unary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     unary->Operand = co_await DoAnnotate(unary->Operand, context, scopeId);
     unary->Type = unary->Operand->Type;
+    if (auto vector = TMaybeType<TVectorType>(UnwrapNamedType(UnwrapReferenceType(unary->Type))).Cast()) {
+        auto element = UnwrapNamedType(vector->ElementType);
+        if (unary->Operator == TOperator("!")
+            && (TMaybeType<TIntegerType>(element) || TMaybeType<TFloatType>(element) || TMaybeType<TBoolType>(element)))
+        {
+            unary->Type = std::make_shared<TVectorType>(std::make_shared<TBoolType>(), vector->Size);
+            co_return unary;
+        }
+        if (unary->Operator == TOperator("~") && TMaybeType<TIntegerType>(element)) {
+            unary->Type = UnwrapReferenceType(unary->Type);
+            co_return unary;
+        }
+    }
     if (unary->Operator == '-') {
         auto maybeInt = TMaybeType<TIntegerType>(unary->Type);
         if (maybeInt) {
@@ -1270,6 +1284,7 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
             + TypeDiagnosticName(left) + " и " + TypeDiagnosticName(right)));
     }
 
+    RetypeIntegerLiteralOperands(binary->Left, binary->Right, leftElement, rightElement);
     auto types = AnnotateNumericBinaryOp(binary, leftElement, rightElement, context);
     if (
         (binary->Operator == TOperator("&") || binary->Operator == TOperator("|")
@@ -1280,6 +1295,13 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
     }
     if (!types) {
         return types;
+    }
+    const bool bitwise = binary->Operator == TOperator("&") || binary->Operator == TOperator("|")
+        || binary->Operator == TOperator("^") || binary->Operator == TOperator("<<")
+        || binary->Operator == TOperator(">>");
+    if (bitwise) {
+        // Vector lanes have one width; match scalar bitwise RHS conversion.
+        types->Right = types->Left;
     }
     if ((leftVector && IsWideIntegerType(types->Left))
         || (rightVector && IsWideIntegerType(types->Right)) || IsWideIntegerType(types->Result))
@@ -1292,6 +1314,9 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
     }
     if (rightVector) {
         types->Right = std::make_shared<TVectorType>(types->Right, size);
+    }
+    if (bitwise && !EqualTypes(UnwrapReferenceType(binary->Right->Type), types->Right)) {
+        binary->Right = MakeCast(binary->Right, types->Right);
     }
     types->Result = std::make_shared<TVectorType>(types->Result, size);
     return types;
@@ -2827,8 +2852,77 @@ TTask AnnotateOverloadedCall(
     co_return call;
 }
 
+TTask AnnotateVectorIntrinsic(
+    std::shared_ptr<TCallExpr> call,
+    std::string_view op,
+    NSemantics::TNameResolver& context,
+    NSemantics::TScopeId scopeId)
+{
+    const size_t count = op == "shuffle"
+        ? 2
+        : 1;
+    if (call->Args.size() != count) {
+        co_return TError(call->Location, std::string(op) + ": неверное число аргументов.");
+    }
+    std::vector<TTypePtr> argTypes;
+    std::vector<TParam> params;
+    for (auto& arg : call->Args) {
+        arg = co_await DoAnnotate(arg, context, scopeId);
+        auto type = UnwrapNamedType(UnwrapReferenceType(arg->Type));
+        argTypes.push_back(type);
+        params.push_back(std::make_shared<TVarStmt>(arg->Location, "$arg" + std::to_string(params.size()), type));
+    }
+    auto vector = TMaybeType<TVectorType>(argTypes[0]).Cast();
+    if (!vector) {
+        co_return TError(call->Location, std::string(op) + ": ожидается вектор.");
+    }
+    TTypePtr result = std::make_shared<TBoolType>();
+    if (op == "shuffle") {
+        auto mask = TMaybeNode<TVectorExpr>(call->Args[1]).Cast();
+        if (!mask || mask->Elements.size() != static_cast<size_t>(vector->Size)) {
+            co_return TError(call->Location, "shuffle: маска должна быть векторным литералом той же длины.");
+        }
+        for (const auto& element : mask->Elements) {
+            auto number = TMaybeNode<TNumberExpr>(element).Cast();
+            if (!number || number->IsFloat() || number->IntValue < 0 || number->IntValue >= vector->Size) {
+                co_return TError(element->Location, "shuffle: индекс должен быть целой константой в пределах вектора.");
+            }
+        }
+        result = argTypes[0];
+    } else if (!TMaybeType<TBoolType>(UnwrapNamedType(vector->ElementType))) {
+        co_return TError(call->Location, std::string(op) + ": ожидается вектор bool.");
+    }
+
+    const std::string builtin = "builtin::" + std::string(op);
+    const std::string name = MangleGenericInstance(builtin, result, argTypes);
+    const auto root = context.GetOrCreateRootScope()->Id;
+    if (!context.Lookup(name, root)) {
+        // Typed declarations keep ordinary call validation and lifetime handling.
+        auto function = std::make_shared<TFunDecl>(call->Location, name, std::vector<TGenericParam>{},
+            std::move(params), nullptr, result);
+        function->MangledName = builtin;
+        function->Type = std::make_shared<TFunctionType>(argTypes, result);
+        context.DeclareFunction(name, function);
+    }
+    call->Callee = std::make_shared<TIdentExpr>(call->Callee->Location, name);
+    call->Callee->Type = std::make_shared<TFunctionType>(std::move(argTypes), result);
+    call->Type = result;
+    co_return call;
+}
+
 TTask AnnotateCall(std::shared_ptr<TCallExpr> call, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     if (auto maybeIdent = TMaybeNode<TIdentExpr>(call->Callee)) {
+        auto op = NSemantics::VectorIntrinsic(maybeIdent.Cast()->Name);
+        if (!op.empty() && !context.Lookup(maybeIdent.Cast()->Name, scopeId)) {
+            co_return co_await AnnotateVectorIntrinsic(call, op, context, scopeId);
+        }
+        if (auto symbol = context.Lookup(maybeIdent.Cast()->Name, scopeId)) {
+            auto function = TMaybeNode<TFunDecl>(context.GetSymbolNode(NSemantics::TSymbolId{symbol->Id})).Cast();
+            if (function && !NSemantics::VectorIntrinsic(function->MangledName).empty()) {
+                co_return co_await AnnotateVectorIntrinsic(call,
+                    NSemantics::VectorIntrinsic(function->MangledName), context, scopeId);
+            }
+        }
         auto overloads = context.LookupOverloads(maybeIdent.Cast()->Name, scopeId);
         if (overloads.size() > 1) {
             co_return co_await AnnotateOverloadedCall(call, overloads, context, scopeId);

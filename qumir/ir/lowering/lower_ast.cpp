@@ -1,4 +1,5 @@
 #include "lower_ast.h"
+#include <qumir/semantics/vector_intrinsics.h>
 #include "qumir/ir/builder.h"
 #include "qumir/parser/parser.h"
 #include "qumir/parser/core/printer.h"
@@ -782,6 +783,51 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     co_return TValueWithBlock{result, Builder.CurrentBlockLabel()};
 }
 
+TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerVectorIntrinsic(
+    const NAst::TCallExpr& call, std::string_view op, TBlockScope scope)
+{
+    auto value = co_await Lower(call.Args[0], scope);
+    if (!value.Value) {
+        co_return TError(call.Location, "Vector intrinsic argument must produce a value");
+    }
+    TInstrEmitter emitter{Builder, InstDebugInfo(call.Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
+    TTmp tmp;
+    if (op == "shuffle") {
+        std::vector<int> mask;
+        for (const auto& element : NAst::TMaybeNode<NAst::TVectorExpr>(call.Args[1]).Cast()->Elements) {
+            mask.push_back(static_cast<int>(NAst::TMaybeNode<NAst::TNumberExpr>(element).Cast()->IntValue));
+        }
+        const auto id = static_cast<int64_t>(Module.VectorShuffleMasks.size());
+        Module.VectorShuffleMasks.push_back(std::move(mask));
+        tmp = emitter.Emit1("shuffle"_op, {*value.Value, TImm{id, Module.Types.I(EKind::I64)}});
+    } else {
+        tmp = emitter.Emit1(op == "all" ? "all"_op : "any"_op, {*value.Value});
+    }
+    Builder.SetType(tmp, FromAstType(call.Type, Module.Types));
+    co_return TValueWithBlock{tmp, Builder.CurrentBlockLabel()};
+}
+
+TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerVectorBooleanOperand(
+    const NAst::TExprPtr& expr, TBlockScope scope)
+{
+    auto cast = NAst::TMaybeNode<NAst::TCastExpr>(expr).Cast();
+    if (cast && NAst::TMaybeType<NAst::TBoolType>(NAst::UnwrapNamedType(cast->Type))) {
+        const int sourceType = FromAstType(cast->Operand->Type, Module.Types);
+        if (Module.Types.IsInteger(sourceType) || Module.Types.IsFloat(sourceType)) {
+            auto value = co_await Lower(cast->Operand, scope);
+            if (!value.Value) {
+                co_return TError(cast->Location, "Vector broadcast operand must produce a value");
+            }
+            // Normalize scalar truth before broadcasting into byte-sized bool lanes.
+            TInstrEmitter emitter{Builder, InstDebugInfo(expr->Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
+            auto result = emitter.Emit1("!="_op, {*value.Value, TImm{0, sourceType}});
+            Builder.SetType(result, Module.Types.I(EKind::I1));
+            co_return TValueWithBlock{result, Builder.CurrentBlockLabel()};
+        }
+    }
+    co_return co_await Lower(expr, scope);
+}
+
 TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lower(const NAst::TExprPtr& inputExpr, TBlockScope scope) {
     NAst::TExprPtr expr = inputExpr;
     TInstrEmitter emitter{Builder, InstDebugInfo(expr->Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
@@ -949,6 +995,22 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         auto cast = maybeCast.Cast();
         auto operand = co_await Lower(cast->Operand, scope);
         if (!operand.Value) co_return TError(cast->Operand->Location, TErrorString::Get<EErrorId::OPERAND_OF_CAST_NOT_VALUE>());
+        auto sourceVector = NAst::TMaybeType<NAst::TVectorType>(
+            NAst::UnwrapNamedType(NAst::UnwrapReferenceType(cast->Operand->Type))).Cast();
+        auto targetVector = NAst::TMaybeType<NAst::TVectorType>(NAst::UnwrapNamedType(expr->Type)).Cast();
+        if (sourceVector && targetVector) {
+            const int sourceType = FromAstType(sourceVector->ElementType, Module.Types);
+            const int targetType = FromAstType(targetVector->ElementType, Module.Types);
+            TOp op = "mov"_op;
+            if (Module.Types.GetKind(targetType) == EKind::I1) {
+                op = Module.Types.IsFloat(sourceType) ? "f2b"_op : "i2b"_op;
+            } else if (Module.Types.IsFloat(sourceType) != Module.Types.IsFloat(targetType)) {
+                op = Module.Types.IsFloat(sourceType) ? "f2i"_op : "i2f"_op;
+            }
+            auto tmp = emitter.Emit1(op, {*operand.Value});
+            Builder.SetType(tmp, FromAstType(expr->Type, Module.Types));
+            co_return TValueWithBlock{tmp, Builder.CurrentBlockLabel()};
+        }
         std::optional<TOperand> tmp;
         auto sourceArrayForPtrCast = NAst::TMaybeType<NAst::TArrayType>(
             NAst::UnwrapNamedType(cast->Operand->Type));
@@ -1076,23 +1138,34 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         co_return TValueWithBlock{ operand.Value, operand.ProducingLabel };
     } else if (auto maybeBinary = NAst::TMaybeNode<NAst::TBinaryExpr>(expr)) {
         auto binary = maybeBinary.Cast();
-        if (NAst::TMaybeType<NAst::TVectorType>(NAst::UnwrapNamedType(expr->Type))
-            && (binary->Operator == "&&"_op || binary->Operator == "||"_op))
-        {
-            co_return TError(binary->Location, "vector logical operators are not supported in lowering yet");
-        }
-        bool isLazy = (binary->Operator == "&&"_op || binary->Operator == "||"_op);
-        auto leftRes = co_await Lower(binary->Left, scope);
+        const bool isVector = NAst::TMaybeType<NAst::TVectorType>(NAst::UnwrapNamedType(expr->Type));
+        const bool logical = binary->Operator == "&&"_op || binary->Operator == "||"_op;
+        const bool isLazy = !isVector && logical;
+        auto leftRes = co_await (isVector && logical
+            ? LowerVectorBooleanOperand(binary->Left, scope)
+            : Lower(binary->Left, scope));
         auto leftNum = leftRes.Value;
 
         decltype(leftNum) rightNum;
         decltype(leftRes) rightRes;
         if (!isLazy) {
-            rightRes = co_await Lower(binary->Right, scope);
+            rightRes = co_await (isVector && logical
+                ? LowerVectorBooleanOperand(binary->Right, scope)
+                : Lower(binary->Right, scope));
             rightNum = rightRes.Value;
         }
         if (!leftNum) co_return TError(binary->Location, TErrorString::Get<EErrorId::BINARY_OPERANDS_NOT_NUMBERS>());
         if (!isLazy && !rightNum) co_return TError(binary->Location, TErrorString::Get<EErrorId::BINARY_OPERANDS_NOT_NUMBERS>());
+
+        if (!isLazy) {
+            // IR '/' is type-directed, so integer '//' uses the same opcode.
+            auto irOp = binary->Operator == "//"_op
+                ? '/'_op
+                : TOp(binary->Operator.Value);
+            auto tmp = emitter.Emit1(irOp, {*leftNum, *rightNum});
+            Builder.SetType(tmp, FromAstType(expr->Type, Module.Types));
+            co_return TValueWithBlock{tmp, Builder.CurrentBlockLabel()};
+        }
 
         switch ((uint64_t)binary->Operator) {
             case "&&"_op: {
@@ -1145,18 +1218,8 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
                 Builder.SetType(res, FromAstType(expr->Type, Module.Types));
                 co_return TValueWithBlock{ res, Builder.CurrentBlockLabel() };
             }
-            default:
-                {
-                    // IR '/' is type-directed: an integer destination already means
-                    // integer division, so '//' needs no IR opcode of its own.
-                    auto irOp = binary->Operator == "//"_op
-                        ? (uint64_t)'/'
-                        : (uint64_t)binary->Operator.Value;
-                    auto tmp = emitter.Emit1(irOp /* ast op to ir op mapping */, {*leftNum, *rightNum});
-                    Builder.SetType(tmp, FromAstType(expr->Type, Module.Types));
-                    co_return TValueWithBlock{ tmp, Builder.CurrentBlockLabel() };
-                }
         }
+        co_return TError(binary->Location, "Unknown short-circuit operator");
     } else if (auto maybeIfExpr = NAst::TMaybeNode<NAst::TIfExpr>(expr)) {
         auto ife = maybeIfExpr.Cast();
         auto cond = co_await Lower(ife->Cond, scope);
@@ -1893,6 +1956,9 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         if (!funDecl) {
             co_return TError(call->Callee->Location, TErrorString::Get<EErrorId::NOT_A_FUNCTION>());
         }
+        if (auto op = NSemantics::VectorIntrinsic(funDecl->MangledName); !op.empty()) {
+            co_return co_await LowerVectorIntrinsic(*call, op, scope);
+        }
         auto futureResultType = NAst::FutureResultType(funDecl->RetType);
         NAst::TTypePtr returnType = futureResultType
             ? std::make_shared<NAst::TPointerType>(std::make_shared<NAst::TVoidType>())
@@ -1996,7 +2062,7 @@ void TAstLowerer::ImportExternalFunction(int symbolId, const NAst::TFunDecl& fun
     }
     // Pure inline functions have no physical implementation - skip registration
     // so backends (LLVM, WASM) don't emit imports or declarations for them.
-    if (funcDecl.InlineFactory.has_value()) {
+    if (funcDecl.InlineFactory.has_value() || !NSemantics::VectorIntrinsic(funcDecl.MangledName).empty()) {
         return;
     }
 

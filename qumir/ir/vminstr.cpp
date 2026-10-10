@@ -113,6 +113,40 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::VFSub: return os << "VFSub";
     case EVMOp::VFMul: return os << "VFMul";
     case EVMOp::VIndex: return os << "VIndex";
+    case EVMOp::VIAnd: return os << "VIAnd";
+    case EVMOp::VIOr: return os << "VIOr";
+    case EVMOp::VIXor: return os << "VIXor";
+    case EVMOp::VIShl: return os << "VIShl";
+    case EVMOp::VIShrS: return os << "VIShrS";
+    case EVMOp::VIShrU: return os << "VIShrU";
+    case EVMOp::VIBitNot: return os << "VIBitNot";
+    case EVMOp::VINot: return os << "VINot";
+    case EVMOp::VFNot: return os << "VFNot";
+    case EVMOp::VICmpLTS: return os << "VICmpLTS";
+    case EVMOp::VICmpLTU: return os << "VICmpLTU";
+    case EVMOp::VICmpGTS: return os << "VICmpGTS";
+    case EVMOp::VICmpGTU: return os << "VICmpGTU";
+    case EVMOp::VICmpLES: return os << "VICmpLES";
+    case EVMOp::VICmpLEU: return os << "VICmpLEU";
+    case EVMOp::VICmpGES: return os << "VICmpGES";
+    case EVMOp::VICmpGEU: return os << "VICmpGEU";
+    case EVMOp::VICmpEQ: return os << "VICmpEQ";
+    case EVMOp::VICmpNE: return os << "VICmpNE";
+    case EVMOp::VFCmpLT: return os << "VFCmpLT";
+    case EVMOp::VFCmpGT: return os << "VFCmpGT";
+    case EVMOp::VFCmpLE: return os << "VFCmpLE";
+    case EVMOp::VFCmpGE: return os << "VFCmpGE";
+    case EVMOp::VFCmpEQ: return os << "VFCmpEQ";
+    case EVMOp::VFCmpNE: return os << "VFCmpNE";
+    case EVMOp::VICast: return os << "VICast";
+    case EVMOp::VI2F: return os << "VI2F";
+    case EVMOp::VF2I: return os << "VF2I";
+    case EVMOp::VFCast: return os << "VFCast";
+    case EVMOp::VI2B: return os << "VI2B";
+    case EVMOp::VF2B: return os << "VF2B";
+    case EVMOp::VAll: return os << "VAll";
+    case EVMOp::VAny: return os << "VAny";
+    case EVMOp::VShuffle: return os << "VShuffle";
     default: return os << "EVMOp(" << static_cast<int>(op) << ")";
     }
 }
@@ -122,12 +156,16 @@ std::ostream& operator<<(std::ostream& os, const TVMInstr& instr) {
     os << instr.Op;
     if (instr.Op == EVMOp::Load || instr.Op == EVMOp::Store || instr.Format != 3) {
         os << '<' << instr.ElementSizeInBytes() << 'x' << instr.LaneCount() << '>';
-        if (instr.Op == EVMOp::VIndex && (instr.Format & TVMInstr::SignedElement)) {
+        const bool conversion = instr.Op == EVMOp::VICast || instr.Op == EVMOp::VI2F
+            || instr.Op == EVMOp::VF2I || instr.Op == EVMOp::VFCast;
+        if ((instr.Op == EVMOp::VIndex || conversion) && (instr.Format & TVMInstr::SignedElement)) {
             os << "[signed]";
-        } else if (instr.Format & TVMInstr::BroadcastLeft) {
+        } else if (!conversion && (instr.Format & TVMInstr::BroadcastLeft)) {
             os << "[broadcast-left]";
         }
-        if (instr.Format & TVMInstr::BroadcastRight) {
+        if (conversion && (instr.Format & TVMInstr::SignedResult)) {
+            os << "[signed-result]";
+        } else if (!conversion && (instr.Format & TVMInstr::BroadcastRight)) {
             os << "[broadcast-right]";
         }
     }

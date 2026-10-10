@@ -134,6 +134,40 @@ enum class EVMOp : uint8_t {
     VFSub,
     VFMul,
     VIndex,
+    VIAnd,
+    VIOr,
+    VIXor,
+    VIShl,
+    VIShrS,
+    VIShrU,
+    VIBitNot,
+    VINot,
+    VFNot,
+    VICmpLTS,
+    VICmpLTU,
+    VICmpGTS,
+    VICmpGTU,
+    VICmpLES,
+    VICmpLEU,
+    VICmpGES,
+    VICmpGEU,
+    VICmpEQ,
+    VICmpNE,
+    VFCmpLT,
+    VFCmpGT,
+    VFCmpLE,
+    VFCmpGE,
+    VFCmpEQ,
+    VFCmpNE,
+    VICast,
+    VI2F,
+    VF2I,
+    VFCast,
+    VI2B,
+    VF2B,
+    VAll,
+    VAny,
+    VShuffle,
 };
 
 std::ostream& operator<<(std::ostream& os, EVMOp op);
@@ -184,6 +218,7 @@ struct TVMInstr {
     static constexpr uint8_t BroadcastLeft = 1 << 6;
     static constexpr uint8_t BroadcastRight = 1 << 7;
     static constexpr uint8_t SignedElement = 1 << 6;
+    static constexpr uint8_t SignedResult = 1 << 7;
 
     static constexpr uint8_t MakeFormat(uint8_t elementLog2, uint8_t lanesLog2 = 0) {
         assert(elementLog2 <= 4 && lanesLog2 <= 5);

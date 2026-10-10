@@ -72,7 +72,7 @@ TEST(BinaryTypeAnnotation, NumericVectorPromotionAndDivision) {
         {"&", "<vec bool 4>", "<vec bool 4>", "Vector::Bool::4", "Vector::Bool::4", "Vector::Bool::4"},
         {"|", "bool", "<vec bool 4>", "Vector::Bool::4", "Bool", "Vector::Bool::4"},
         {"&&", "<vec i32 4>", "i32", "Vector::Bool::4", "Vector::Bool::4", "Bool"},
-        {">>", "<vec u32 4>", "i64", "Vector::u32::4", "Vector::u32::4", "i64"},
+        {">>", "<vec u32 4>", "i64", "Vector::u32::4", "Vector::u32::4", "u32"},
         {"+", "i32", "f64", "Float", "Float", "Float"},
         {"/", "i32", "i32", "Float", "Float", "Float"},
         {"//", "i32", "i32", "i32", "i32", "i32"},
@@ -456,4 +456,66 @@ TEST(VectorTypeAnnotation, VectorIndexInfersScalarElementType) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(VectorTypeAnnotation, IntrinsicsKeepCallsAndInferResults) {
+    for (const auto& [source, type] : std::vector<std::pair<std::string, std::string>>{
+        {"(call builtin::all (vec #t #f))", "Bool"},
+        {"(call builtin::any (vec #t #f))", "Bool"},
+        {"(call builtin::shuffle (: (vec 1 2) <vec i8 2>) (vec 1 0))", "Vector::i8::2"},
+        {"(call builtin::shuffle (vec 1.5 2.5) (vec 0 0))", "Vector::Float::2"}})
+    {
+        SCOPED_TRACE(source);
+        auto result = Annotate(source);
+        ASSERT_TRUE(result) << result.error().ToString();
+        ASSERT_TRUE(TMaybeNode<TCallExpr>(*result));
+        EXPECT_EQ(TypeName((*result)->Type), type);
+        auto repeated = Annotate(NCore::PrintAst(*result));
+        ASSERT_TRUE(repeated) << repeated.error().ToString();
+        EXPECT_EQ(TypeName((*repeated)->Type), type);
+    }
+    for (const auto& [name, builtinCall] : std::vector<std::pair<std::string, std::string>>{
+        {"all", "(call builtin::all (vec #t #f))"},
+        {"any", "(call builtin::any (vec #t #f))"},
+        {"shuffle", "(call builtin::shuffle (vec 1 2) (vec 1 0))"}})
+    {
+        SCOPED_TRACE(name);
+        auto result = Annotate("(block (fun " + name + " ((var x i64)) -> i64 (block x)) "
+            "(var intrinsic = " + builtinCall + ") (call " + name + " 5))");
+        ASSERT_TRUE(result) << result.error().ToString();
+        EXPECT_EQ(TypeName((*result)->Type), "i64");
+    }
+}
+
+TEST(VectorTypeAnnotation, RejectsInvalidIntrinsicArguments) {
+    for (const auto& source : {
+        "(call all (vec #t #f))", "(call any (vec #t #f))",
+        "(call shuffle (vec 1 2) (vec 1 0))",
+        "(call builtin::all)", "(call builtin::any (vec #t #f) #t)", "(call builtin::all 1)",
+        "(call builtin::any (vec 1 2))", "(call builtin::shuffle (vec 1 2))",
+        "(call builtin::shuffle (vec 1 2) (vec 0 1 0 1))",
+        "(call builtin::shuffle (vec 1 2) (vec -1 0))",
+        "(call builtin::shuffle (vec 1 2) (vec 0 2))",
+        "(call builtin::shuffle (vec 1 2) (vec 0.0 1.0))",
+        "(block (var i = 0) (call builtin::shuffle (vec 1 2) (vec i 1)))",
+        "(block (var mask = (vec 0 1)) (call builtin::shuffle (vec 1 2) mask))"})
+    {
+        SCOPED_TRACE(source);
+        EXPECT_FALSE(Annotate(source));
+    }
+}
+
+TEST(VectorTypeAnnotation, UnaryMasksPreserveShapeAndCheckElements) {
+    for (const auto& [source, type] : std::vector<std::pair<std::string, std::string>>{
+        {"(! (vec #t #f))", "Vector::Bool::2"},
+        {"(! (: (vec 0 2) <vec i8 2>))", "Vector::Bool::2"},
+        {"(! (vec 0.0 0.5))", "Vector::Bool::2"},
+        {"(~ (: (vec 0 255) <vec u8 2>))", "Vector::u8::2"}})
+    {
+        auto result = Annotate(source);
+        ASSERT_TRUE(result) << result.error().ToString();
+        EXPECT_EQ(TypeName((*result)->Type), type);
+    }
+    EXPECT_FALSE(Annotate("(~ (vec #t #f))"));
+    EXPECT_FALSE(Annotate("(~ (vec 0.0 1.0))"));
 }

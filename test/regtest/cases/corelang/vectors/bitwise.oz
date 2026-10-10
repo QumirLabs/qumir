@@ -1,0 +1,16 @@
+(block
+  (use Vector)
+  (fun <main> ()
+    (block
+      (var a = (: (vec -128 -1 85 127) <vec i8 4>))
+      (var b = (: (vec 15 3 42 -1) <vec i8 4>))
+      (output (& a b) "\n" (| a b) "\n" (^ a b) "\n" (~ a) "\n")
+      (var counts = (vec 0 1 8 -1))
+      (output (<< a counts) "\n" (>> a counts) "\n")
+      (output (>> a 1) "\n" (<< 1 a) "\n")
+      (var u = (: (vec 128 255 85 127) <vec u8 4>))
+      (output (>> u counts) "\n" (~ u) "\n")
+      (var wide = (vec (cast -9223372036854775808 u64) (cast -1 u64)))
+      (output (>> wide (vec 1 64)) "\n" (^ wide (cast -1 u64)) "\n")
+      (var mask = (vec #t #f #t #f))
+      (output (& mask #f) "\n" (| #t mask) "\n" (^ mask (vec #t #t #f #f)) "\n"))))

@@ -1,0 +1,493 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    lea tmp(0,ptr to i8) = local(6,vec<i8, 4>) 
+    ste tmp(0,ptr to i8) imm(-128,i8) 
+    + tmp(1,ptr to i8) = tmp(0,ptr to i8) imm(1,i64) 
+    ste tmp(1,ptr to i8) imm(-1,i8) 
+    + tmp(2,ptr to i8) = tmp(0,ptr to i8) imm(2,i64) 
+    ste tmp(2,ptr to i8) imm(85,i8) 
+    + tmp(3,ptr to i8) = tmp(0,ptr to i8) imm(3,i64) 
+    ste tmp(3,ptr to i8) imm(127,i8) 
+    load tmp(4,vec<i8, 4>) = local(6,vec<i8, 4>) 
+    stre local(0,vec<i8, 4>) tmp(4,vec<i8, 4>) 
+    lea tmp(5,ptr to i8) = local(7,vec<i8, 4>) 
+    ste tmp(5,ptr to i8) imm(15,i8) 
+    + tmp(6,ptr to i8) = tmp(5,ptr to i8) imm(1,i64) 
+    ste tmp(6,ptr to i8) imm(3,i8) 
+    + tmp(7,ptr to i8) = tmp(5,ptr to i8) imm(2,i64) 
+    ste tmp(7,ptr to i8) imm(42,i8) 
+    + tmp(8,ptr to i8) = tmp(5,ptr to i8) imm(3,i64) 
+    ste tmp(8,ptr to i8) imm(-1,i8) 
+    load tmp(9,vec<i8, 4>) = local(7,vec<i8, 4>) 
+    stre local(1,vec<i8, 4>) tmp(9,vec<i8, 4>) 
+    load tmp(10,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    load tmp(11,vec<i8, 4>) = local(1,vec<i8, 4>) 
+    & tmp(12,vec<i8, 4>) = tmp(10,vec<i8, 4>) tmp(11,vec<i8, 4>) 
+    stre local(8,vec<i8, 4>) tmp(12,vec<i8, 4>) 
+    lea tmp(13,ptr to vec<i8, 4>) = local(8,vec<i8, 4>) 
+    arg tmp(13,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(14,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    load tmp(15,vec<i8, 4>) = local(1,vec<i8, 4>) 
+    | tmp(16,vec<i8, 4>) = tmp(14,vec<i8, 4>) tmp(15,vec<i8, 4>) 
+    stre local(9,vec<i8, 4>) tmp(16,vec<i8, 4>) 
+    lea tmp(17,ptr to vec<i8, 4>) = local(9,vec<i8, 4>) 
+    arg tmp(17,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(18,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    load tmp(19,vec<i8, 4>) = local(1,vec<i8, 4>) 
+    ^ tmp(20,vec<i8, 4>) = tmp(18,vec<i8, 4>) tmp(19,vec<i8, 4>) 
+    stre local(10,vec<i8, 4>) tmp(20,vec<i8, 4>) 
+    lea tmp(21,ptr to vec<i8, 4>) = local(10,vec<i8, 4>) 
+    arg tmp(21,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(22,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    ~ tmp(23,vec<i8, 4>) = tmp(22,vec<i8, 4>) 
+    stre local(11,vec<i8, 4>) tmp(23,vec<i8, 4>) 
+    lea tmp(24,ptr to vec<i8, 4>) = local(11,vec<i8, 4>) 
+    arg tmp(24,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(25,ptr to i64) = local(12,vec<i64, 4>) 
+    ste tmp(25,ptr to i64) imm(0,i64) 
+    + tmp(26,ptr to i64) = tmp(25,ptr to i64) imm(8,i64) 
+    ste tmp(26,ptr to i64) imm(1,i64) 
+    + tmp(27,ptr to i64) = tmp(25,ptr to i64) imm(16,i64) 
+    ste tmp(27,ptr to i64) imm(8,i64) 
+    + tmp(28,ptr to i64) = tmp(25,ptr to i64) imm(24,i64) 
+    ste tmp(28,ptr to i64) imm(-1,i64) 
+    load tmp(29,vec<i64, 4>) = local(12,vec<i64, 4>) 
+    stre local(2,vec<i64, 4>) tmp(29,vec<i64, 4>) 
+    load tmp(30,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    load tmp(31,vec<i64, 4>) = local(2,vec<i64, 4>) 
+    mov tmp(32,vec<i8, 4>) = tmp(31,vec<i64, 4>) 
+    << tmp(33,vec<i8, 4>) = tmp(30,vec<i8, 4>) tmp(32,vec<i8, 4>) 
+    stre local(13,vec<i8, 4>) tmp(33,vec<i8, 4>) 
+    lea tmp(34,ptr to vec<i8, 4>) = local(13,vec<i8, 4>) 
+    arg tmp(34,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(35,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    load tmp(36,vec<i64, 4>) = local(2,vec<i64, 4>) 
+    mov tmp(37,vec<i8, 4>) = tmp(36,vec<i64, 4>) 
+    >> tmp(38,vec<i8, 4>) = tmp(35,vec<i8, 4>) tmp(37,vec<i8, 4>) 
+    stre local(14,vec<i8, 4>) tmp(38,vec<i8, 4>) 
+    lea tmp(39,ptr to vec<i8, 4>) = local(14,vec<i8, 4>) 
+    arg tmp(39,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(40,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    >> tmp(41,vec<i8, 4>) = tmp(40,vec<i8, 4>) imm(1,i8) 
+    stre local(15,vec<i8, 4>) tmp(41,vec<i8, 4>) 
+    lea tmp(42,ptr to vec<i8, 4>) = local(15,vec<i8, 4>) 
+    arg tmp(42,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(43,vec<i8, 4>) = local(0,vec<i8, 4>) 
+    << tmp(44,vec<i8, 4>) = imm(1,i8) tmp(43,vec<i8, 4>) 
+    stre local(16,vec<i8, 4>) tmp(44,vec<i8, 4>) 
+    lea tmp(45,ptr to vec<i8, 4>) = local(16,vec<i8, 4>) 
+    arg tmp(45,ptr to vec<i8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_i8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(46,ptr to u8) = local(17,vec<u8, 4>) 
+    ste tmp(46,ptr to u8) imm(128,u8) 
+    + tmp(47,ptr to u8) = tmp(46,ptr to u8) imm(1,i64) 
+    ste tmp(47,ptr to u8) imm(255,u8) 
+    + tmp(48,ptr to u8) = tmp(46,ptr to u8) imm(2,i64) 
+    ste tmp(48,ptr to u8) imm(85,u8) 
+    + tmp(49,ptr to u8) = tmp(46,ptr to u8) imm(3,i64) 
+    ste tmp(49,ptr to u8) imm(127,u8) 
+    load tmp(50,vec<u8, 4>) = local(17,vec<u8, 4>) 
+    stre local(3,vec<u8, 4>) tmp(50,vec<u8, 4>) 
+    load tmp(51,vec<u8, 4>) = local(3,vec<u8, 4>) 
+    load tmp(52,vec<i64, 4>) = local(2,vec<i64, 4>) 
+    mov tmp(53,vec<u8, 4>) = tmp(52,vec<i64, 4>) 
+    >> tmp(54,vec<u8, 4>) = tmp(51,vec<u8, 4>) tmp(53,vec<u8, 4>) 
+    stre local(18,vec<u8, 4>) tmp(54,vec<u8, 4>) 
+    lea tmp(55,ptr to vec<u8, 4>) = local(18,vec<u8, 4>) 
+    arg tmp(55,ptr to vec<u8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_u8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(56,vec<u8, 4>) = local(3,vec<u8, 4>) 
+    ~ tmp(57,vec<u8, 4>) = tmp(56,vec<u8, 4>) 
+    stre local(19,vec<u8, 4>) tmp(57,vec<u8, 4>) 
+    lea tmp(58,ptr to vec<u8, 4>) = local(19,vec<u8, 4>) 
+    arg tmp(58,ptr to vec<u8, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_u8_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(59,ptr to u64) = local(20,vec<u64, 2>) 
+    mov tmp(60,u64) = imm(-9223372036854775808,i64) 
+    ste tmp(59,ptr to u64) tmp(60,u64) 
+    mov tmp(61,u64) = imm(-1,i64) 
+    + tmp(62,ptr to u64) = tmp(59,ptr to u64) imm(8,i64) 
+    ste tmp(62,ptr to u64) tmp(61,u64) 
+    load tmp(63,vec<u64, 2>) = local(20,vec<u64, 2>) 
+    stre local(4,vec<u64, 2>) tmp(63,vec<u64, 2>) 
+    load tmp(64,vec<u64, 2>) = local(4,vec<u64, 2>) 
+    lea tmp(65,ptr to i64) = local(21,vec<i64, 2>) 
+    ste tmp(65,ptr to i64) imm(1,i64) 
+    + tmp(66,ptr to i64) = tmp(65,ptr to i64) imm(8,i64) 
+    ste tmp(66,ptr to i64) imm(64,i64) 
+    load tmp(67,vec<i64, 2>) = local(21,vec<i64, 2>) 
+    mov tmp(68,vec<u64, 2>) = tmp(67,vec<i64, 2>) 
+    >> tmp(69,vec<u64, 2>) = tmp(64,vec<u64, 2>) tmp(68,vec<u64, 2>) 
+    stre local(22,vec<u64, 2>) tmp(69,vec<u64, 2>) 
+    lea tmp(70,ptr to vec<u64, 2>) = local(22,vec<u64, 2>) 
+    arg tmp(70,ptr to vec<u64, 2>) 
+    call __generic_vector_print$void__$Ref_Vector_u64_2 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(71,vec<u64, 2>) = local(4,vec<u64, 2>) 
+    mov tmp(72,u64) = imm(-1,i64) 
+    ^ tmp(73,vec<u64, 2>) = tmp(71,vec<u64, 2>) tmp(72,u64) 
+    stre local(23,vec<u64, 2>) tmp(73,vec<u64, 2>) 
+    lea tmp(74,ptr to vec<u64, 2>) = local(23,vec<u64, 2>) 
+    arg tmp(74,ptr to vec<u64, 2>) 
+    call __generic_vector_print$void__$Ref_Vector_u64_2 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(75,ptr to i1) = local(24,vec<i1, 4>) 
+    ste tmp(75,ptr to i1) imm(1,i1) 
+    + tmp(76,ptr to i1) = tmp(75,ptr to i1) imm(1,i64) 
+    ste tmp(76,ptr to i1) imm(0,i1) 
+    + tmp(77,ptr to i1) = tmp(75,ptr to i1) imm(2,i64) 
+    ste tmp(77,ptr to i1) imm(1,i1) 
+    + tmp(78,ptr to i1) = tmp(75,ptr to i1) imm(3,i64) 
+    ste tmp(78,ptr to i1) imm(0,i1) 
+    load tmp(79,vec<i1, 4>) = local(24,vec<i1, 4>) 
+    stre local(5,vec<i1, 4>) tmp(79,vec<i1, 4>) 
+    load tmp(80,vec<i1, 4>) = local(5,vec<i1, 4>) 
+    & tmp(81,vec<i1, 4>) = tmp(80,vec<i1, 4>) imm(0,i1) 
+    stre local(25,vec<i1, 4>) tmp(81,vec<i1, 4>) 
+    lea tmp(82,ptr to vec<i1, 4>) = local(25,vec<i1, 4>) 
+    arg tmp(82,ptr to vec<i1, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_bool_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(83,vec<i1, 4>) = local(5,vec<i1, 4>) 
+    | tmp(84,vec<i1, 4>) = imm(1,i1) tmp(83,vec<i1, 4>) 
+    stre local(26,vec<i1, 4>) tmp(84,vec<i1, 4>) 
+    lea tmp(85,ptr to vec<i1, 4>) = local(26,vec<i1, 4>) 
+    arg tmp(85,ptr to vec<i1, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_bool_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(86,vec<i1, 4>) = local(5,vec<i1, 4>) 
+    lea tmp(87,ptr to i1) = local(27,vec<i1, 4>) 
+    ste tmp(87,ptr to i1) imm(1,i1) 
+    + tmp(88,ptr to i1) = tmp(87,ptr to i1) imm(1,i64) 
+    ste tmp(88,ptr to i1) imm(1,i1) 
+    + tmp(89,ptr to i1) = tmp(87,ptr to i1) imm(2,i64) 
+    ste tmp(89,ptr to i1) imm(0,i1) 
+    + tmp(90,ptr to i1) = tmp(87,ptr to i1) imm(3,i64) 
+    ste tmp(90,ptr to i1) imm(0,i1) 
+    load tmp(91,vec<i1, 4>) = local(27,vec<i1, 4>) 
+    ^ tmp(92,vec<i1, 4>) = tmp(86,vec<i1, 4>) tmp(91,vec<i1, 4>) 
+    stre local(28,vec<i1, 4>) tmp(92,vec<i1, 4>) 
+    lea tmp(93,ptr to vec<i1, 4>) = local(28,vec<i1, 4>) 
+    arg tmp(93,ptr to vec<i1, 4>) 
+    call __generic_vector_print$void__$Ref_Vector_bool_4 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function __overload_vector_print_element$void__$u64 (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,u64) = local(0,u64) 
+    >= tmp(1,i1) = tmp(0,u64) imm(10,u64) 
+    cmp tmp(1,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    load tmp(2,u64) = local(0,u64) 
+    / tmp(3,u64) = tmp(2,u64) imm(10,u64) 
+    arg tmp(3,u64) 
+    call __overload_vector_print_element$void__$u64 
+    jmp label(4) 
+  }
+  block {
+    label: label(3)
+    jmp label(4) 
+  }
+  block {
+    label: label(4)
+    load tmp(4,u64) = local(0,u64) 
+    % tmp(5,u64) = tmp(4,u64) imm(10,u64) 
+    mov tmp(6,i64) = tmp(5,u64) 
+    + tmp(7,i64) = tmp(6,i64) imm(48,i64) 
+    mov tmp(8,i32) = tmp(7,i64) 
+    arg tmp(8,i32) 
+    call output_symbol 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function __generic_vector_print$void__$Ref_Vector_i8_4 (local(0)) { ; void
+  block {
+    label: label(0)
+    arg imm(2,ptr to i8) 
+    call output_string 
+    stre local(1,i64) imm(0,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(2)
+    load tmp(0,i64) = local(1,i64) 
+    < tmp(1,i1) = tmp(0,i64) imm(4,i64) 
+    cmp tmp(1,i1) label(3) label(4) 
+  }
+  block {
+    label: label(3)
+    load tmp(2,i64) = local(1,i64) 
+    != tmp(3,i1) = tmp(2,i64) imm(0,i64) 
+    cmp tmp(3,i1) label(5) label(6) 
+  }
+  block {
+    label: label(5)
+    arg imm(3,ptr to i8) 
+    call output_string 
+    jmp label(7) 
+  }
+  block {
+    label: label(6)
+    jmp label(7) 
+  }
+  block {
+    label: label(7)
+    load tmp(4,i64) = local(1,i64) 
+    load tmp(5,ptr to vec<i8, 4>) = local(0,ptr to vec<i8, 4>) 
+    lde tmp(6,vec<i8, 4>) = tmp(5,ptr to vec<i8, 4>) 
+    index tmp(7,i8) = tmp(6,vec<i8, 4>) tmp(4,i64) 
+    arg tmp(7,i8) 
+    call __generic___overload_vector_print_element$void__$T0$void__$i8 
+    load tmp(8,i64) = local(1,i64) 
+    + tmp(9,i64) = tmp(8,i64) imm(1,i64) 
+    stre local(1,i64) tmp(9,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(4)
+    arg imm(4,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function __generic___overload_vector_print_element$void__$T0$void__$i8 (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,i8) = local(0,i8) 
+    mov tmp(1,i64) = tmp(0,i8) 
+    arg tmp(1,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function __generic_vector_print$void__$Ref_Vector_u8_4 (local(0)) { ; void
+  block {
+    label: label(0)
+    arg imm(2,ptr to i8) 
+    call output_string 
+    stre local(1,i64) imm(0,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(2)
+    load tmp(0,i64) = local(1,i64) 
+    < tmp(1,i1) = tmp(0,i64) imm(4,i64) 
+    cmp tmp(1,i1) label(3) label(4) 
+  }
+  block {
+    label: label(3)
+    load tmp(2,i64) = local(1,i64) 
+    != tmp(3,i1) = tmp(2,i64) imm(0,i64) 
+    cmp tmp(3,i1) label(5) label(6) 
+  }
+  block {
+    label: label(5)
+    arg imm(3,ptr to i8) 
+    call output_string 
+    jmp label(7) 
+  }
+  block {
+    label: label(6)
+    jmp label(7) 
+  }
+  block {
+    label: label(7)
+    load tmp(4,i64) = local(1,i64) 
+    load tmp(5,ptr to vec<u8, 4>) = local(0,ptr to vec<u8, 4>) 
+    lde tmp(6,vec<u8, 4>) = tmp(5,ptr to vec<u8, 4>) 
+    index tmp(7,u8) = tmp(6,vec<u8, 4>) tmp(4,i64) 
+    mov tmp(8,u64) = tmp(7,u8) 
+    arg tmp(8,u64) 
+    call __overload_vector_print_element$void__$u64 
+    load tmp(9,i64) = local(1,i64) 
+    + tmp(10,i64) = tmp(9,i64) imm(1,i64) 
+    stre local(1,i64) tmp(10,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(4)
+    arg imm(4,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function __generic_vector_print$void__$Ref_Vector_u64_2 (local(0)) { ; void
+  block {
+    label: label(0)
+    arg imm(2,ptr to i8) 
+    call output_string 
+    stre local(1,i64) imm(0,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(2)
+    load tmp(0,i64) = local(1,i64) 
+    < tmp(1,i1) = tmp(0,i64) imm(2,i64) 
+    cmp tmp(1,i1) label(3) label(4) 
+  }
+  block {
+    label: label(3)
+    load tmp(2,i64) = local(1,i64) 
+    != tmp(3,i1) = tmp(2,i64) imm(0,i64) 
+    cmp tmp(3,i1) label(5) label(6) 
+  }
+  block {
+    label: label(5)
+    arg imm(3,ptr to i8) 
+    call output_string 
+    jmp label(7) 
+  }
+  block {
+    label: label(6)
+    jmp label(7) 
+  }
+  block {
+    label: label(7)
+    load tmp(4,i64) = local(1,i64) 
+    load tmp(5,ptr to vec<u64, 2>) = local(0,ptr to vec<u64, 2>) 
+    lde tmp(6,vec<u64, 2>) = tmp(5,ptr to vec<u64, 2>) 
+    index tmp(7,u64) = tmp(6,vec<u64, 2>) tmp(4,i64) 
+    arg tmp(7,u64) 
+    call __overload_vector_print_element$void__$u64 
+    load tmp(8,i64) = local(1,i64) 
+    + tmp(9,i64) = tmp(8,i64) imm(1,i64) 
+    stre local(1,i64) tmp(9,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(4)
+    arg imm(4,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function __generic_vector_print$void__$Ref_Vector_bool_4 (local(0)) { ; void
+  block {
+    label: label(0)
+    arg imm(2,ptr to i8) 
+    call output_string 
+    stre local(1,i64) imm(0,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(2)
+    load tmp(0,i64) = local(1,i64) 
+    < tmp(1,i1) = tmp(0,i64) imm(4,i64) 
+    cmp tmp(1,i1) label(3) label(4) 
+  }
+  block {
+    label: label(3)
+    load tmp(2,i64) = local(1,i64) 
+    != tmp(3,i1) = tmp(2,i64) imm(0,i64) 
+    cmp tmp(3,i1) label(5) label(6) 
+  }
+  block {
+    label: label(5)
+    arg imm(3,ptr to i8) 
+    call output_string 
+    jmp label(7) 
+  }
+  block {
+    label: label(6)
+    jmp label(7) 
+  }
+  block {
+    label: label(7)
+    load tmp(4,i64) = local(1,i64) 
+    load tmp(5,ptr to vec<i1, 4>) = local(0,ptr to vec<i1, 4>) 
+    lde tmp(6,vec<i1, 4>) = tmp(5,ptr to vec<i1, 4>) 
+    index tmp(7,i1) = tmp(6,vec<i1, 4>) tmp(4,i64) 
+    arg tmp(7,i1) 
+    call __generic___overload_vector_print_element$void__$T0$void__$bool 
+    load tmp(8,i64) = local(1,i64) 
+    + tmp(9,i64) = tmp(8,i64) imm(1,i64) 
+    stre local(1,i64) tmp(9,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(4)
+    arg imm(4,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function __generic___overload_vector_print_element$void__$T0$void__$bool (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,i1) = local(0,i1) 
+    arg tmp(0,i1) 
+    call output_bool 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}

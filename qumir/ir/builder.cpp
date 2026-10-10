@@ -233,6 +233,13 @@ void TFunction::SetType(TTmp tmp, int typeId) {
 
 void TModule::Print(std::ostream& out) const
 {
+    for (size_t i = 0; i < VectorShuffleMasks.size(); ++i) {
+        out << "; shuffle_mask " << i << ":";
+        for (int index : VectorShuffleMasks[i]) {
+            out << " " << index;
+        }
+        out << "\n";
+    }
     if (DebugOptions.EmitDebugPoints) {
         out << "; qumir.debug " << SerializeDebugData(*this) << "\n";
     }

@@ -314,6 +314,8 @@ struct TModule {
     // This is termporary hacky solution until we have proper constant pool
     std::map<std::string, int> StringLiteralsSet = {{"", 0}};
     std::vector<std::string> StringLiterals = { "" };
+    // shuffle's second operand selects an immutable compile-time mask.
+    std::vector<std::vector<int>> VectorShuffleMasks;
     int ModuleConstructorFunctionId = -1;
     int ModuleDestructorFunctionId = -1;
 

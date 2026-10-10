@@ -5,6 +5,7 @@
 #include <qumir/ir/passes/transforms/pipeline.h>
 
 #include <cassert>
+#include <algorithm>
 #include <bit>
 #include <iostream>
 #include <iomanip>
@@ -146,6 +147,29 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
     }
     out.Format = VectorFormat(types, vectorType);
     switch (instr.Op) {
+        case "all"_op:
+        case "any"_op:
+            if (types.GetKind(types.UnderlyingType(vectorType)) != EKind::I1
+                || types.GetKind(function.GetTmpType(instr.Dest.Idx)) != EKind::I1)
+            {
+                throw std::runtime_error("VM vector reduction requires bool lanes and result");
+            }
+            out.Op = instr.Op == "all"_op ? EVMOp::VAll : EVMOp::VAny;
+            return true;
+        case "shuffle"_op: {
+            const auto& mask = Module.VectorShuffleMasks.at(instr.Operands[1].Imm.Value);
+            if (function.GetTmpType(instr.Dest.Idx) != vectorType
+                || mask.size() != static_cast<size_t>(types.VectorSize(vectorType))
+                || std::any_of(mask.begin(), mask.end(), [&](int index) {
+                    return index < 0 || index >= types.VectorSize(vectorType);
+                }))
+            {
+                throw std::runtime_error("Invalid VM vector shuffle shape");
+            }
+            out.Op = EVMOp::VShuffle;
+            out.Operands[2] = TUntypedImm{reinterpret_cast<int64_t>(mask.data())};
+            return true;
+        }
         case "index"_op: {
             const int elementType = types.UnderlyingType(vectorType);
             if (function.GetTmpType(instr.Dest.Idx) != elementType
@@ -178,6 +202,26 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
             const int destType = function.GetTmpType(instr.Dest.Idx);
             const int sourceType = OperandType(function, Module, source);
             const bool isZero = source.Type == TOperand::EType::Imm && source.Imm.Value == 0;
+            if (instr.Op == "mov"_op && types.IsVector(sourceType) && types.IsVector(destType)
+                && destType != sourceType)
+            {
+                const int sourceElement = types.UnderlyingType(sourceType);
+                const int destElement = types.UnderlyingType(destType);
+                if (types.VectorSize(sourceType) != types.VectorSize(destType)
+                    || types.IsFloat(sourceElement) != types.IsFloat(destElement))
+                {
+                    throw std::runtime_error("Invalid VM vector conversion types");
+                }
+                out.Op = types.IsFloat(sourceElement) ? EVMOp::VFCast : EVMOp::VICast;
+                if (types.IsSigned(sourceElement)) {
+                    out.Format |= TVMInstr::SignedElement;
+                }
+                if (types.IsSigned(destElement)) {
+                    out.Format |= TVMInstr::SignedResult;
+                }
+                out.Operands[2] = TUntypedImm{types.SizeInBytes(destElement)};
+                return true;
+            }
             const bool compatible = instr.Op == "bitcast"_op
                 ? types.SizeInBytes(destType) == types.SizeInBytes(sourceType)
                 : destType == sourceType;
@@ -189,10 +233,35 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
         }
         case "+"_op:
         case "-"_op:
-        case "*"_op: {
+        case "*"_op:
+        case "&"_op:
+        case "|"_op:
+        case "^"_op:
+        case "<<"_op:
+        case ">>"_op:
+        case "&&"_op:
+        case "||"_op:
+        case "<"_op:
+        case ">"_op:
+        case "<="_op:
+        case ">="_op:
+        case "=="_op:
+        case "!="_op: {
             const int elementType = types.UnderlyingType(vectorType);
-            if (types.GetKind(elementType) == EKind::I1 || function.GetTmpType(instr.Dest.Idx) != vectorType) {
-                throw std::runtime_error("Unsupported VM vector arithmetic type");
+            if (types.GetKind(elementType) == EKind::I1
+                && (instr.Op == "+"_op || instr.Op == "-"_op || instr.Op == "*"_op))
+            {
+                throw std::runtime_error("VM vector arithmetic requires numeric lanes");
+            }
+            const bool comparison = instr.Op == "<"_op || instr.Op == ">"_op
+                || instr.Op == "<="_op || instr.Op == ">="_op || instr.Op == "=="_op || instr.Op == "!="_op;
+            const int resultType = function.GetTmpType(instr.Dest.Idx);
+            const bool compatible = comparison
+                ? types.IsVector(resultType) && types.VectorSize(resultType) == types.VectorSize(vectorType)
+                    && types.GetKind(types.UnderlyingType(resultType)) == EKind::I1
+                : resultType == vectorType;
+            if (!compatible) {
+                throw std::runtime_error("Invalid VM vector result type");
             }
             for (size_t i = 0; i < 2; ++i) {
                 const int operandType = OperandType(function, Module, instr.Operands[i]);
@@ -203,10 +272,55 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
                 }
             }
             const bool floating = types.IsFloat(elementType);
+            const bool signedElement = types.IsSigned(elementType);
             switch (instr.Op) {
                 case "+"_op: out.Op = floating ? EVMOp::VFAdd : EVMOp::VIAdd; break;
                 case "-"_op: out.Op = floating ? EVMOp::VFSub : EVMOp::VISub; break;
                 case "*"_op: out.Op = floating ? EVMOp::VFMul : EVMOp::VIMul; break;
+                case "&"_op:
+                case "&&"_op: out.Op = EVMOp::VIAnd; break;
+                case "|"_op:
+                case "||"_op: out.Op = EVMOp::VIOr; break;
+                case "^"_op: out.Op = EVMOp::VIXor; break;
+                case "<<"_op: out.Op = EVMOp::VIShl; break;
+                case ">>"_op: out.Op = signedElement ? EVMOp::VIShrS : EVMOp::VIShrU; break;
+                case "<"_op: out.Op = floating ? EVMOp::VFCmpLT : (signedElement ? EVMOp::VICmpLTS : EVMOp::VICmpLTU); break;
+                case ">"_op: out.Op = floating ? EVMOp::VFCmpGT : (signedElement ? EVMOp::VICmpGTS : EVMOp::VICmpGTU); break;
+                case "<="_op: out.Op = floating ? EVMOp::VFCmpLE : (signedElement ? EVMOp::VICmpLES : EVMOp::VICmpLEU); break;
+                case ">="_op: out.Op = floating ? EVMOp::VFCmpGE : (signedElement ? EVMOp::VICmpGES : EVMOp::VICmpGEU); break;
+                case "=="_op: out.Op = floating ? EVMOp::VFCmpEQ : EVMOp::VICmpEQ; break;
+                case "!="_op: out.Op = floating ? EVMOp::VFCmpNE : EVMOp::VICmpNE; break;
+            }
+            return true;
+        }
+        case "!"_op:
+        case "~"_op:
+        case "i2b"_op:
+        case "f2b"_op:
+        case "i2f"_op:
+        case "f2i"_op: {
+            const int sourceElement = types.UnderlyingType(vectorType);
+            const int destType = function.GetTmpType(instr.Dest.Idx);
+            if (!types.IsVector(destType) || types.VectorSize(destType) != types.VectorSize(vectorType)) {
+                throw std::runtime_error("Invalid VM vector unary result type");
+            }
+            switch (instr.Op) {
+                case "!"_op: out.Op = types.IsFloat(sourceElement) ? EVMOp::VFNot : EVMOp::VINot; break;
+                case "~"_op: out.Op = EVMOp::VIBitNot; break;
+                case "i2b"_op: out.Op = EVMOp::VI2B; break;
+                case "f2b"_op: out.Op = EVMOp::VF2B; break;
+                case "i2f"_op: out.Op = EVMOp::VI2F; break;
+                case "f2i"_op: out.Op = EVMOp::VF2I; break;
+            }
+            const int destElement = types.UnderlyingType(destType);
+            if (instr.Op == "i2f"_op || instr.Op == "f2i"_op) {
+                if (types.IsSigned(sourceElement)) {
+                    out.Format |= TVMInstr::SignedElement;
+                }
+                if (types.IsSigned(destElement)) {
+                    out.Format |= TVMInstr::SignedResult;
+                }
+                out.Operands[2] = TUntypedImm{types.SizeInBytes(destElement)};
             }
             return true;
         }

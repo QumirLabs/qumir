@@ -4,6 +4,7 @@
 #include "qumir/parser/core/printer.h"
 
 #include <qumir/semantics/type_annotation/type_annotation.h>
+#include <qumir/semantics/vector_intrinsics.h>
 #include <qumir/semantics/definite_assignment/definite_assignment.h>
 #include <qumir/semantics/lifetime/pass.h>
 #include <qumir/semantics/lifetime/validator.h>
@@ -569,6 +570,9 @@ std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NS
                 auto ident = maybeIdent.Cast();
                 auto symbolId = context.Lookup(ident->Name, NSemantics::TScopeId{scopeId});
                 if (!symbolId) {
+                    if (callCallees.contains(node.get()) && !NSemantics::VectorIntrinsic(ident->Name).empty()) {
+                        return node;
+                    }
                     if (!context.LookupOverloads(ident->Name, NSemantics::TScopeId{scopeId}).empty()) {
                         return node;
                     }

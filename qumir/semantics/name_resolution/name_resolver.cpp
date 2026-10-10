@@ -1,4 +1,5 @@
 #include "name_resolver.h"
+#include <qumir/semantics/vector_intrinsics.h>
 
 #include <qumir/modules/module.h>
 #include <qumir/parser/lexer.h>
@@ -535,6 +536,15 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
                 co_return TError(block->Location, "block has invalid scope id: " + std::to_string(block->Scope));
             }
             scope = Scopes[block->Scope];
+        }
+    } else if (auto call = TMaybeNode<TCallExpr>(node)) {
+        auto callee = TMaybeNode<TIdentExpr>(call.Cast()->Callee).Cast();
+        if (callee && !Lookup(callee->Name, scope->Id) && !VectorIntrinsic(callee->Name).empty()) {
+            // Pseudo-calls receive their concrete declarations during annotation.
+            for (const auto& arg : call.Cast()->Args) {
+                co_await Resolve(arg, scope, funcScope);
+            }
+            co_return {};
         }
     } else if (auto maybeIdent = TMaybeNode<TIdentExpr>(node)) {
         auto ident = maybeIdent.Cast();

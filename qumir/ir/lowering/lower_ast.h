@@ -62,6 +62,10 @@ private:
 
     TExpectedTask<TValueWithBlock, TError, TLocation> Lower(const NAst::TExprPtr& expr, TBlockScope scope);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerVector(const NAst::TVectorExpr& vector, TBlockScope scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerVectorIntrinsic(
+        const NAst::TCallExpr& call, std::string_view op, TBlockScope scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerVectorBooleanOperand(
+        const NAst::TExprPtr& expr, TBlockScope scope);
     TTmp MaterializeValue(
         TOperand value,
         int typeId,

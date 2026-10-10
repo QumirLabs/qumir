@@ -5,10 +5,13 @@
 #include <qumir/codegen/llvm/llvm_runner.h>
 #include <qumir/ir/builder.h>
 #include <qumir/ir/type.h>
+#include <qumir/ir/eval.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <bit>
+#include <cstring>
 #include <limits>
 #include <regex>
 #include <sstream>
@@ -53,32 +56,55 @@ void BuildVectorKernel(TModule& module, EKind kind, int count, TOp opcode, int b
     const int elementType = module.Types.I(kind);
     const int vectorType = module.Types.Vec(elementType, count);
     const int pointerType = module.Types.Ptr(vectorType);
+    const bool comparison = opcode == "<"_op || opcode == ">"_op || opcode == "<="_op
+        || opcode == ">="_op || opcode == "=="_op || opcode == "!="_op || opcode == "!"_op
+        || opcode == "i2b"_op || opcode == "f2b"_op;
+    const bool reduction = opcode == "all"_op || opcode == "any"_op;
+    const bool unary = opcode == "!"_op || opcode == "~"_op || reduction
+        || opcode == "i2b"_op || opcode == "f2b"_op;
+    const int resultType = reduction
+        ? module.Types.I(EKind::I1)
+        : (comparison ? module.Types.Vec(module.Types.I(EKind::I1), count) : vectorType);
+    const int outputPointerType = module.Types.Ptr(resultType);
     const int i64 = module.Types.I(EKind::I64);
     builder.NewFunction("kernel", {TLocal{0}, TLocal{1}, TLocal{2}, TLocal{3}}, 1);
     builder.SetReturnType(module.Types.I(EKind::Void));
-    for (int i = 0; i < 3; ++i) {
+    builder.SetType(TLocal{0}, outputPointerType, {});
+    for (int i = 1; i < 3; ++i) {
         builder.SetType(TLocal{i}, pointerType, {});
     }
     builder.SetType(TLocal{3}, elementType, {});
-    builder.SetType(TLocal{4}, vectorType, {});
+    builder.SetType(TLocal{4}, resultType, {});
     auto emit = [&](TOp op, std::initializer_list<TOperand> operands, int type) {
         auto tmp = builder.Emit1(op, operands);
         builder.SetType(tmp, type);
         return tmp;
     };
-    auto output = emit("load"_op, {TLocal{0}}, pointerType);
+    auto output = emit("load"_op, {TLocal{0}}, outputPointerType);
     auto leftPtr = emit("load"_op, {TLocal{1}}, pointerType);
     auto rightPtr = emit("load"_op, {TLocal{2}}, pointerType);
     auto left = emit("lde"_op, {leftPtr}, vectorType);
     auto right = emit("lde"_op, {rightPtr}, vectorType);
     auto scalar = emit("load"_op, {TLocal{3}}, elementType);
-    auto result = emit(opcode, {broadcast == 1 ? scalar : left, broadcast == 2 ? scalar : right}, vectorType);
+    TTmp result;
+    if (opcode == "shuffle"_op) {
+        std::vector<int> mask(count);
+        for (int i = 0; i < count; ++i) {
+            mask[i] = count - i - 1;
+        }
+        module.VectorShuffleMasks.push_back(std::move(mask));
+        result = emit(opcode, {left, TImm{0, i64}}, resultType);
+    } else if (unary) {
+        result = emit(opcode, {left}, resultType);
+    } else {
+        result = emit(opcode, {broadcast == 1 ? scalar : left, broadcast == 2 ? scalar : right}, resultType);
+    }
     builder.Emit0("stre"_op, {TLocal{4}, result});
-    auto reloaded = emit("load"_op, {TLocal{4}}, vectorType);
-    auto copied = emit("mov"_op, {reloaded}, vectorType);
+    auto reloaded = emit("load"_op, {TLocal{4}}, resultType);
+    auto copied = emit("mov"_op, {reloaded}, resultType);
     builder.Emit0("ste"_op, {output, copied});
-    auto tail = emit("+"_op, {output, TImm{module.Types.SizeInBytes(vectorType), i64}}, pointerType);
-    auto zero = emit("mov"_op, {TImm{0, vectorType}}, vectorType);
+    auto tail = emit("+"_op, {output, TImm{module.Types.SizeInBytes(resultType), i64}}, outputPointerType);
+    auto zero = emit("mov"_op, {TImm{0, resultType}}, resultType);
     builder.Emit0("ste"_op, {tail, zero});
     builder.Emit0("ret"_op, {});
 }
@@ -150,6 +176,149 @@ void CheckVectorKernels(EKind kind, int count = 4) {
                     }
                     EXPECT_EQ(output[count + i], 0);
                 }
+            }
+        }
+    }
+}
+
+
+template<typename T>
+void CheckVectorOperations(EKind kind, int count = 4) {
+    std::vector<T> left(count);
+    std::vector<T> right(count);
+    const bool boolean = kind == EKind::I1;
+    const T scalar = boolean
+        ? 1
+        : 5;
+    for (int i = 0; i < count; ++i) {
+        left[i] = static_cast<T>(i * 7);
+        right[i] = static_cast<T>(i * 3 + 1);
+        if (boolean) {
+            left[i] = static_cast<T>(i % 2);
+            right[i] = static_cast<T>((i / 2) % 2);
+        }
+    }
+    if (!boolean) {
+        left[0] = std::numeric_limits<T>::max();
+        left[1] = std::numeric_limits<T>::lowest();
+        right[1] = static_cast<T>(-1);
+        right[2] = static_cast<T>(sizeof(T) * 8);
+        if constexpr (std::is_floating_point_v<T>) {
+            left[0] = std::numeric_limits<T>::quiet_NaN();
+            left[1] = -std::numeric_limits<T>::infinity();
+            left[2] = -static_cast<T>(0);
+            left[3] = std::numeric_limits<T>::infinity();
+        }
+    }
+    std::vector<TOp> ops = {"<"_op, ">"_op, "<="_op, ">="_op, "=="_op, "!="_op, "!"_op, "shuffle"_op};
+    ops.push_back(std::is_floating_point_v<T> ? "f2b"_op : "i2b"_op);
+    if constexpr (std::is_integral_v<T>) {
+        ops.insert(ops.end(), {"&"_op, "|"_op, "^"_op});
+        if (boolean) {
+            ops.insert(ops.end(), {"&&"_op, "||"_op, "all"_op, "any"_op});
+        } else {
+            ops.insert(ops.end(), {"<<"_op, ">>"_op, "~"_op});
+        }
+    }
+    for (int optLevel : {0, 3}) {
+        for (auto opcode : ops) {
+            const bool comparison = opcode == "<"_op || opcode == ">"_op || opcode == "<="_op
+                || opcode == ">="_op || opcode == "=="_op || opcode == "!="_op || opcode == "!"_op
+                || opcode == "i2b"_op || opcode == "f2b"_op;
+            const bool reduction = opcode == "all"_op || opcode == "any"_op;
+            const bool unary = opcode == "!"_op || opcode == "~"_op || opcode == "shuffle"_op || reduction
+                || opcode == "i2b"_op || opcode == "f2b"_op;
+            const int resultCount = reduction
+                ? 1
+                : count;
+            const size_t resultSize = comparison || reduction
+                ? resultCount
+                : resultCount * sizeof(T);
+            for (int broadcast : {0, 1, 2}) {
+                if (unary && broadcast != 0) {
+                    continue;
+                }
+                SCOPED_TRACE(static_cast<int>(kind));
+                SCOPED_TRACE(optLevel);
+                SCOPED_TRACE(opcode.ToString());
+                SCOPED_TRACE(broadcast);
+                std::vector<uint8_t> expected(resultSize * 2, 0);
+                for (int i = 0; i < resultCount; ++i) {
+                    const T a = broadcast == 1
+                        ? scalar
+                        : left[i];
+                    const T b = broadcast == 2
+                        ? scalar
+                        : right[i];
+                    bool mask = false;
+                    switch (opcode) {
+                        case "<"_op: mask = a < b; break;
+                        case ">"_op: mask = a > b; break;
+                        case "<="_op: mask = a <= b; break;
+                        case ">="_op: mask = a >= b; break;
+                        case "=="_op: mask = a == b; break;
+                        case "!="_op: mask = a != b; break;
+                        case "!"_op: mask = a == 0; break;
+                        case "i2b"_op:
+                        case "f2b"_op: mask = a != 0; break;
+                        case "all"_op: mask = std::all_of(left.begin(), left.end(), [](T v) { return v != 0; }); break;
+                        case "any"_op: mask = std::any_of(left.begin(), left.end(), [](T v) { return v != 0; }); break;
+                        default: break;
+                    }
+                    if (comparison || reduction) {
+                        expected[i] = mask;
+                        continue;
+                    }
+                    T value = left[count - i - 1];
+                    if constexpr (std::is_integral_v<T>) {
+                        const auto ua = static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(a));
+                        const auto shift = static_cast<uint64_t>(b) & (sizeof(T) * 8 - 1);
+                        switch (opcode) {
+                            case "&"_op:
+                            case "&&"_op: value = static_cast<T>(a & b); break;
+                            case "|"_op:
+                            case "||"_op: value = static_cast<T>(a | b); break;
+                            case "^"_op: value = static_cast<T>(a ^ b); break;
+                            case "~"_op: value = static_cast<T>(~a); break;
+                            case "<<"_op: value = static_cast<T>(ua << shift); break;
+                            case ">>"_op:
+                                value = std::is_signed_v<T>
+                                    ? static_cast<T>(static_cast<int64_t>(a) >> shift)
+                                    : static_cast<T>(ua >> shift);
+                                break;
+                            default: break;
+                        }
+                    }
+                    std::memcpy(expected.data() + i * sizeof(T), &value, sizeof(T));
+                }
+                TModule module;
+                BuildVectorKernel(module, kind, count, opcode, broadcast);
+                NCodeGen::TLLVMCodeGen codegen;
+                NCodeGen::TLlvmRunner runner;
+                std::string error;
+                auto* address = runner.Lookup(codegen.Emit(module, optLevel), "kernel", &error);
+                ASSERT_NE(address, nullptr) << error;
+                using TKernel = void (*)(void*, const T*, const T*, T);
+                std::vector<uint8_t> output(resultSize * 2, 42);
+                reinterpret_cast<TKernel>(address)(output.data(), left.data(), right.data(), scalar);
+                EXPECT_EQ(output, expected) << "LLVM";
+
+                std::fill(output.begin(), output.end(), 42);
+                TVMCompiler compiler(module);
+                std::ostringstream out;
+                std::istringstream in;
+                TInterpreter interpreter(module, compiler, out, in);
+                int64_t scalarBits;
+                if constexpr (std::is_floating_point_v<T>) {
+                    scalarBits = sizeof(T) == 4
+                        ? std::bit_cast<uint32_t>(static_cast<float>(scalar))
+                        : std::bit_cast<int64_t>(static_cast<double>(scalar));
+                } else {
+                    scalarBits = static_cast<int64_t>(scalar);
+                }
+                interpreter.EvalRaw(module.Functions[0], {reinterpret_cast<int64_t>(output.data()),
+                    reinterpret_cast<int64_t>(left.data()), reinterpret_cast<int64_t>(right.data()), scalarBits}, {});
+                EXPECT_EQ(output, expected) << "VM";
             }
         }
     }
@@ -336,4 +505,61 @@ int main(int argc, char** argv) {
     NQumir::NCodeGen::TLLVMInitializer llvmInit;
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(LLVMVector, BitwiseMasksReductionsAndShuffleAgreeWithVM) {
+    CheckVectorOperations<int8_t>(EKind::I8);
+    CheckVectorOperations<uint8_t>(EKind::U8);
+    CheckVectorOperations<int16_t>(EKind::I16);
+    CheckVectorOperations<uint16_t>(EKind::U16);
+    CheckVectorOperations<int32_t>(EKind::I32);
+    CheckVectorOperations<uint32_t>(EKind::U32);
+    CheckVectorOperations<int64_t>(EKind::I64);
+    CheckVectorOperations<uint64_t>(EKind::U64, 32);
+    CheckVectorOperations<float>(EKind::F32);
+    CheckVectorOperations<double>(EKind::F64);
+    for (int count : {2, 4, 8, 16, 32}) {
+        CheckVectorOperations<uint8_t>(EKind::I1, count);
+    }
+}
+
+TEST(LLVMVector, NativeBitwiseMasksAndShuffleUseSIMD) {
+#if defined(__aarch64__) || defined(__x86_64__)
+    for (auto opcode : {"&"_op, "|"_op, "^"_op, "<<"_op, ">>"_op, "<"_op, "shuffle"_op}) {
+        SCOPED_TRACE(opcode.ToString());
+        TModule module;
+        BuildVectorKernel(module, EKind::I32, 4, opcode, 0);
+        NCodeGen::TLLVMCodeGen codegen;
+        auto artifacts = codegen.Emit(module, 3);
+        std::ostringstream assembly;
+        artifacts->Generate(assembly, true, false);
+        std::string mnemonic;
+#if defined(__aarch64__)
+        switch (opcode) {
+            case "&"_op: mnemonic = "and"; break;
+            case "|"_op: mnemonic = "orr"; break;
+            case "^"_op: mnemonic = "eor"; break;
+            case "<<"_op: mnemonic = "ushl|sshl"; break;
+            case ">>"_op: mnemonic = "sshl"; break;
+            case "<"_op: mnemonic = "cmgt"; break;
+            case "shuffle"_op: mnemonic = "rev64|tbl"; break;
+            default: FAIL() << "Unexpected opcode";
+        }
+        const auto pattern = "\\b(" + mnemonic + ")(\\.[0-9]+[bhsd]\\s+v|\\s+v[0-9]+\\.[0-9]+[bhsd])";
+#else
+        switch (opcode) {
+            case "&"_op: mnemonic = "pand|andps|andpd"; break;
+            case "|"_op: mnemonic = "por|orps|orpd"; break;
+            case "^"_op: mnemonic = "pxor|xorps|xorpd"; break;
+            case "<"_op: mnemonic = "pcmpgtd"; break;
+            case "shuffle"_op: mnemonic = "pshufd|shufps"; break;
+            default: continue; // Per-lane dynamic shifts can scalarize without AVX2.
+        }
+        const auto pattern = "\\bv?(" + mnemonic + ")\\s";
+#endif
+        EXPECT_TRUE(std::regex_search(assembly.str(), std::regex(pattern))) << assembly.str();
+    }
+#else
+    GTEST_SKIP() << "SIMD mnemonic checks cover AArch64 and x86-64";
+#endif
 }
