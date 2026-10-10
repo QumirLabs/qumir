@@ -382,6 +382,7 @@ llvm::Value* EmitCoercedExternalCall(llvm::IRBuilder<>& irb, llvm::Module& lmodu
     std::vector<llvm::Type*> paramTys;
     std::vector<llvm::Value*> args;
     std::vector<std::pair<unsigned, llvm::Type*>> byval;
+    std::vector<unsigned> zeroExtended;
 
     int retId = extFun.ReturnTypeId;
     bool retIsStruct = retId >= 0 && types.GetKind(retId) == EKind::Struct;
@@ -410,6 +411,10 @@ llvm::Value* EmitCoercedExternalCall(llvm::IRBuilder<>& irb, llvm::Module& lmodu
             AbiGatherArg(irb, ptr, structTy, ClassifyStructAbi(tid, types, ctx, arch), arch, paramTys, args, byval);
         } else {
             auto* pty = GetTypeById(tid, types, ctx);
+            if (pty->isIntegerTy(1)) {
+                // Runtime functions read a boolean argument as a whole register.
+                zeroExtended.push_back(paramTys.size());
+            }
             paramTys.push_back(pty);
             args.push_back(cast(pendingArgs[i], pty));
         }
@@ -419,6 +424,12 @@ llvm::Value* EmitCoercedExternalCall(llvm::IRBuilder<>& irb, llvm::Module& lmodu
     auto fc = lmodule.getOrInsertFunction(extFun.MangledName, llvm::FunctionType::get(retType, paramTys, false));
     auto* ci = irb.CreateCall(fc, args);
     AbiApplyAttrs(ci, fc, byval, sret ? declaredRetTy : nullptr);
+    for (unsigned idx : zeroExtended) {
+        ci->addParamAttr(idx, llvm::Attribute::ZExt);
+        if (auto* fn = llvm::dyn_cast<llvm::Function>(fc.getCallee())) {
+            fn->addParamAttr(idx, llvm::Attribute::ZExt);
+        }
+    }
 
     if (!retIsStruct) {
         return retType->isVoidTy() ? nullptr : ci;
