@@ -519,3 +519,15 @@ TEST(VectorTypeAnnotation, UnaryMasksPreserveShapeAndCheckElements) {
     EXPECT_FALSE(Annotate("(~ (vec #t #f))"));
     EXPECT_FALSE(Annotate("(~ (vec 0.0 1.0))"));
 }
+
+TEST(VectorTypeAnnotation, CastsPreserveLaneCount) {
+    for (const auto& source : {
+        "(cast (vec 1 2) <vec i32 4>)",
+        "(cast (vec 1 2 3 4) <vec f64 2>)",
+        "(cast (vec 1 2) i64)",
+        "(cast 1 <vec i64 2>)"})
+    {
+        EXPECT_FALSE(Annotate(source)) << source;
+    }
+    EXPECT_TRUE(Annotate("(cast (vec 1 2) <vec f64 2>)"));
+}

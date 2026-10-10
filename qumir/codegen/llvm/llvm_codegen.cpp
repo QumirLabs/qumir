@@ -104,6 +104,22 @@ llvm::MaybeAlign VectorMemoryAlign(const TTypeTable& types, int typeId) {
         : llvm::MaybeAlign();
 }
 
+llvm::CmpInst::Predicate ComparisonPredicate(TOp opcode, bool floating, bool signedInteger) {
+    llvm::CmpInst::Predicate predicate;
+    switch (opcode) {
+        case "<"_op: predicate = floating ? llvm::CmpInst::FCMP_OLT : llvm::CmpInst::ICMP_SLT; break;
+        case ">"_op: predicate = floating ? llvm::CmpInst::FCMP_OGT : llvm::CmpInst::ICMP_SGT; break;
+        case "<="_op: predicate = floating ? llvm::CmpInst::FCMP_OLE : llvm::CmpInst::ICMP_SLE; break;
+        case ">="_op: predicate = floating ? llvm::CmpInst::FCMP_OGE : llvm::CmpInst::ICMP_SGE; break;
+        case "=="_op: predicate = floating ? llvm::CmpInst::FCMP_OEQ : llvm::CmpInst::ICMP_EQ; break;
+        case "!="_op: predicate = floating ? llvm::CmpInst::FCMP_UNE : llvm::CmpInst::ICMP_NE; break;
+        default: throw std::runtime_error("Unsupported comparison opcode");
+    }
+    return !floating && !signedInteger
+        ? llvm::ICmpInst::getUnsignedPredicate(predicate)
+        : predicate;
+}
+
 llvm::Value* EmitVectorBinary(
     llvm::IRBuilder<>& builder,
     TOp opcode,
@@ -157,33 +173,12 @@ llvm::Value* EmitVectorBinary(
         default:
             break;
     }
-    llvm::CmpInst::Predicate predicate;
-    if (floating) {
-        switch (opcode) {
-            case "<"_op: predicate = llvm::CmpInst::FCMP_OLT; break;
-            case ">"_op: predicate = llvm::CmpInst::FCMP_OGT; break;
-            case "<="_op: predicate = llvm::CmpInst::FCMP_OLE; break;
-            case ">="_op: predicate = llvm::CmpInst::FCMP_OGE; break;
-            case "=="_op: predicate = llvm::CmpInst::FCMP_OEQ; break;
-            case "!="_op: predicate = llvm::CmpInst::FCMP_UNE; break;
-            default: throw std::runtime_error("Unsupported vector binary opcode");
-        }
-    } else {
-        switch (opcode) {
-            case "<"_op: predicate = signedElement ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT; break;
-            case ">"_op: predicate = signedElement ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT; break;
-            case "<="_op: predicate = signedElement ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE; break;
-            case ">="_op: predicate = signedElement ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE; break;
-            case "=="_op: predicate = llvm::CmpInst::ICMP_EQ; break;
-            case "!="_op: predicate = llvm::CmpInst::ICMP_NE; break;
-            default: throw std::runtime_error("Unsupported vector binary opcode");
-        }
-    }
+    const auto predicate = ComparisonPredicate(opcode, floating, signedElement);
     auto* booleanType = llvm::FixedVectorType::get(builder.getInt8Ty(), type->getNumElements());
     return builder.CreateZExt(builder.CreateCmp(predicate, left, right, "vcmp"), booleanType, "vbool");
 }
 
-llvm::Value* VectorTruth(llvm::IRBuilder<>& builder, llvm::Value* value, bool negate = false) {
+llvm::Value* TruthValue(llvm::IRBuilder<>& builder, llvm::Value* value, bool negate = false) {
     auto* zero = llvm::Constant::getNullValue(value->getType());
     if (value->getType()->getScalarType()->isFloatingPointTy()) {
         return builder.CreateFCmp(negate ? llvm::CmpInst::FCMP_OEQ : llvm::CmpInst::FCMP_UNE, value, zero, "vtruth");
@@ -681,24 +676,6 @@ void EmitCoroutineRuntimeHelpers(llvm::Module& module, llvm::LLVMContext& ctx) {
         irb.CreateRet(promise);
     }
 }
-
-std::unordered_map<uint64_t, llvm::CmpInst::Predicate> icmpMap = {
-    { "<"_op,  llvm::CmpInst::ICMP_SLT },
-    { "<="_op, llvm::CmpInst::ICMP_SLE },
-    { ">"_op,  llvm::CmpInst::ICMP_SGT },
-    { ">="_op, llvm::CmpInst::ICMP_SGE },
-    { "=="_op, llvm::CmpInst::ICMP_EQ },
-    { "!="_op, llvm::CmpInst::ICMP_NE },
-};
-
-std::unordered_map<uint64_t, llvm::CmpInst::Predicate> fcmpMap = {
-    { "<"_op,  llvm::CmpInst::FCMP_OLT },
-    { "<="_op, llvm::CmpInst::FCMP_OLE },
-    { ">"_op,  llvm::CmpInst::FCMP_OGT },
-    { ">="_op, llvm::CmpInst::FCMP_OGE },
-    { "=="_op, llvm::CmpInst::FCMP_OEQ },
-    { "!="_op, llvm::CmpInst::FCMP_UNE },
-};
 
 std::unordered_map<uint64_t, llvm::Instruction::BinaryOps> ibinOpMap = {
     { "+"_op, llvm::Instruction::Add },
@@ -1700,7 +1677,7 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
             : op.Imm.TypeId;
     };
     if (opcode == "all"_op || opcode == "any"_op) {
-        auto* mask = VectorTruth(*irb, GetOp(instr.Operands[0], module));
+        auto* mask = TruthValue(*irb, GetOp(instr.Operands[0], module));
         return opcode == "all"_op
             ? irb->CreateAndReduce(mask)
             : irb->CreateOrReduce(mask);
@@ -1743,7 +1720,7 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
             case "!"_op:
             case "i2b"_op:
             case "f2b"_op:
-                return irb->CreateZExt(VectorTruth(*irb, GetOp(instr.Operands[0], module),
+                return irb->CreateZExt(TruthValue(*irb, GetOp(instr.Operands[0], module),
                     opcode == "!"_op), vector, "vbool");
             case "~"_op:
                 return irb->CreateNot(GetOp(instr.Operands[0], module), "vnot");
@@ -1756,20 +1733,9 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
                 }
                 const int sourceElement = module.Types.UnderlyingType(operandTypeId(instr.Operands[0]));
                 const int destElement = module.Types.UnderlyingType(outputTypeId);
-                if (opcode == "i2f"_op) {
-                    return module.Types.IsSigned(sourceElement)
-                        ? irb->CreateSIToFP(value, vector, "vi2f")
-                        : irb->CreateUIToFP(value, vector, "vu2f");
-                }
-                if (opcode == "f2i"_op) {
-                    return module.Types.IsSigned(destElement)
-                        ? irb->CreateFPToSI(value, vector, "vf2i")
-                        : irb->CreateFPToUI(value, vector, "vf2u");
-                }
-                if (module.Types.IsFloat(sourceElement)) {
-                    return irb->CreateFPCast(value, vector, "vfcast");
-                }
-                return irb->CreateIntCast(value, vector, module.Types.IsSigned(sourceElement), "vicast");
+                const auto castOp = llvm::CastInst::getCastOpcode(value, module.Types.IsSigned(sourceElement),
+                    vector, module.Types.IsSigned(destElement));
+                return irb->CreateCast(castOp, value, vector, "vcast");
             }
             default:
                 break;
@@ -2033,31 +1999,11 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             // Output type is i1 (bool)
             auto lhs = GetOp(instr.Operands[0], module);
             auto rhs = GetOp(instr.Operands[1], module);
-            if (lhs->getType()->isFloatingPointTy()) {
+            if (lhs->getType()->isFloatingPointTy() || lhs->getType()->isIntegerTy()) {
                 rhs = cast(rhs, lhs->getType());
-                auto it = fcmpMap.find(opcode);
-                if (it == fcmpMap.end()) throw std::runtime_error("unsupported fcmp opcode");
-                return storeTmp(cmpInsr(it->second, lhs, rhs));
-            } else if (lhs->getType()->isIntegerTy()) {
-                rhs = cast(rhs, lhs->getType());
-                auto pred = [&]() {
-                    const int lhsTypeId = operandTypeId(instr.Operands[0]);
-                    const bool isSigned = lhsTypeId < 0 || IsSignedIntegerType(module.Types, lhsTypeId);
-                    if (isSigned) {
-                        auto it = icmpMap.find(opcode);
-                        if (it == icmpMap.end()) throw std::runtime_error("unsupported icmp opcode");
-                        return it->second;
-                    }
-                    switch (opcode) {
-                        case "<"_op: return llvm::CmpInst::ICMP_ULT;
-                        case "<="_op: return llvm::CmpInst::ICMP_ULE;
-                        case ">"_op: return llvm::CmpInst::ICMP_UGT;
-                        case ">="_op: return llvm::CmpInst::ICMP_UGE;
-                        case "=="_op: return llvm::CmpInst::ICMP_EQ;
-                        case "!="_op: return llvm::CmpInst::ICMP_NE;
-                    }
-                    throw std::runtime_error("unsupported icmp opcode");
-                }();
+                const int lhsTypeId = operandTypeId(instr.Operands[0]);
+                const bool isSigned = lhsTypeId < 0 || IsSignedIntegerType(module.Types, lhsTypeId);
+                const auto pred = ComparisonPredicate(opcode, lhs->getType()->isFloatingPointTy(), isSigned);
                 return storeTmp(cmpInsr(pred, lhs, rhs));
             } else if (lhs->getType()->isPointerTy()) {
                 if (opcode != "=="_op && opcode != "!="_op) {
@@ -2070,15 +2016,10 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             }
         }
         case "!"_op: {
-            auto v = GetOp(instr.Operands[0], module);
             if (!outputType || !outputType->isIntegerTy(1)) {
                 throw std::runtime_error("logical not output type must be i1");
             }
-            if (outputType->isIntegerTy(1)) {
-                auto zero = llvm::ConstantInt::get(v->getType(), 0);
-                auto cmp = irb->CreateICmpEQ(v, zero, "nottmp");
-                return storeTmp(cmp);
-            }
+            return storeTmp(TruthValue(*irb, GetOp(instr.Operands[0], module), true));
         }
         case "~"_op: {
             auto v = GetOp(instr.Operands[0], module);
@@ -2245,17 +2186,9 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             }
             return nullptr;
         }
-        case "i2b"_op: {
-            auto v = GetOp(instr.Operands[0], module);
-            auto zero = llvm::ConstantInt::get(v->getType(), 0);
-            auto cmp = irb->CreateICmpNE(v, zero, "i2b");
-            return storeTmp(cmp);
-        }
+        case "i2b"_op:
         case "f2b"_op: {
-            auto v = GetOp(instr.Operands[0], module);
-            auto zero = llvm::ConstantFP::get(v->getType(), 0.0);
-            auto cmp = irb->CreateFCmpONE(v, zero, "f2b");
-            return storeTmp(cmp);
+            return storeTmp(TruthValue(*irb, GetOp(instr.Operands[0], module)));
         }
         case "i2f"_op: {
             auto v = GetOp(instr.Operands[0], module);

@@ -709,6 +709,13 @@ TTask AnnotateCast(std::shared_ptr<TCastExpr> cast, NSemantics::TNameResolver& c
         if (auto op = co_await InstantiateGenericOperator("cast", {cast->Operand}, cast->Type, context, cast->Location)) {
             co_return MakeModuleOpCall(op->SynthName, {cast->Operand}, op->ReturnType, cast->Location, context);
         }
+        auto sourceVector = TMaybeType<TVectorType>(sourceStructType).Cast();
+        auto targetVector = TMaybeType<TVectorType>(targetStructType).Cast();
+        if ((sourceVector || targetVector)
+            && (!sourceVector || !targetVector || sourceVector->Size != targetVector->Size))
+        {
+            co_return TError(cast->Location, "Приведение векторов требует одинакового числа элементов.");
+        }
         if (!contextualStructConstruct
             && TMaybeType<TStructType>(sourceStructType)
             && TMaybeType<TStructType>(targetStructType)

@@ -784,8 +784,9 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             }
             case "!"_op: {
                 require(ins, 1, 1);
-                if (Module.Types.IsFloat(typeId(out.Operands[0].Tmp))) {
-                    throw std::runtime_error("Logical not '!' is not defined for float types");
+                if (Module.Types.IsFloat(typeIdOp(ins.Operands[0]))) {
+                    out.Op = EVMOp::FCmpEQ;
+                    out.Operands[2] = TUntypedImm{0};
                 } else {
                     out.Op = is128(typeIdOp(ins.Operands[0])) ? EVMOp::INot128 : EVMOp::INot;
                 }
@@ -835,7 +836,8 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             }
             case "i2b"_op: {
                 require(ins, 1, 1);
-                out.Op = is128(typeIdOp(ins.Operands[0])) ? EVMOp::I2B128 : EVMOp::Mov;
+                out.Op = is128(typeIdOp(ins.Operands[0])) ? EVMOp::I2B128 : EVMOp::ICmpNE;
+                out.Operands[2] = TUntypedImm{0};
                 break;
             }
             case "i2f"_op: {
@@ -848,7 +850,12 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 }
                 break;
             }
-            case "f2b"_op:
+            case "f2b"_op: {
+                require(ins, 1, 1);
+                out.Op = EVMOp::FCmpNE;
+                out.Operands[2] = TUntypedImm{0};
+                break;
+            }
             case "f2i"_op: {
                 require(ins, 1, 1);
                 out.Op = is128(typeId(ins.Dest)) ? EVMOp::F2I128 : EVMOp::F2I;

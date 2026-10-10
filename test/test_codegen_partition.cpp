@@ -51,7 +51,7 @@ std::vector<std::string> Emit(const NCodeGen::TLLVMCodeGenOptions& opts) {
     return art->GetDefinedFunctionNames();
 }
 
-void BuildVectorKernel(TModule& module, EKind kind, int count, TOp opcode, int broadcast) {
+void BuildVectorKernel(TModule& module, EKind kind, int count, TOp opcode, int broadcast, EKind castKind = EKind::Void) {
     TBuilder builder(module);
     const int elementType = module.Types.I(kind);
     const int vectorType = module.Types.Vec(elementType, count);
@@ -60,11 +60,14 @@ void BuildVectorKernel(TModule& module, EKind kind, int count, TOp opcode, int b
         || opcode == ">="_op || opcode == "=="_op || opcode == "!="_op || opcode == "!"_op
         || opcode == "i2b"_op || opcode == "f2b"_op;
     const bool reduction = opcode == "all"_op || opcode == "any"_op;
-    const bool unary = opcode == "!"_op || opcode == "~"_op || reduction
+    const bool unary = opcode == "!"_op || opcode == "~"_op || reduction || castKind != EKind::Void
         || opcode == "i2b"_op || opcode == "f2b"_op;
-    const int resultType = reduction
+    int resultType = reduction
         ? module.Types.I(EKind::I1)
         : (comparison ? module.Types.Vec(module.Types.I(EKind::I1), count) : vectorType);
+    if (castKind != EKind::Void) {
+        resultType = module.Types.Vec(module.Types.I(castKind), count);
+    }
     const int outputPointerType = module.Types.Ptr(resultType);
     const int i64 = module.Types.I(EKind::I64);
     builder.NewFunction("kernel", {TLocal{0}, TLocal{1}, TLocal{2}, TLocal{3}}, 1);
@@ -324,6 +327,43 @@ void CheckVectorOperations(EKind kind, int count = 4) {
     }
 }
 
+template<typename TSource, typename TResult>
+void CheckVectorCast(EKind sourceKind, EKind resultKind,
+    const std::array<TSource, 4>& input, const std::array<TResult, 4>& expected)
+{
+    SCOPED_TRACE(static_cast<int>(sourceKind));
+    SCOPED_TRACE(static_cast<int>(resultKind));
+    for (int optLevel : {0, 3}) {
+        TModule module;
+        const auto opcode = std::is_floating_point_v<TSource> == std::is_floating_point_v<TResult>
+            ? "mov"_op
+            : (std::is_floating_point_v<TSource> ? "f2i"_op : "i2f"_op);
+        BuildVectorKernel(module, sourceKind, 4, opcode, 0, resultKind);
+        std::array<TResult, 8> expectedWithTail{};
+        std::copy(expected.begin(), expected.end(), expectedWithTail.begin());
+        std::array<TResult, 8> output;
+        output.fill(42);
+
+        NCodeGen::TLLVMCodeGen codegen;
+        NCodeGen::TLlvmRunner runner;
+        std::string error;
+        auto* address = runner.Lookup(codegen.Emit(module, optLevel), "kernel", &error);
+        ASSERT_NE(address, nullptr) << error;
+        using TKernel = void (*)(TResult*, const TSource*, const TSource*, TSource);
+        reinterpret_cast<TKernel>(address)(output.data(), input.data(), input.data(), 0);
+        EXPECT_EQ(output, expectedWithTail) << "LLVM";
+
+        output.fill(42);
+        TVMCompiler compiler(module);
+        std::ostringstream out;
+        std::istringstream in;
+        TInterpreter interpreter(module, compiler, out, in);
+        interpreter.EvalRaw(module.Functions[0], {reinterpret_cast<int64_t>(output.data()),
+            reinterpret_cast<int64_t>(input.data()), reinterpret_cast<int64_t>(input.data()), 0}, {});
+        EXPECT_EQ(output, expectedWithTail) << "VM";
+    }
+}
+
 } // namespace
 
 TEST(CodegenPartition, DefaultDefinesEverything) {
@@ -521,6 +561,26 @@ TEST(LLVMVector, BitwiseMasksReductionsAndShuffleAgreeWithVM) {
     for (int count : {2, 4, 8, 16, 32}) {
         CheckVectorOperations<uint8_t>(EKind::I1, count);
     }
+}
+
+TEST(LLVMVector, NumericCastsAgreeWithVM) {
+    CheckVectorCast<int8_t, int64_t>(EKind::I8, EKind::I64, {-128, -1, 0, 127}, {-128, -1, 0, 127});
+    CheckVectorCast<uint8_t, uint64_t>(EKind::U8, EKind::U64, {0, 128, 255, 1}, {0, 128, 255, 1});
+    CheckVectorCast<int64_t, int8_t>(EKind::I64, EKind::I8, {-129, -1, 256, 257}, {127, -1, 0, 1});
+    CheckVectorCast<uint64_t, uint16_t>(EKind::U64, EKind::U16,
+        {UINT64_MAX, 0, 65536, 65537}, {65535, 0, 0, 1});
+    CheckVectorCast<int8_t, uint16_t>(EKind::I8, EKind::U16, {-128, -1, 0, 127}, {65408, 65535, 0, 127});
+    CheckVectorCast<uint8_t, int16_t>(EKind::U8, EKind::I16, {0, 128, 255, 1}, {0, 128, 255, 1});
+    CheckVectorCast<int32_t, double>(EKind::I32, EKind::F64,
+        {INT32_MIN, -1, 0, INT32_MAX}, {-2147483648.0, -1, 0, 2147483647.0});
+    CheckVectorCast<uint32_t, double>(EKind::U32, EKind::F64,
+        {0, 1, 2147483648U, UINT32_MAX}, {0, 1, 2147483648.0, 4294967295.0});
+    CheckVectorCast<double, int32_t>(EKind::F64, EKind::I32,
+        {-17.75, -0.0, 0.5, 2147483647.0}, {-17, 0, 0, INT32_MAX});
+    CheckVectorCast<double, uint32_t>(EKind::F64, EKind::U32,
+        {0, 0.5, 4294967295.0, 2147483648.0}, {0, 0, UINT32_MAX, 2147483648U});
+    CheckVectorCast<float, double>(EKind::F32, EKind::F64, {-1.5f, 0, 1.25f, 10}, {-1.5, 0, 1.25, 10});
+    CheckVectorCast<double, float>(EKind::F64, EKind::F32, {-1.5, 0, 1.25, 10}, {-1.5f, 0, 1.25f, 10});
 }
 
 TEST(LLVMVector, NativeBitwiseMasksAndShuffleUseSIMD) {
