@@ -43,14 +43,35 @@ void Type(std::ostream& out, NAst::TTypePtr type) {
 
 std::string SerializeRuntimeData(const TModule& module) {
     std::ostringstream out;
-    out << "{\"version\":1,\"mode\":" << Quote(module.AsyncMode) << ",\"asyncImports\":[";
-    for (size_t i = 0; i < module.AsyncImports.size(); ++i) {
-        if (i) {
-            out << ',';
+    out << "{\"version\":1,\"mode\":" << Quote(module.AsyncMode);
+    const TFunction* entry = nullptr;
+    for (const auto& function : module.Functions) {
+        if (!function.Name.starts_with("__") && !function.Name.starts_with("$$")) {
+            entry = &function;
+            break;
         }
-        out << Quote(module.AsyncImports[i]);
     }
-    out << "]}";
+    if (entry) {
+        const int resultType = entry->IsCoroutine
+            ? entry->CoroutineResultTypeId
+            : entry->ReturnTypeId;
+        std::ostringstream type;
+        module.Types.Print(type, resultType);
+        out << ",\"entryPoint\":" << Quote(entry->Name)
+            << ",\"entryReturnType\":" << Quote(type.str())
+            << ",\"entryReturnsString\":" << (entry->ReturnTypeIsString ? "true" : "false");
+    }
+    // Coroutine lifecycle functions must be driven by the host, rather than
+    // registered as synchronous WebAssembly constructors/destructors.
+    for (const auto& [key, index] : {
+        std::pair{"constructorFunction", module.ModuleConstructorFunctionId},
+        std::pair{"destructorFunction", module.ModuleDestructorFunctionId}})
+    {
+        if (index >= 0 && module.Functions[index].IsCoroutine) {
+            out << ',' << Quote(key) << ':' << Quote(module.Functions[index].Name);
+        }
+    }
+    out << '}';
     return out.str();
 }
 

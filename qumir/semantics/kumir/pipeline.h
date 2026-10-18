@@ -13,7 +13,7 @@ std::expected<bool, TError> PowerTransform(
     NAst::TExprPtr& expr,
     TNameResolver& context);
 
-NTransform::TPipelineExtensions PipelineExtensions(bool coroutines = true);
+NTransform::TPipelineExtensions PipelineExtensions();
 
 // Kumir frontend module aliases: legacy standard-library names that resolve to
 // the modules actually providing their symbols. Maps alias -> canonical name.

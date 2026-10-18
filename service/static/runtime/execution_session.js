@@ -1,8 +1,3 @@
-export function supportsJspi() {
-  return typeof WebAssembly.Suspending === 'function'
-    && typeof WebAssembly.promising === 'function';
-}
-
 export class ExecutionStopped extends Error {
   constructor() { super('Остановлено'); }
 }
@@ -87,17 +82,44 @@ export class ExecutionSession {
     return undefined;
   }
 
-  suspending(callback) {
-    return new WebAssembly.Suspending((...args) => {
-      this.check();
-      const result = callback(...args);
-      return result instanceof Promise ? this.wait(result) : result;
-    });
-  }
-
-  async call(fn, args = []) {
+  async call(fn, args = [], returnType = 'void') {
     this.check();
-    return await WebAssembly.promising(fn)(...args);
+    const runtime = this.futureRuntime;
+    const raw = fn(...args);
+    if (!raw) return;
+    const future = runtime.__qumir_wrap_coro(raw, 0);
+    try {
+      while (!runtime.__qumir_future_done(future)) {
+        this.check();
+        if (runtime.hasPendingOp()) {
+          const { h, execute, checkpoint = false } = runtime.shiftPendingOp();
+          const result = checkpoint
+            ? execute()
+            : this.operation(execute);
+          const value = result instanceof Promise ? await this.wait(result) : result;
+          this.check();
+          runtime.resolveFuture(h, value);
+        } else {
+          runtime.__qumir_future_resume(future);
+        }
+      }
+      const pointer = this.instance.exports.__qumir_coro_promise_ptr(raw) >>> 0;
+      if (!pointer || returnType === 'void') return undefined;
+      const view = new DataView(this.instance.exports.memory.buffer);
+      if (returnType === 'f32') return view.getFloat32(pointer, true);
+      if (returnType === 'f64') return view.getFloat64(pointer, true);
+      if (returnType === 'i64') return view.getBigInt64(pointer, true);
+      if (returnType === 'u64') return view.getBigUint64(pointer, true);
+      if (returnType === 'i16') return view.getInt16(pointer, true);
+      if (returnType === 'u16') return view.getUint16(pointer, true);
+      if (returnType === 'i1' || returnType === 'u8') return view.getUint8(pointer);
+      if (returnType === 'i8') return view.getInt8(pointer);
+      if (returnType === 'u32') return view.getUint32(pointer, true);
+      return view.getInt32(pointer, true);
+    } finally {
+      runtime.__qumir_future_destroy(future);
+      if (this.controller.signal.aborted) runtime.__resetFutures();
+    }
   }
 
   stop() {
@@ -114,16 +136,16 @@ export class ExecutionSession {
   }
 }
 
-export function bindJspiImports(env, imports, runtimeInfo, session, debugData = null) {
-  for (const name of runtimeInfo?.asyncImports || []) {
-    if (!imports.some(item => item.module === 'env' && item.name === name)) continue;
-    const fn = env[name + '_jspi'];
-    if (typeof fn !== 'function') throw new Error(`Нет JSPI runtime для ${name}`);
-    env[name] = session.suspending((...args) => session.operation(() => fn(...args)));
-  }
-  // Sleep belongs to the session so Stop cancels its timer as well.
-  if (imports.some(item => item.name === 'qumir_sleep') && runtimeInfo?.mode === 'jspi') {
-    env.qumir_sleep = session.suspending(milliseconds => session.sleep(Math.max(0, Number(milliseconds) || 0)));
-  }
-  if (debugData) env.__qumir_debug_point = session.suspending((id, address) => session.checkpoint(id, address));
+export function bindDebugImport(env, session, futureRuntime) {
+  session.futureRuntime = futureRuntime;
+  env.__qumir_debug_point = (id, address) => {
+    session.check();
+    const h = futureRuntime.allocFuture();
+    futureRuntime.enqueuePendingOp({
+      h,
+      checkpoint: true,
+      execute: () => session.checkpoint(id, address),
+    });
+    return h;
+  };
 }

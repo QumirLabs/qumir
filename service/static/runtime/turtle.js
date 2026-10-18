@@ -396,88 +396,56 @@ function moveBy(dist) {
 let __futureRuntime = null;
 export function __bindFutureRuntime(fr) { __futureRuntime = fr; }
 
-function _turtleOp(execute, jspi = false) {
-  if (jspi) return execute();
+function _turtleOp(execute) {
   if (!__futureRuntime) { execute(); return 0; }
   const h = __futureRuntime.allocFuture();
   __futureRuntime.enqueuePendingOp({ h, execute });
   return h;
 }
 
-export function turtle_pen_up(jspi = false) {
-  return _turtleOp(() => { state.penDown = false; scheduleDraw(); }, jspi);
+export function turtle_pen_up() {
+  return _turtleOp(() => { state.penDown = false; scheduleDraw(); });
 }
 
-export function turtle_pen_up_jspi() {
-  return turtle_pen_up(true);
+export function turtle_pen_down() {
+  return _turtleOp(() => { state.penDown = true; scheduleDraw(); });
 }
 
-export function turtle_pen_down(jspi = false) {
-  return _turtleOp(() => { state.penDown = true; scheduleDraw(); }, jspi);
-}
-
-export function turtle_pen_down_jspi() {
-  return turtle_pen_down(true);
-}
-
-export function turtle_forward(d, jspi = false) {
+export function turtle_forward(d) {
   const dist = Number(d) || 0;
-  return _turtleOp(() => { moveBy(dist); }, jspi);
+  return _turtleOp(() => { moveBy(dist); });
 }
 
-export function turtle_forward_jspi(d) {
-  return turtle_forward(d, true);
-}
-
-export function turtle_backward(d, jspi = false) {
+export function turtle_backward(d) {
   const dist = Number(d) || 0;
-  return _turtleOp(() => { moveBy(-dist); }, jspi);
+  return _turtleOp(() => { moveBy(-dist); });
 }
 
-export function turtle_backward_jspi(d) {
-  return turtle_backward(d, true);
-}
-
-export function turtle_turn_left(deg, jspi = false) {
+export function turtle_turn_left(deg) {
   const angle = Number(deg) || 0;
-  return _turtleOp(() => { state.ang = (state.ang + angle) % 360; scheduleDraw(); }, jspi);
+  return _turtleOp(() => { state.ang = (state.ang + angle) % 360; scheduleDraw(); });
 }
 
-export function turtle_turn_left_jspi(deg) {
-  return turtle_turn_left(deg, true);
-}
-
-export function turtle_turn_right(deg, jspi = false) {
+export function turtle_turn_right(deg) {
   const angle = Number(deg) || 0;
-  return _turtleOp(() => { state.ang = (state.ang - angle) % 360; scheduleDraw(); }, jspi);
+  return _turtleOp(() => { state.ang = (state.ang - angle) % 360; scheduleDraw(); });
 }
 
-export function turtle_turn_right_jspi(deg) {
-  return turtle_turn_right(deg, true);
-}
-
-export function turtle_save_state(jspi = false) {
+export function turtle_save_state() {
   return _turtleOp(() => {
     savedStack.push({ x: state.x, y: state.y, ang: state.ang, penDown: state.penDown });
-  }, jspi);
+  });
 }
 
-export function turtle_save_state_jspi() {
-  return turtle_save_state(true);
-}
-
-export function turtle_restore_state(jspi = false) {
+export function turtle_restore_state() {
   return _turtleOp(() => {
     if (!savedStack.length) return;
     const s = savedStack.pop();
     state.x = s.x; state.y = s.y; state.ang = s.ang; state.penDown = s.penDown;
     scheduleDraw();
-  }, jspi);
+  });
 }
 
-export function turtle_restore_state_jspi() {
-  return turtle_restore_state(true);
-}
 
 // Animation delay for coroutine step pacing (ms between resume steps).
 // Default 0 = instant (batch mode, render once at end).

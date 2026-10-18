@@ -10,7 +10,6 @@
 //   each .oz file must define <main>.
 //   Goldens: .result for return value, optional .result.stdout for printed output.
 
-import { ExecutionSession, bindJspiImports, supportsJspi } from '../service/static/runtime/execution_session.js';
 import fs from 'fs';
 import path from 'path';
 import cp from 'child_process';
@@ -30,7 +29,6 @@ let runtimeDir = null; // directory with JS runtime host functions
 let filterPattern = null; // optional glob-style filter for case names (similar to gtest_filter)
 let xmlOutputPath = null; // optional path to write JUnit-style XML report
 let coreInput = false;
-let asyncMode = supportsJspi() ? 'jspi' : 'coroutine';
 let optLevel = 0; // -O level passed to the wasm compile (default matches prior behavior)
 for (let i=2;i<process.argv.length;i++) {
   const arg = process.argv[i];
@@ -42,7 +40,6 @@ for (let i=2;i<process.argv.length;i++) {
   else if (arg === '--runtime' && i+1 < process.argv.length) { runtimeDir = process.argv[++i]; }
   else if (arg === '--filter' && i+1 < process.argv.length) { filterPattern = process.argv[++i]; }
   else if (arg === '--xml' && i+1 < process.argv.length) { xmlOutputPath = process.argv[++i]; }
-  else if (arg.startsWith('--async-mode=')) asyncMode = arg.slice(13);
   else if (arg === '--core') { coreInput = true; }
 }
 
@@ -359,7 +356,7 @@ function compileCase(compiler, caseBase) {
   const srcPath = path.join(casesDir, caseBase + extension);
   const outPath = path.join(wasmDir, caseBase + '.wasm');
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  const args = [compiler, '--wasm', '--async-mode=' + asyncMode];
+  const args = [compiler, '--wasm'];
   if (coreInput) args.push('--core');
   if (optLevel > 0) args.push('-O' + optLevel);
   args.push(srcPath, '-o', outPath);
@@ -577,10 +574,6 @@ async function instantiateWasm(wasmPath, ioCapture, ioRuntime) {
     }
   }
   const module = await WebAssembly.compile(bytes);
-  const section = WebAssembly.Module.customSections(module, 'qumir.runtime')[0];
-  const info = section ? JSON.parse(new TextDecoder().decode(section)) : null;
-  const session = info?.mode === 'jspi' ? new ExecutionSession() : null;
-  if (session) bindJspiImports(env, WebAssembly.Module.imports(module), info, session);
   const imports = { env };
   return WebAssembly.instantiate(module, imports).then(instance => {
     // If the module defines its own memory (no memory import), prefer that one for decoding string literals & data segment.
@@ -600,7 +593,7 @@ async function instantiateWasm(wasmPath, ioCapture, ioRuntime) {
     }
     // Expose last used memory globally so runAll can decode pointer returns for 'лит' algorithms.
     global.__lastWasmMemory = memory;
-    return { instance, memory, session };
+    return { instance, memory };
   });
 }
 
@@ -648,11 +641,10 @@ async function executeCase(wasmPath, algName, caseBase, algType) {
   const stdoutStream = new CaptureOutputStream(ioCapture);
   const ioRuntime = await loadIoRuntimeModule();
   bindIoStreams(ioRuntime, stdinStream, stdoutStream);
-  const { instance, memory, session } = await instantiateWasm(wasmPath, ioCapture, ioRuntime);
+  const { instance, memory } = await instantiateWasm(wasmPath, ioCapture, ioRuntime);
   // Call global constructors if present (init_array handlers)
   if (typeof instance.exports.__wasm_call_ctors === 'function') {
-    if (session) await session.call(instance.exports.__wasm_call_ctors);
-    else instance.exports.__wasm_call_ctors();
+    instance.exports.__wasm_call_ctors();
   }
   stdinStream.assertSufficientInput();
   // Collect export function names for debugging if algorithm not found.
@@ -712,14 +704,12 @@ async function executeCase(wasmPath, algName, caseBase, algType) {
   if (instance.exports.__qumir_is_coroutine !== undefined) {
     ret = await runWasmCoroutine(instance, fn, memory, algType);
   } else {
-    ret = session ? await session.call(fn) : fn();
+    ret = fn();
   }
   // Call global destructors if present
   if (typeof instance.exports.__wasm_call_dtors === 'function') {
-    if (session) await session.call(instance.exports.__wasm_call_dtors);
-    else instance.exports.__wasm_call_dtors();
+    instance.exports.__wasm_call_dtors();
   }
-  session?.finish();
   const retType = resultRuntime.wasmReturnType(bytes, algName);
   return { returnValue: ret, stdout: ioCapture.stdout, exportName: algName, returnType: retType };
 }

@@ -1,25 +1,33 @@
-# Browser debugger and JSPI
+# Browser debugger and coroutines
 
-The browser debugger runs on the main thread using JavaScript Promise
-Integration. The compiler emits ordinary external calls to
-`__qumir_debug_point(pointId, address)` and a `qumir.debug` WASM custom section.
-No browser protocol or new IR opcode is involved.
+The browser debugger runs on the main thread using the existing coroutine and
+Future ABI. The compiler emits calls to `__qumir_debug_point(pointId, address)`
+and a `qumir.debug` WASM custom section. No browser suspension extension or new
+IR opcode is required.
+
+## Why coroutines instead of JSPI
+
+JSPI (JavaScript Promise Integration) depends on `WebAssembly.Suspending` and
+`WebAssembly.promising`. Their browser support is limited, particularly on mobile
+browsers, so relying on them makes debugging unavailable to part of the audience.
+
+Qumir already has a coroutine/Future runtime that uses ordinary WebAssembly and
+JavaScript. Lowering debug calls to `call` plus `await` in the IR, and propagating
+that change through callers, lets execution and debugger pauses use that same
+mechanism. This removes the JSPI dependency, separate runtime import variants,
+async mode selection and browser feature gates. The browser tests explicitly
+disable both JSPI APIs to verify that stepping and suspension still work.
 
 ## Compiler options
 
 - `-g` collects instruction, function and local metadata for VM/LLVM.
 - `--debug-points` emits browser instrumentation and its descriptors at O0.
 - These options are independent; shared metadata is collected when either is on.
-- `--async-mode=jspi` is the default for WASM. Async external module signatures
-  become `T` instead of `Future<T>` through `TJspiModule`; coroutine annotation
-  and splitting are absent from this path.
-- `--async-mode=coroutine` preserves the existing future ABI and runtime.
-  Native and VM execution keep this mode.
+- All targets use the coroutine/Future mechanism. There is no async mode flag.
 
-Points currently support wasm32, one source file and ordinary user functions.
-Explicit core-language Future/await constructs require coroutine mode.
-Arrays and structures have opaque value displays; formatters can be added
-without changing the checkpoint import.
+Points support wasm32 and both ordinary and coroutine user functions. Arrays
+and structures have opaque value displays. Native DWARF emission still excludes
+coroutine functions; browser descriptors do not have that restriction.
 
 ## Boundaries
 
@@ -27,33 +35,48 @@ without changing the checkpoint import.
 instruction wrapper; declarations use a local wrapper. Synthetic calls use
 the builder directly. Calls are instrumented before the entire argument packet
 and after the call; no point is inserted between `arg` and `call`, or before a
-`phi`. Statement points include loop conditions on every visit.
+`phi`. Statement points include loop conditions on every visit. Synthetic module
+initialization/cleanup functions do not emit checkpoints themselves.
+
+`LowerDebugAsync` runs on the complete module after AST lowering, including at
+O0. It changes the debug import's return type to a Future pointer, discovers the
+transitive caller closure to a fixed point, and promotes synchronous callers to
+coroutines. This handles forward calls, recursion and mutually recursive cycles.
+Each affected call becomes a call producing a Future followed by `await` with
+the original destination and result type. Existing explicit Future calls retain
+their semantics. Instruction debug locations are preserved. Optimization passes
+that promote locals are skipped for debug points so variable addresses stay live.
 
 The custom section holds functions, lexical scope parents, AST local types,
 source identifier bindings and point descriptors. A variable point passes the
-address of its live stack storage, including argument storage. Source bindings
-identify locals by id so shadowed names remain distinguishable.
+address of its live storage, including argument storage in the coroutine frame.
+Source bindings identify locals by id so shadowed names remain distinguishable.
+Coroutine module constructors/destructors are exported and named in
+`qumir.runtime` so the host can await them before/after the entry point. The
+entry remains the first user function in declaration order, regardless of its
+name; metadata preserves that order across coroutine splitting and linking.
+The entry result type lets the host read its promise before destroying the frame.
 
-`ExecutionSession` wraps imports with `WebAssembly.Suspending` and exports with
-`WebAssembly.promising`. It owns cancellation, animation pacing and event-loop
-yields. Most checkpoints return synchronously; pauses and periodic yields
-return a Promise. Stop cancels the session and discards the instance.
+`ExecutionSession` schedules debug imports in the same JS future queue as
+executor operations. It drives WASM through `__qumir_future_*`, owns cancellation,
+animation pacing and event-loop yields. Checkpoints can pause on a Promise;
+Stop cancels the session and discards the instance. Debugging is available
+without a browser feature check.
 
 `Debugger` owns recursive frames, breakpoints and stepping. `ValuePrinter`
 reads live WASM memory; `DebuggerUI` binds CodeMirror, controls, stack, locals
 and hover. Hover is enabled only while paused, with codepoint positions
 converted to CodeMirror UTF16 offsets. Editing is locked during debugging.
 
-Without JSPI the UI disables debugging and requests coroutine compilation for
-ordinary runs. JS runtime functions retain their existing future variants;
-separate `_jspi` variants return values or Promises.
-
 ## Checks
 
-Build `qumirc`, `server`, `test_llvm_debug_info` and `test_cfg` with Ninja.
-The LLVM test checks all four flag combinations and argument packet integrity.
-`test/test_exec.js` supports `--async-mode=jspi|coroutine` and compares execution
-with existing goldens. For the browser test, install the root npm dependencies
-and run `node test/test_browser_debugger.mjs` from the repository root. It starts
-the C++ server and headless Chrome; `QUMIR_TEST_URL` can select a running server.
-A paused screenshot is written to `build/browser_debugger.png`.
+Build `qumirc`, `server`, `test_debug_async` and `test_llvm_debug_info` with Ninja.
+The IR tests check recursive caller propagation, result types, idempotence and
+existing Future calls. The LLVM test checks all four debug flag combinations
+and argument packet integrity. `test/test_exec.js` compares WASM execution with
+existing goldens. Run it with `--runtime service/static/runtime`.
+
+Run `node test/test_browser_debugger.mjs` from the repository root for the browser
+test. It starts the C++ server and headless Chrome with suspension extensions
+disabled; `QUMIR_TEST_URL` can select a running server. A paused screenshot is
+written to `build/browser_debugger.png`.

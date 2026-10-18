@@ -63,6 +63,7 @@ add_library(qumir
     ir/passes/transforms/locals2ssa.h
     ir/passes/transforms/locals2ssa.cpp
     ir/passes/transforms/pipeline.h
+    ir/passes/transforms/debug_async.cpp
     ir/passes/transforms/pipeline.cpp
     ir/builder.h
     ir/builder.cpp

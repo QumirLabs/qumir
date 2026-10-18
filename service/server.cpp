@@ -103,7 +103,7 @@ public:
             response.SetStatus(200);
             response.SetHeader("Access-Control-Allow-Origin", "*");
             response.SetHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            response.SetHeader("Access-Control-Allow-Headers", "Content-Type, X-Qumir-O, X-Qumir-Syntax, X-Qumir-Debug-Points, X-Qumir-Async-Mode");
+            response.SetHeader("Access-Control-Allow-Headers", "Content-Type, X-Qumir-O, X-Qumir-Syntax, X-Qumir-Debug-Points");
             response.SetHeader("Content-Length", "0");
             co_await response.SendHeaders();
         } else if (request.Method() == "GET") {
@@ -552,20 +552,12 @@ private:
         std::string dst;
         std::string contentType = "application/wasm";
         dst = src + ".wasm";
-        auto mode = FindHeader(request, "X-Qumir-Async-Mode");
-        const std::string asyncMode = mode == request.Headers().end()
-            ? "jspi"
-            : std::string(mode->second);
-        if (asyncMode != "jspi" && asyncMode != "coroutine") {
-            co_await SendJson(response, "{\"error\":\"invalid async mode\"}", 400);
-            co_return;
-        }
         auto debug = FindHeader(request, "X-Qumir-Debug-Points");
         const bool debugPoints = debug != request.Headers().end() && debug->second == "1";
         if (debugPoints) {
             olevel = 0;
         }
-        args = {"--wasm", "--async-mode=" + asyncMode, "-O" + std::to_string(olevel), "-o", dst, src};
+        args = {"--wasm", "-O" + std::to_string(olevel), "-o", dst, src};
         if (debugPoints) {
             args.insert(args.begin(), "--debug-points");
         }

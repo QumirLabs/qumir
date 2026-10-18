@@ -13,7 +13,10 @@ TDebugPointEmitter::TDebugPointEmitter(TModule& module, TBuilder& builder)
 {}
 
 void TDebugPointEmitter::Point(std::string_view kind, const TInstrDebugInfo& info, int localId, std::string_view op) {
-    if (!Module_.DebugOptions.EmitDebugPoints) {
+    if (
+        !Module_.DebugOptions.EmitDebugPoints
+        || Module_.Functions[Builder_.CurrentFunctionIdx()].Name.starts_with("$$"))
+    {
         return;
     }
     if (SymbolId_ < 0) {

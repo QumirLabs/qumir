@@ -1,7 +1,7 @@
 'use strict';
 
 import { DebuggerUI } from './debugger_ui.js';
-import { supportsJspi, ExecutionStopped } from './runtime/execution_session.js';
+import { ExecutionStopped } from './runtime/execution_session.js';
 import { consumeExample, exampleData } from './example_data.js';
 
 const embedded = document.body.dataset.qumirMode === 'embed';
@@ -67,7 +67,6 @@ const api = async (path, body, asBinary, signal) => {
   const headers = { 'Content-Type': 'text/plain', 'X-Qumir-O': String(O) };
   if (syntaxMode && syntaxMode.value === 'core') headers['X-Qumir-Syntax'] = 'core';
   if (body.debug) headers['X-Qumir-Debug-Points'] = '1';
-  if (body.asyncMode) headers['X-Qumir-Async-Mode'] = body.asyncMode;
   const r = await fetch(path, { method: 'POST', headers, body: code, signal });
   if (!r.ok) {
     let msg;
@@ -3020,7 +3019,6 @@ function showCelebration() {
 
 async function runWasm(debug = false) {
   if (__coroRunning) return;
-  if (debug && !supportsJspi()) return;
   const code = getCode();
   const { type: algType } = parseAlgHeader(code);
   const O = debug ? '0' : $('#opt').value;
@@ -3039,7 +3037,7 @@ async function runWasm(debug = false) {
     document.dispatchEvent(new CustomEvent('qumir-embed-event', { detail: 'run' }));
   }
   try {
-    const bytes = await api('/api/compile-wasm', { code, O, debug, asyncMode: supportsJspi() ? 'jspi' : 'coroutine' }, true, executionAbort.signal);
+    const bytes = await api('/api/compile-wasm', { code, O, debug }, true, executionAbort.signal);
     compiled = true;
     const { loadRuntime } = await import('./runtime/loader.js');
     runtime = await loadRuntime(bytes, {
@@ -3089,7 +3087,7 @@ async function runWasm(debug = false) {
       complexEnv.__bindMemory(mem);
     }
     // Bind WASM exports to future runtime (needed for __qumir_wrap_coro child coro ops)
-    if (!executionSession && typeof futureEnv.__bindWasm === 'function') {
+    if (typeof futureEnv.__bindWasm === 'function') {
       futureEnv.__bindWasm(instance.exports);
     }
     if (mem && typeof futureEnv.__bindMemory === 'function') {
@@ -3196,13 +3194,14 @@ async function runWasm(debug = false) {
     let out = '';
   if (instance && instance.exports) {
       // Call global constructors if present (init_array handlers)
-      if (typeof instance.exports.__wasm_call_ctors === 'function') {
-        if (executionSession) await executionSession.call(instance.exports.__wasm_call_ctors);
-        else instance.exports.__wasm_call_ctors();
+      if (executionSession && runtime.runtimeInfo?.constructorFunction) {
+        await executionSession.call(instance.exports[runtime.runtimeInfo.constructorFunction]);
+      } else if (typeof instance.exports.__wasm_call_ctors === 'function') {
+        instance.exports.__wasm_call_ctors();
       }
       const entries = Object.entries(instance.exports)
         .filter(([k, v]) => typeof v === 'function' && !k.startsWith('__') && k !== '$$module_constructor' && k !== '$$module_destructor');
-      const entry = entries.length > 0 ? entries[0] : null;
+      const entry = entries.find(([name]) => name === runtime.runtimeInfo?.entryPoint) || entries[0] || null;
       if (entry) {
         const [name, fn] = entry;
         const rawArgs = ($('#args').value || '').trim();
@@ -3225,7 +3224,9 @@ async function runWasm(debug = false) {
           if (typeof resultEnv.setStringRuntime === 'function') {
             resultEnv.setStringRuntime(stringEnv);
           }
-          const retType = resultEnv.wasmReturnType(bytes, name);
+          const retType = executionSession
+            ? runtime.runtimeInfo?.entryReturnType
+            : resultEnv.wasmReturnType(bytes, name);
           runAsCoroutine = !executionSession && shouldRunWasmCoroutine({
             instance,
             returnType: retType,
@@ -3237,12 +3238,12 @@ async function runWasm(debug = false) {
           });
           const res = runAsCoroutine
             ? await runWasmCoroutine({ instance, entryFn: fn, args: parsed, usesRobot, usesTurtle, usesPainter, futureEnv })
-            : executionSession ? await executionSession.call(fn, parsed) : fn(...parsed);
+            : executionSession ? await executionSession.call(fn, parsed, retType) : fn(...parsed);
           const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           const elapsedUs = Math.round((t1 - t0) * 1000);
           const normalized = resultEnv.normalizeReturnValue(res, {
-            returnType: retType,
-            algType
+            returnType: retType?.startsWith('ptr to ') ? 'i32' : retType,
+            algType: runtime.runtimeInfo?.entryReturnsString ? 'лит' : algType
           });
           // Don't print to stdout, save for errors pane
           window.__lastRunInfo = { name, normalized, elapsedUs, hasReturn: retType !== 'void' && !runAsCoroutine };
@@ -3251,9 +3252,10 @@ async function runWasm(debug = false) {
         out += 'no exported functions to invoke\n';
       }
       // Call global destructors if present
-      if (typeof instance.exports.__wasm_call_dtors === 'function') {
-        if (executionSession) await executionSession.call(instance.exports.__wasm_call_dtors);
-        else instance.exports.__wasm_call_dtors();
+      if (executionSession && runtime.runtimeInfo?.destructorFunction) {
+        await executionSession.call(instance.exports[runtime.runtimeInfo.destructorFunction]);
+      } else if (typeof instance.exports.__wasm_call_dtors === 'function') {
+        instance.exports.__wasm_call_dtors();
       }
       if (__painterModule && typeof __painterModule.__flushPainter === 'function') {
         __painterModule.__flushPainter();
@@ -3362,7 +3364,7 @@ function setCoroRunning(running) {
   if (stopBtn) stopBtn.style.display = running ? '' : 'none';
   if (runBtn) runBtn.disabled = running;
   const debugBtn = document.getElementById('btn-debug');
-  if (debugBtn) debugBtn.disabled = running || !supportsJspi() || !debuggerUI;
+  if (debugBtn) debugBtn.disabled = running || !debuggerUI;
 }
 
 function shouldRunWasmCoroutine({ instance, returnType, algType, usesRobot, usesTurtle, usesDrawer, usesPainter }) {
@@ -5054,8 +5056,7 @@ $('#btn-run').addEventListener('click', async () => {
 
 if (!embedded) {
   if (editor) debuggerUI = new DebuggerUI(editor, document.getElementById('debug-panel'));
-  $('#btn-debug').disabled = !supportsJspi() || !debuggerUI;
-  if (!supportsJspi()) $('#btn-debug').title = 'Этот браузер не поддерживает JSPI';
+  $('#btn-debug').disabled = !debuggerUI;
   $('#btn-debug').addEventListener('click', async () => {
     if (window.__runHintOnRun) {
       window.__runHintOnRun();

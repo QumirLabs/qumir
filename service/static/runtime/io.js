@@ -461,7 +461,3 @@ export function qumir_sleep(milliseconds) {
 export function __cxa_atexit() {
   // no-op
 }
-
-export function qumir_sleep_jspi(milliseconds) {
-  return asyncSleep(Math.max(0, Number(milliseconds) || 0));
-}

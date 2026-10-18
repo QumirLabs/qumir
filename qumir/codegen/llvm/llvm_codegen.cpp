@@ -981,10 +981,10 @@ std::unique_ptr<ILLVMModuleArtifacts> TLLVMCodeGen::Emit(TModule& module, int op
         if (!shouldDefine(f.Name) && !function->isDeclaration()) {
             function->setLinkage(llvm::Function::AvailableExternallyLinkage);
         }
-        if (funcIdx == module.ModuleConstructorFunctionId) {
+        if (funcIdx == module.ModuleConstructorFunctionId && !f.IsCoroutine) {
             function->setLinkage(llvm::Function::InternalLinkage);
             ctorFunctions.push_back(function);
-        } else if (funcIdx == module.ModuleDestructorFunctionId) {
+        } else if (funcIdx == module.ModuleDestructorFunctionId && !f.IsCoroutine) {
             function->setLinkage(llvm::Function::InternalLinkage);
             dtorFunctions.push_back(function);
         }

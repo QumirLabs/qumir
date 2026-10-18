@@ -90,7 +90,7 @@ async function compile(source, headers) {
 
 try {
   browser = await puppeteer.launch({ headless: true, args: ['--ignore-certificate-errors'] });
-  const page = await openPage();
+  const page = await openPage(true);
   const compilations = [];
   page.on('response', response => {
     if (!response.url().endsWith('/api/compile-wasm') || !response.ok()) return;
@@ -103,18 +103,18 @@ try {
       };
     }));
   });
-  assert.equal(await page.evaluate(() => typeof WebAssembly.Suspending), 'function');
+  assert.equal(await page.evaluate(() => typeof WebAssembly.Suspending), 'undefined');
   const simple = 'алг цел main\nнач\n  цел x\n  x := twice(21)\n  вывод x, нс\n  знач := x\nкон\n\n'
     + 'алг цел twice(цел n)\nнач\n  цел next\n  next := n + 1\n  знач := next * 2\nкон\n';
   for (const header of ['X-Qumir-Debug-Points', 'x-qumir-debug-points', 'x-QuMiR-dEbUg-PoInTs']) {
-    const response = await compile(simple, { [header]: '1', 'x-qumir-o': '3', 'x-qumir-async-mode': 'jspi' });
+    const response = await compile(simple, { [header]: '1', 'x-qumir-o': '3' });
     assert.equal(response.status, 200, response.body.toString());
     assert.equal(response.headers['x-qumir-o'], '0');
     assert.equal(WebAssembly.Module.customSections(new WebAssembly.Module(response.body), 'qumir.debug').length, 1);
   }
   const core = await compile('(block (fun main () -> i64 (block (return 42))))', { 'x-qumir-syntax': 'core' });
   assert.equal(core.status, 200, core.body.toString());
-  const coroutine = await compile(simple, { 'x-qumir-o': '3', 'x-qumir-async-mode': 'coroutine' });
+  const coroutine = await compile(simple, { 'x-qumir-o': '3' });
   assert.equal(coroutine.status, 200, coroutine.body.toString());
   assert.equal(coroutine.headers['x-qumir-o'], '3');
   const coroutineModule = new WebAssembly.Module(coroutine.body);
@@ -164,6 +164,7 @@ try {
   await page.click('[data-debug-action="continue"]');
   await finished(page);
   assert.equal((await page.$eval('#stdout', el => el.textContent)).trim(), '44');
+  assert.match(await page.$eval('#errors', el => el.textContent), /вернула: 44/);
   assert.equal(await page.$eval('.q-debug-tooltip', el => el.hidden), true);
   assert.equal(await page.evaluate(() => document.querySelector('section.io').getBoundingClientRect().left
     >= document.querySelector('.workspace-main-row').getBoundingClientRect().right), true);
@@ -282,6 +283,40 @@ try {
     if (module === 'Рисователь') assert.match(await page.$eval('#stdout', el => el.textContent), /20 30/);
   }
 
+  // Async imports and IR-promoted calls must share the same scheduler.
+  await code(page, sleepSource);
+  await page.click('#btn-debug');
+  await paused(page);
+  await page.click('[data-debug-action="continue"]');
+  await finished(page);
+  assert.match(await page.$eval('#stdout', el => el.textContent), /async/);
+
+  const globals = '(block\n (var x = (call init))\n'
+    + ' (fun main () (block (output x "\\n")))\n'
+    + ' (fun init () -> i64 (block (return 42))))\n';
+  await code(page, globals, true);
+  await page.click('#btn-debug');
+  await paused(page);
+  await page.click('[data-debug-action="continue"]');
+  await finished(page);
+  assert.match(await page.$eval('#stdout', el => el.textContent), /42/);
+
+  for (const [type, literal, expected] of [
+    ['вещ', '2.5', '2.500000000000000'],
+    ['лит', '"hello"', 'hello'],
+    ['лог', 'да', '1'],
+  ]) {
+    await code(page, `алг ${type} first\nнач\n  знач := main\nкон\n`
+      + `алг ${type} main\nнач\n  знач := ${literal}\nкон\n`);
+    await page.click('#btn-debug');
+    await paused(page);
+    await page.click('[data-debug-action="continue"]');
+    await finished(page);
+    const result = await page.$eval('#errors', el => el.textContent);
+    assert.match(result, /Функция "first" вернула:/);
+    assert.ok(result.includes(expected), result);
+  }
+
   const printerResult = await page.evaluate(async () => {
     const { ValuePrinter } = await import('./runtime/value_printer.js');
     const memory = new WebAssembly.Memory({ initial: 1 });
@@ -295,18 +330,18 @@ try {
   assert.deepEqual(printerResult, ['9007199254740993', '9007199254740993']);
 
   const fallback = await openPage(true);
-  assert.equal(await fallback.$eval('#btn-debug', el => el.disabled), true);
-  let mode;
-  fallback.on('request', request => {
-    if (request.url().endsWith('/api/compile-wasm')) mode = request.headers()['x-qumir-async-mode'];
-  });
+  assert.equal(await fallback.$eval('#btn-debug', el => el.disabled), false);
+  await code(fallback, simple);
+  await fallback.click('#btn-debug');
+  await paused(fallback);
+  await fallback.click('#btn-stop');
+  await finished(fallback);
   await code(fallback, sleepSource);
   await fallback.click('#btn-run');
   await finished(fallback);
-  assert.equal(mode, 'coroutine');
   assert.match(await fallback.$eval('#stdout', el => el.textContent), /async/);
   assert.deepEqual(errors, []);
-  console.log(`${await browser.version()}: stepping, recursive stack, references, locals, hover, shadowing, Pause/Stop, keyboard, graphics, JSPI and coroutine fallback passed`);
+  console.log(`${await browser.version()}: stepping, recursive stack, references, locals, hover, shadowing, Pause/Stop, keyboard, graphics, coroutines without browser suspension extensions passed`);
 } catch (error) {
   for (const page of await browser?.pages() || []) {
     console.error('STATE', await page.evaluate(() => ({panel:document.querySelector('#debug-panel')?.innerText,stdout:document.querySelector('#stdout')?.innerText,errors:document.querySelector('[data-io-pane=errors]')?.innerText || document.querySelector('#errors')?.innerText})));

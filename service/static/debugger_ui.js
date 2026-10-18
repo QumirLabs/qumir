@@ -1,6 +1,5 @@
 import { Debugger } from './runtime/debugger.js';
 import { ValuePrinter } from './runtime/value_printer.js';
-import { supportsJspi } from './runtime/execution_session.js';
 
 export class DebuggerUI {
   constructor(editor, panel) {
@@ -18,7 +17,7 @@ export class DebuggerUI {
     document.body.append(this.tooltip);
     this.editor.setOption('gutters', [...(editor.getOption('gutters') || []), 'q-debug-gutter']);
     editor.on('gutterClick', (cm, line, gutter) => {
-      if (gutter !== 'q-debug-gutter' || !supportsJspi()) return;
+      if (gutter !== 'q-debug-gutter') return;
       if (this.breakpoints.has(line + 1)) this.breakpoints.delete(line + 1);
       else this.breakpoints.add(line + 1);
       this.drawBreakpoints();

@@ -503,75 +503,54 @@ export function __setCellProperties(x, y, props = {}) {
 
 // Runtime API functions (exported for WASM)
 
-function _robotOp(execute, jspi = false) {
-  if (jspi) return execute();
+function _robotOp(execute) {
   if (!__futureRuntime) { execute(); return 0; }
   const h = __futureRuntime.allocFuture();
   __futureRuntime.enqueuePendingOp({ h, execute });
   return h;
 }
 
-export function robot_left(jspi = false) {
+export function robot_left() {
   const locator = currentLocator();
   return _robotOp(() => {
     ensureFieldLoaded();
     if (field.hasWallLeft()) robotCrash('left', 'слева стена', locator);
     field.robotX--;
-  }, jspi);
+  });
 }
 
-export function robot_left_jspi() {
-  return robot_left(true);
-}
-
-export function robot_right(jspi = false) {
+export function robot_right() {
   const locator = currentLocator();
   return _robotOp(() => {
     ensureFieldLoaded();
     if (field.hasWallRight()) robotCrash('right', 'справа стена', locator);
     field.robotX++;
-  }, jspi);
+  });
 }
 
-export function robot_right_jspi() {
-  return robot_right(true);
-}
-
-export function robot_up(jspi = false) {
+export function robot_up() {
   const locator = currentLocator();
   return _robotOp(() => {
     ensureFieldLoaded();
     if (field.hasWallUp()) robotCrash('up', 'сверху стена', locator);
     field.robotY--;
-  }, jspi);
+  });
 }
 
-export function robot_up_jspi() {
-  return robot_up(true);
-}
-
-export function robot_down(jspi = false) {
+export function robot_down() {
   const locator = currentLocator();
   return _robotOp(() => {
     ensureFieldLoaded();
     if (field.hasWallDown()) robotCrash('down', 'снизу стена', locator);
     field.robotY++;
-  }, jspi);
+  });
 }
 
-export function robot_down_jspi() {
-  return robot_down(true);
-}
-
-export function robot_paint(jspi = false) {
+export function robot_paint() {
   return _robotOp(() => {
     ensureFieldLoaded();
     field.paint();
-  }, jspi);
-}
-
-export function robot_paint_jspi() {
-  return robot_paint(true);
+  });
 }
 
 export function robot_left_free() {

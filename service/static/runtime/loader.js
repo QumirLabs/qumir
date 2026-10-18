@@ -1,4 +1,4 @@
-import { ExecutionSession, supportsJspi, bindJspiImports } from './execution_session.js';
+import { ExecutionSession, bindDebugImport } from './execution_session.js';
 
 let browserIo = null;
 
@@ -29,9 +29,7 @@ export async function loadRuntime(bytes, options = {}) {
   };
   const runtimeInfo = readSection('qumir.runtime');
   const debugData = readSection('qumir.debug');
-  const jspi = runtimeInfo?.mode === 'jspi' || !!debugData;
-  if (jspi && !supportsJspi()) throw new Error('Этот браузер не поддерживает JSPI');
-  const session = jspi ? new ExecutionSession(options) : null;
+  const session = debugData ? new ExecutionSession(options) : null;
   if (options.debugger) options.debugger.data = debugData;
 
   const [
@@ -88,10 +86,13 @@ export async function loadRuntime(bytes, options = {}) {
     ...(keyboardModule || {}),
   };
   if (session) {
-    bindJspiImports(env, imports, runtimeInfo, session, debugData);
+    bindDebugImport(env, session, futureEnv);
   }
   const instance = await WebAssembly.instantiate(module, { env });
-  if (session) session.instance = instance;
+  if (session) {
+    session.instance = instance;
+    futureEnv.__resetFutures();
+  }
 
   return {
     module,

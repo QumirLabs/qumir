@@ -1,3 +1,4 @@
+#include <qumir/ir/passes/transforms/debug_async.h>
 #include "lower_ast.h"
 #include <qumir/semantics/vector_intrinsics.h>
 #include "qumir/ir/builder.h"
@@ -1778,9 +1779,6 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
                 .AstType = fun->Type,
             };
         }
-        if (Module.DebugOptions.EmitDebugPoints && (Module.HasSourceModules || NAst::IsFutureType(fun->RetType))) {
-            co_return TError(fun->Location, "debug points currently require ordinary functions in one source file");
-        }
         auto coroutineResultType = NAst::FutureResultType(fun->RetType);
         const bool isCoroutine = static_cast<bool>(coroutineResultType);
         auto physicalReturnAstType = isCoroutine
@@ -1814,7 +1812,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
             }
         }
         Builder.ReserveLocals(localCount);
-        if (NAst::TMaybeType<NAst::TStringType>(fun->RetType)) {
+        if (NAst::TMaybeType<NAst::TStringType>(isCoroutine ? coroutineResultType : fun->RetType)) {
             // TODO: remove me
             // clutch: support string returnType
             Module.Functions[Builder.CurrentFunctionIdx()].ReturnTypeIsString = true;
@@ -2336,6 +2334,7 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(const NAst::TExprPtr
         Module.ModuleConstructorFunctionId = constructorFunctionId;
     }
 
+    NPasses::LowerDebugAsync(Module);
     return {};
 }
 

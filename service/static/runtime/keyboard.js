@@ -100,12 +100,6 @@ export function keyboard_reset() {
 
 installKeyboardListener();
 
-export function keyboard_code_jspi() {
-  installKeyboardListener();
-  if (keyQueue.length) return BigInt(keyQueue.shift());
-  return new Promise(resolve => { codeWaiters.push({ resolve }); });
-}
-
 export function __disposeKeyboard() {
   __resetKeyboard();
   if (installed && typeof window !== 'undefined') {
