@@ -10,6 +10,8 @@
   (var __qumir_debug_point_count i64)
   (var __qumir_debug_points <ptr i64>)
   (var __qumir_debug_frames <ptr i64>)
+  (var __qumir_debug_ticks i64)
+  (var __qumir_debug_deadline f64)
 
   (fun __qumir_debug_alloc ((var size i64)) -> <ptr i64>
     (attrs (extern array_create)) (block))
@@ -19,6 +21,14 @@
   ; without awaiting in its body and becoming a coroutine itself.
   (fun __qumir_debug_slow ((var id i32) (var address <ptr void>) (var reason i32)) -> <ptr void>
     (attrs extern) (block))
+  ; Sample the browser's monotonic clock in batches, not at every checkpoint.
+  (fun __qumir_debug_now () -> f64
+    (attrs extern) (block))
+
+  (fun __qumir_debug_reset_interval () -> void
+    (block
+      (= __qumir_debug_ticks 1024)
+      (= __qumir_debug_deadline (+ (call __qumir_debug_now) 10.0))))
 
   (fun __qumir_debug_dispose () -> void
     (block
@@ -40,6 +50,7 @@
       (= __qumir_debug_mode_state 1)
       (= __qumir_debug_target 0)
       (= __qumir_debug_next_frame 0)
+      (call __qumir_debug_reset_interval)
       (= __qumir_debug_enabled 1)
       (return __qumir_debug_points)))
 
@@ -129,4 +140,11 @@
                     (var frame_id = (index __qumir_debug_frames frame))
                     (= pause (call __qumir_debug_should_pause kind descriptor frame_id)))))))))
       (if pause (return (call __qumir_debug_slow id address (cast 1 i32))))
+      (= __qumir_debug_ticks (- __qumir_debug_ticks 1))
+      ; Yield at an instruction/statement so Pause can show the current source location.
+      (if (&& (<= __qumir_debug_ticks 0) (|| (== kind 4) (== kind 5)))
+        (block
+          (= __qumir_debug_ticks 1024)
+          (if (>= (call __qumir_debug_now) __qumir_debug_deadline)
+            (return (call __qumir_debug_slow id address (cast 3 i32))))))
       (return (cast 0 <ptr void>)))))

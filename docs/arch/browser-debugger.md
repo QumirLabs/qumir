@@ -92,12 +92,19 @@ recognizes that value and continues without calling any JS Future helpers. When
 a pause is required, `__qumir_debug_slow(id, address, reason)` synchronously
 returns a JS Future handle; the calling user coroutine awaits that handle. The
 asynchronous operation is represented by the Future, without allocating a WASM
-coroutine frame for the wrapper. Reason 1 requests a pause; reason 2 requests Stop.
+coroutine frame for the wrapper. Reason 1 requests a pause; reason 2 requests Stop;
+reason 3 yields to the browser without pausing.
 
 Ordinary Run and Debug both use `ExecutionSession` to drive the existing Future
-queue. Only stopping checkpoints enter that queue. There is no periodic yield
-in `debug_point`: browser events, including the buttons that set Pause/Stop
-flags, run when graphics, sleep or another asynchronous operation yields control.
+queue. The WASM checkpoint also samples `__qumir_debug_now` (the browser's monotonic
+clock) every 1024 points, at an instruction or statement. After 10 ms of execution,
+it returns a yielding Future. The session yields through a browser task, allowing
+Pause/Stop input to run even in a pure computation loop. A pending Pause stops at
+that checkpoint before computation resumes. The interval is reset at call entry,
+after a session timer fires, and on resuming a debugger pause. Synchronous operations
+and already settled Promises preserve the budget because they do not let browser
+input run. Other external waits can cause an extra timed yield on return to WASM.
+The interval is approximate: a clock sample or a long instruction can delay it.
 Stop also cancels an already pending Future, then discards the instance.
 
 `Debugger` reads the WASM stack and variable addresses only when paused; the
@@ -122,6 +129,8 @@ Run `node test/test_browser_debugger.mjs` from the repository root for the brows
 test. It starts the C++ server and headless Chrome with suspension extensions
 disabled; `QUMIR_TEST_URL` can select a running server. A paused screenshot is
 written to `build/browser_debugger.png`. The test also exercises deep WASM frame
-buffer growth, asserts zero JS checkpoints during an uninterrupted Continue,
+buffer growth, asserts zero stopping JS checkpoints during an uninterrupted Continue,
+checks timed yields and Pause/Stop in a loop with no asynchronous operations,
+verifies that synchronous and microtask-only graphics operations preserve the budget,
 and checks the compilation spinner on success, failure and cancellation at
 desktop and mobile sizes.

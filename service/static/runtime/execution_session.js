@@ -10,6 +10,7 @@ export class ExecutionSession {
     this.controller = new AbortController();
     this.lastRender = performance.now();
     this.debugCallbacks = 0;
+    this.debugYields = 0;
     this.instance = null;
   }
 
@@ -39,6 +40,7 @@ export class ExecutionSession {
       const abort = () => { clearTimeout(timer); reject(signal.reason); };
       const timer = setTimeout(() => {
         signal.removeEventListener('abort', abort);
+        this.instance?.exports.__qumir_debug_reset_interval?.();
         resolve();
       }, milliseconds);
       signal.addEventListener('abort', abort, { once: true });
@@ -69,13 +71,26 @@ export class ExecutionSession {
   checkpoint(id, address) {
     this.check();
     const paused = this.debugger?.point(id, address);
-    if (paused instanceof Promise) return this.wait(paused);
+    if (paused instanceof Promise) {
+      return this.wait(paused).then(value => {
+        this.instance?.exports.__qumir_debug_reset_interval?.();
+        return value;
+      });
+    }
     return undefined;
+  }
+
+  async yieldCheckpoint(id, address) {
+    // A browser task boundary lets queued input update the WASM control flags.
+    await this.sleep(0);
+    this.check();
+    if (this.debugger?.pauseRequested) return this.checkpoint(id, address);
   }
 
   async call(fn, args = [], returnType = 'void') {
     this.check();
     const runtime = this.futureRuntime;
+    this.instance.exports.__qumir_debug_reset_interval?.();
     const raw = fn(...args);
     if (!raw) return;
     const future = runtime.__qumir_wrap_coro(raw, 0);
@@ -89,6 +104,7 @@ export class ExecutionSession {
             : this.operation(execute);
           const value = result instanceof Promise ? await this.wait(result) : result;
           this.check();
+          // Synchronous operations and settled Promises do not let input events run.
           runtime.resolveFuture(h, value);
         } else {
           runtime.__qumir_future_resume(future);
@@ -133,15 +149,17 @@ export function bindDebugImport(env, session, futureRuntime) {
   const checkpoint = (id, address, reason = 1) => {
     session.check();
     if (reason === 2) throw new ExecutionStopped();
-    ++session.debugCallbacks;
+    if (reason === 3) ++session.debugYields;
+    else ++session.debugCallbacks;
     const h = futureRuntime.allocFuture();
     futureRuntime.enqueuePendingOp({
       h,
       checkpoint: true,
-      execute: () => session.checkpoint(id, address),
+      execute: () => reason === 3 ? session.yieldCheckpoint(id, address) : session.checkpoint(id, address),
     });
     return h;
   };
   env.__qumir_debug_point = checkpoint;
   env.__qumir_debug_slow = checkpoint;
+  env.__qumir_debug_now = () => performance.now();
 }

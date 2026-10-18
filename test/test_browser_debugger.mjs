@@ -238,12 +238,13 @@ try {
   await page.click('#btn-stop');
   await finished(page);
 
-  await code(page, loop.replace('x < 3', '1 = 1').replace('    x := x + 1', '    ждать(0)\n    x := x + 1'));
+  await code(page, loop.replace('x < 3', '1 = 1'));
   await page.click('#btn-debug');
   await paused(page);
   await page.click('[data-debug-action="continue"]');
   await page.click('[data-debug-action="pause"]');
   await paused(page);
+  await page.click('[data-debug-action="continue"]');
   await page.click('#btn-stop');
   await finished(page);
 
@@ -352,29 +353,52 @@ try {
   }
 
   const nativeLoop = 'алг цел first\nнач\n  цел i, x\n  x := 0\n'
-    + '  нц для i от 1 до 100000\n    x := x + i\n  кц\n  знач := x\nкон\n';
-  const fastPath = await page.evaluate(async source => {
-    const { loadRuntime } = await import('./runtime/loader.js');
-    const { Debugger } = await import('./runtime/debugger.js');
-    const bytes = await fetch('/api/compile-wasm', {
-      method: 'POST', headers: { 'Content-Type': 'text/plain', 'X-Qumir-Debug-Points': '1' }, body: source,
-    }).then(response => response.arrayBuffer());
-    const debuggerInstance = new Debugger();
-    const runtime = await loadRuntime(bytes, { debugger: debuggerInstance });
-    runtime.arrayEnv.__bindMemory(runtime.instance.exports.memory);
-    runtime.futureEnv.__bindMemory(runtime.instance.exports.memory);
-    runtime.futureEnv.__bindWasm(runtime.instance.exports);
-    debuggerInstance.bindWasm(runtime.instance.exports);
-    debuggerInstance.resume('continue');
-    const started = performance.now();
-    const result = await runtime.session.call(runtime.instance.exports.first, [], 'i64');
-    const output = { result: String(result), callbacks: runtime.session.debugCallbacks, ms: performance.now() - started };
-    runtime.session.finish();
-    return output;
-  }, nativeLoop);
-  assert.equal(fastPath.result, '5000050000');
-  assert.equal(fastPath.callbacks, 0);
-  console.log(`WASM debug Continue: ${Math.round(fastPath.ms)} ms, ${fastPath.callbacks} JS checkpoints`);
+    + '  нц для i от 1 до 1000000\n    x := x + i\n  кц\n  знач := x\nкон\n';
+  const turtleLoop = nativeLoop.replace('алг цел first', 'использовать Черепаха\nалг цел first')
+    .replace('1000000', '100000').replace('    x := x + i', '    влево(0)\n    x := x + i');
+  for (const [name, source, expected, microtask] of [
+    ['WASM debug Continue', nativeLoop, '500000500000', false],
+    ['Synchronous turtle operations', turtleLoop, '5000050000', false],
+    ['Microtask turtle operations', turtleLoop, '5000050000', true],
+  ]) {
+    const fastPath = await page.evaluate(async ({ source, microtask }) => {
+      const { loadRuntime } = await import('./runtime/loader.js');
+      const { Debugger } = await import('./runtime/debugger.js');
+      const bytes = await fetch('/api/compile-wasm', {
+        method: 'POST', headers: { 'Content-Type': 'text/plain', 'X-Qumir-Debug-Points': '1' }, body: source,
+      }).then(response => response.arrayBuffer());
+      const debuggerInstance = new Debugger();
+      const runtime = await loadRuntime(bytes, { debugger: debuggerInstance });
+      runtime.arrayEnv.__bindMemory(runtime.instance.exports.memory);
+      runtime.futureEnv.__bindMemory(runtime.instance.exports.memory);
+      runtime.futureEnv.__bindWasm(runtime.instance.exports);
+      runtime.session.lastRender = Infinity;
+      runtime.turtleModule?.__bindFutureRuntime({
+        ...runtime.futureEnv,
+        enqueuePendingOp(op) {
+          runtime.futureEnv.enqueuePendingOp(microtask ? { ...op, execute: () => Promise.resolve(op.execute()) } : op);
+        },
+      });
+      debuggerInstance.bindWasm(runtime.instance.exports);
+      debuggerInstance.resume('continue');
+      let timerRan = false;
+      const timer = setTimeout(() => { timerRan = true; }, 0);
+      const started = performance.now();
+      const result = await runtime.session.call(runtime.instance.exports.first, [], 'i64');
+      clearTimeout(timer);
+      const output = {
+        result: String(result), callbacks: runtime.session.debugCallbacks,
+        yields: runtime.session.debugYields, timerRan, ms: performance.now() - started,
+      };
+      runtime.session.finish();
+      return output;
+    }, { source, microtask });
+    assert.equal(fastPath.result, expected);
+    assert.equal(fastPath.callbacks, 0);
+    assert.ok(fastPath.yields > 0 && fastPath.yields < 100, `${name}: ${JSON.stringify(fastPath)}`);
+    assert.equal(fastPath.timerRan, true);
+    console.log(`${name}: ${Math.round(fastPath.ms)} ms, ${fastPath.callbacks} stopping checkpoints, ${fastPath.yields} timed yields`);
+  }
 
   const deepStack = 'алг цел first\nнач\n  знач := descend(40)\nкон\n'
     + 'алг цел descend(цел n)\nнач\n  если n > 0 то\n    знач := descend(n - 1)\n'
