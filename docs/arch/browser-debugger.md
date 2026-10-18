@@ -39,9 +39,11 @@ and after the call; no point is inserted between `arg` and `call`, or before a
 initialization/cleanup functions do not emit checkpoints themselves.
 
 `LowerDebugAsync` runs on the complete module after AST lowering, including at
-O0. It changes the debug import's return type to a Future pointer, discovers the
-transitive caller closure to a fixed point, and promotes synchronous callers to
-coroutines. This handles forward calls, recursion and mutually recursive cycles.
+O0 and without debug points. Functions containing `await`, including synthetic
+module initialization/cleanup, are promoted to coroutines. When debug points are
+enabled, the pass also changes the debug import's return type to a Future pointer.
+It discovers the transitive caller closure to a fixed point and promotes callers
+that need to await newly asynchronous calls. This handles forward calls, recursion and mutually recursive cycles.
 Each affected call becomes a call producing a Future followed by `await` with
 the original destination and result type. Existing explicit Future calls retain
 their semantics. Instruction debug locations are preserved. Optimization passes
@@ -55,10 +57,12 @@ Coroutine module constructors/destructors are exported and named in
 `qumir.runtime` so the host can await them before/after the entry point. The
 entry remains the first user function in declaration order, regardless of its
 name; metadata preserves that order across coroutine splitting and linking.
-The entry result type lets the host read its promise before destroying the frame.
+Metadata records whether this specific entry is a coroutine, independently of
+other functions in the module. Its result type lets the host read the promise
+before destroying the frame.
 
-`ExecutionSession` schedules debug imports in the same JS future queue as
-executor operations. It drives WASM through `__qumir_future_*`, owns cancellation,
+Ordinary Run and Debug both use `ExecutionSession`, which schedules debug imports
+in the same JS future queue as executor operations. It drives WASM through `__qumir_future_*`, owns cancellation,
 animation pacing and event-loop yields. Checkpoints can pause on a Promise;
 Stop cancels the session and discards the instance. Debugging is available
 without a browser feature check.

@@ -83,6 +83,37 @@ TEST(DebugAsync, ExistingFutureCallIsNotAwaitedTwice) {
     EXPECT_EQ(instructions[3].Operands[0].Tmp, future);
 }
 
+TEST(DebugAsync, AwaitPromotesLifecycleAndCallersWithoutDebugPoints) {
+    TModule module;
+    const int voidType = module.Types.I(EKind::Void);
+    const int futureType = module.Types.Ptr(voidType);
+    TBuilder builder(module);
+    module.ModuleConstructorFunctionId = builder.NewFunction("$$module_constructor", {}, -1);
+    builder.SetReturnType(voidType);
+    auto future = builder.Emit1("call"_op, {TImm{100}});
+    builder.SetType(future, futureType);
+    builder.Emit0("await"_op, {future});
+    builder.Emit0("ret"_op, {});
+    builder.NewFunction("caller", {}, 1);
+    builder.SetReturnType(voidType);
+    builder.Emit0("call"_op, {TImm{-1}});
+    builder.Emit0("ret"_op, {});
+
+    NPasses::LowerDebugAsync(module);
+    const auto& constructor = module.Functions[0];
+    EXPECT_TRUE(constructor.IsCoroutine);
+    EXPECT_EQ(constructor.CoroutineResultTypeId, voidType);
+    EXPECT_EQ(constructor.ReturnTypeId, futureType);
+    ASSERT_EQ(constructor.Blocks[0].Instrs.size(), 3);
+    EXPECT_EQ(constructor.Blocks[0].Instrs[0].Dest, future);
+    const auto& caller = module.Functions[1];
+    EXPECT_TRUE(caller.IsCoroutine);
+    ASSERT_EQ(caller.Blocks[0].Instrs.size(), 3);
+    EXPECT_EQ(caller.Blocks[0].Instrs[1].Op, "await"_op);
+    NPasses::LowerDebugAsync(module);
+    EXPECT_EQ(module.Functions[1].Blocks[0].Instrs.size(), 3);
+}
+
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

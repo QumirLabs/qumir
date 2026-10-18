@@ -29,7 +29,7 @@ export async function loadRuntime(bytes, options = {}) {
   };
   const runtimeInfo = readSection('qumir.runtime');
   const debugData = readSection('qumir.debug');
-  const session = debugData ? new ExecutionSession(options) : null;
+  const session = new ExecutionSession(options);
   if (options.debugger) options.debugger.data = debugData;
 
   const [
@@ -85,14 +85,13 @@ export async function loadRuntime(bytes, options = {}) {
     ...(colorsModule || {}),
     ...(keyboardModule || {}),
   };
-  if (session) {
+  session.futureRuntime = futureEnv;
+  if (debugData) {
     bindDebugImport(env, session, futureEnv);
   }
   const instance = await WebAssembly.instantiate(module, { env });
-  if (session) {
-    session.instance = instance;
-    futureEnv.__resetFutures();
-  }
+  session.instance = instance;
+  futureEnv.__resetFutures();
 
   return {
     module,

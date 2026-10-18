@@ -9,24 +9,18 @@ namespace NPasses {
 using namespace NLiterals;
 
 void LowerDebugAsync(TModule& module) {
-    if (!module.DebugOptions.EmitDebugPoints) {
-        return;
-    }
     const int futureType = module.Types.Ptr(module.Types.I(EKind::Void));
     std::unordered_set<int> promoted;
     for (auto& external : module.ExternalFunctions) {
-        if (external.Name == "__qumir_debug_point") {
-            if (external.ReturnTypeId == futureType) {
-                return;
-            }
+        if (
+            module.DebugOptions.EmitDebugPoints
+            && external.Name == "__qumir_debug_point"
+            && external.ReturnTypeId != futureType)
+        {
             external.ReturnTypeId = futureType;
             promoted.insert(external.SymId);
         }
     }
-    if (promoted.empty()) {
-        return;
-    }
-
     // Discover the full caller closure before changing instructions so recursive
     // cycles and forward calls use the same physical ABI on every edge.
     bool changed;
@@ -39,9 +33,10 @@ void LowerDebugAsync(TModule& module) {
             bool suspends = false;
             for (const auto& block : function.Blocks) {
                 for (const auto& instr : block.Instrs) {
-                    suspends |= instr.Op == "call"_op && instr.Size() > 0
-                        && instr.Operands[0].Type == TOperand::EType::Imm
-                        && promoted.contains(instr.Operands[0].Imm.Value);
+                    suspends |= instr.Op == "await"_op
+                        || (instr.Op == "call"_op && instr.Size() > 0
+                            && instr.Operands[0].Type == TOperand::EType::Imm
+                            && promoted.contains(instr.Operands[0].Imm.Value));
                 }
             }
             if (suspends) {
@@ -54,6 +49,9 @@ void LowerDebugAsync(TModule& module) {
         }
     } while (changed);
 
+    if (promoted.empty()) {
+        return;
+    }
     for (auto& function : module.Functions) {
         for (auto& block : function.Blocks) {
             std::vector<TInstr> instructions;

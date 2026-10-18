@@ -16,7 +16,6 @@ let currentAbort = null;
 // Set to true by the Stop button; cleared at the start of each run.
 let __coroStopRequested = false;
 let __coroRunning = false;
-let __coroStopSignal = null;
 // Output view selection for the compiler pane (text or turtle)
 let __compilerOutputMode = 'text';
 let __turtleCanvas = null;
@@ -95,31 +94,12 @@ function requestStopRunningProgram() {
 
 function resetCoroStopSignal() {
   __coroStopRequested = false;
-  __coroStopSignal = {};
-  __coroStopSignal.promise = new Promise(resolve => {
-    __coroStopSignal.resolve = resolve;
-  });
 }
 
 function signalCoroStop() {
   executionSession?.stop();
   executionAbort?.abort();
   __coroStopRequested = true;
-  if (__coroStopSignal && typeof __coroStopSignal.resolve === 'function') {
-    __coroStopSignal.resolve();
-    __coroStopSignal.resolve = null;
-  }
-}
-
-function waitUnlessStopped(promise) {
-  if (__coroStopRequested) return Promise.resolve({ stopped: true });
-  const stopPromise = __coroStopSignal
-    ? __coroStopSignal.promise.then(() => ({ stopped: true }))
-    : new Promise(() => {});
-  return Promise.race([
-    Promise.resolve(promise).then(value => ({ stopped: false, value })),
-    stopPromise
-  ]);
 }
 
 const sample = document.getElementById('code')?.value || '';
@@ -3026,7 +3006,6 @@ async function runWasm(debug = false) {
   // A run that fails to compile must not leave the previous program's output behind.
   $('#stdout').textContent = '';
   resetCoroStopSignal();
-  let runAsCoroutine = false;
   let runtime = null;
   let compiled = false;
   let outcome = 'run_ok';
@@ -3224,21 +3203,11 @@ async function runWasm(debug = false) {
           if (typeof resultEnv.setStringRuntime === 'function') {
             resultEnv.setStringRuntime(stringEnv);
           }
-          const retType = executionSession
-            ? runtime.runtimeInfo?.entryReturnType
-            : resultEnv.wasmReturnType(bytes, name);
-          runAsCoroutine = !executionSession && shouldRunWasmCoroutine({
-            instance,
-            returnType: retType,
-            algType,
-            usesRobot,
-            usesTurtle,
-            usesDrawer,
-            usesPainter
-          });
-          const res = runAsCoroutine
-            ? await runWasmCoroutine({ instance, entryFn: fn, args: parsed, usesRobot, usesTurtle, usesPainter, futureEnv })
-            : executionSession ? await executionSession.call(fn, parsed, retType) : fn(...parsed);
+          const retType = runtime.runtimeInfo?.entryReturnType
+            ?? resultEnv.wasmReturnType(bytes, name);
+          const res = runtime.runtimeInfo?.entryIsCoroutine
+            ? await executionSession.call(fn, parsed, retType)
+            : fn(...parsed);
           const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           const elapsedUs = Math.round((t1 - t0) * 1000);
           const normalized = resultEnv.normalizeReturnValue(res, {
@@ -3246,7 +3215,7 @@ async function runWasm(debug = false) {
             algType: runtime.runtimeInfo?.entryReturnsString ? 'лит' : algType
           });
           // Don't print to stdout, save for errors pane
-          window.__lastRunInfo = { name, normalized, elapsedUs, hasReturn: retType !== 'void' && !runAsCoroutine };
+          window.__lastRunInfo = { name, normalized, elapsedUs, hasReturn: retType !== 'void' };
         }
       } else {
         out += 'no exported functions to invoke\n';
@@ -3365,127 +3334,6 @@ function setCoroRunning(running) {
   if (runBtn) runBtn.disabled = running;
   const debugBtn = document.getElementById('btn-debug');
   if (debugBtn) debugBtn.disabled = running || !debuggerUI;
-}
-
-function shouldRunWasmCoroutine({ instance, returnType, algType, usesRobot, usesTurtle, usesDrawer, usesPainter }) {
-  // Prefer the explicit sentinel emitted by the compiler: a global named
-  // __qumir_is_coroutine is present iff the module has coroutine functions.
-  const exports = instance && instance.exports;
-  if (exports && exports.__qumir_is_coroutine !== undefined) {
-    return true;
-  }
-  // Fallback heuristic for older WASM without the sentinel: the entry function
-  // returns i32 (the coroutine handle), the source-level return type is void
-  // (algType === null), and the module uses a visual executor.
-  return returnType === 'i32'
-    && algType === null
-    && (usesRobot || usesTurtle || usesDrawer || usesPainter);
-}
-
-async function runWasmCoroutine({ instance, entryFn, args, usesRobot, usesTurtle, usesPainter, futureEnv }) {
-  if (!futureEnv) throw new Error('runWasmCoroutine requires futureEnv');
-
-  const getStepDelay = () => {
-    if (usesRobot   && __robotModule   && typeof __robotModule.__getAnimationDelay   === 'function') return __robotModule.__getAnimationDelay();
-    if (usesTurtle  && __turtleModule  && typeof __turtleModule.__getAnimationDelay  === 'function') return __turtleModule.__getAnimationDelay();
-    if (usesPainter && __painterModule && typeof __painterModule.__getAnimationDelay === 'function') return __painterModule.__getAnimationDelay();
-    return 0;
-  };
-
-  const renderStep = () => {
-    if (usesRobot   && typeof renderRobotField === 'function') renderRobotField();
-    if (usesTurtle  && __turtleModule  && typeof __turtleModule.__onCanvasShown  === 'function') __turtleModule.__onCanvasShown();
-    if (usesPainter && __painterModule && typeof __painterModule.__flushPainter  === 'function') __painterModule.__flushPainter();
-  };
-
-  // Wrap the raw coro frame in a JS-managed future so the entire event loop
-  // goes through the public __qumir_future_* API — same as the C++ JIT runner.
-  let future = null;
-  let destroyed = false;
-  const isDone  = () => futureEnv.__qumir_future_done(future) !== 0;
-  const destroy = () => {
-    if (destroyed) return;
-    destroyed = true;
-    if (future !== null) futureEnv.__qumir_future_destroy(future);
-  };
-
-  // Reset the JS future table for this run.
-  futureEnv.__resetFutures();
-
-  setCoroRunning(true);
-  try {
-    // Run WASM coro up to its first await.  The entry function returns a raw
-    // coro frame pointer; wrap it immediately so all further operations use the
-    // __qumir_future_* API.
-    const rawHandle = entryFn(...args);
-    if (!rawHandle) return undefined;
-    future = futureEnv.__qumir_wrap_coro(rawHandle, 0);
-
-    const FLUSH_INTERVAL_MS = 1000;
-    let lastFlush = performance.now();
-
-    while (!isDone() && !__coroStopRequested) {
-      const delay = getStepDelay();
-
-      if (futureEnv.hasPendingOp()) {
-        // Execute the next pending JS action and resolve its future.
-        // resolveFuture() internally calls __qumir_coro_resume(caller),
-        // advancing the WASM coro to the next await or completion.
-        const { h, execute } = futureEnv.shiftPendingOp();
-        const op = execute();
-        const isAsyncOp = op && typeof op.then === 'function';
-        if (isAsyncOp) {
-          renderStep();
-          lastFlush = performance.now();
-        }
-        const waited = isAsyncOp
-          ? await waitUnlessStopped(op)
-          : { stopped: false, value: op };
-        if (waited.stopped || __coroStopRequested) {
-          if (typeof futureEnv.__qumir_future_destroy === 'function') {
-            futureEnv.__qumir_future_destroy(h);
-          }
-          break;
-        }
-        const opResult = waited.value;
-        futureEnv.resolveFuture(h, opResult);
-      } else if (!isDone()) {
-        // No pending external op: coro may be polling a wrapped child coro.
-        // Resume via the public API so it re-checks await_ready.
-        futureEnv.__qumir_future_resume(future);
-      }
-
-      if (delay === 0) {
-        // Batch: accumulate steps, flush display every second.
-        const now = performance.now();
-        if (now - lastFlush >= FLUSH_INTERVAL_MS) {
-          renderStep();
-          await new Promise(r => setTimeout(r, 0));
-          lastFlush = performance.now();
-        }
-      } else {
-        // Animated: render after each step, wait configured delay.
-        renderStep();
-        lastFlush = performance.now();
-        const waited = await waitUnlessStopped(new Promise(r => setTimeout(r, delay)));
-        if (waited.stopped || __coroStopRequested) break;
-      }
-    }
-  } finally {
-    destroy();
-    if (__coroStopRequested) {
-      if (__keyboardModule && typeof __keyboardModule.__resetKeyboard === 'function') {
-        __keyboardModule.__resetKeyboard();
-      }
-      if (futureEnv && typeof futureEnv.__resetFutures === 'function') {
-        futureEnv.__resetFutures();
-      }
-    }
-    renderStep();
-    setCoroRunning(false);
-  }
-
-  return undefined;
 }
 
 function loadState() {

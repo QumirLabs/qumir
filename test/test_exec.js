@@ -10,6 +10,7 @@
 //   each .oz file must define <main>.
 //   Goldens: .result for return value, optional .result.stdout for printed output.
 
+import { ExecutionSession } from '../service/static/runtime/execution_session.js';
 import fs from 'fs';
 import path from 'path';
 import cp from 'child_process';
@@ -597,41 +598,6 @@ async function instantiateWasm(wasmPath, ioCapture, ioRuntime) {
   });
 }
 
-async function runWasmCoroutine(instance, entryFn, memory, algType) {
-  const futureRuntime = await loadFutureRuntimeModule();
-  if (!futureRuntime) throw new Error('future runtime is unavailable');
-  if (typeof futureRuntime.__resetFutures === 'function') {
-    futureRuntime.__resetFutures();
-  }
-
-  const rawHandle = entryFn();
-  if (!rawHandle) return undefined;
-  const future = futureRuntime.__qumir_wrap_coro(rawHandle, 0);
-  try {
-    while (futureRuntime.__qumir_future_done(future) === 0) {
-      if (futureRuntime.hasPendingOp && futureRuntime.hasPendingOp()) {
-        const { h, execute } = futureRuntime.shiftPendingOp();
-        const opResult = await execute();
-        futureRuntime.resolveFuture(h, opResult);
-      } else {
-        futureRuntime.__qumir_future_resume(future);
-      }
-    }
-
-    if (!algType || algType === 'void') return undefined;
-    if (typeof instance.exports.__qumir_coro_promise_ptr !== 'function') return undefined;
-    const promisePtr = instance.exports.__qumir_coro_promise_ptr(rawHandle) >>> 0;
-    if (!promisePtr) return undefined;
-    const view = new DataView(memory.buffer);
-    if (algType === 'цел') return view.getBigInt64(promisePtr, true);
-    if (algType === 'вещ') return view.getFloat64(promisePtr, true);
-    if (algType === 'лог') return view.getUint8(promisePtr) !== 0 ? 1 : 0;
-    return view.getInt32(promisePtr, true);
-  } finally {
-    futureRuntime.__qumir_future_destroy(future);
-  }
-}
-
 async function executeCase(wasmPath, algName, caseBase, algType) {
   const ioCapture = { stdout: '' };
   const bytes = fs.readFileSync(wasmPath);
@@ -641,9 +607,17 @@ async function executeCase(wasmPath, algName, caseBase, algType) {
   const stdoutStream = new CaptureOutputStream(ioCapture);
   const ioRuntime = await loadIoRuntimeModule();
   bindIoStreams(ioRuntime, stdinStream, stdoutStream);
-  const { instance, memory } = await instantiateWasm(wasmPath, ioCapture, ioRuntime);
-  // Call global constructors if present (init_array handlers)
-  if (typeof instance.exports.__wasm_call_ctors === 'function') {
+  const { instance } = await instantiateWasm(wasmPath, ioCapture, ioRuntime);
+  const module = new WebAssembly.Module(bytes);
+  const section = WebAssembly.Module.customSections(module, 'qumir.runtime')[0];
+  const runtimeInfo = section ? JSON.parse(new TextDecoder().decode(section)) : null;
+  const session = new ExecutionSession();
+  session.instance = instance;
+  session.futureRuntime = await loadFutureRuntimeModule();
+  session.futureRuntime.__resetFutures();
+  if (runtimeInfo?.constructorFunction) {
+    await session.call(instance.exports[runtimeInfo.constructorFunction]);
+  } else if (typeof instance.exports.__wasm_call_ctors === 'function') {
     instance.exports.__wasm_call_ctors();
   }
   stdinStream.assertSufficientInput();
@@ -666,9 +640,14 @@ async function executeCase(wasmPath, algName, caseBase, algType) {
       }
     }
   }
-  // Prefer explicit algorithm export name; fallback: first export function.
+  // Use the same entry metadata as the browser, with a fallback for older WASM.
   let fn = null;
-  if (algName && instance.exports[algName]) fn = instance.exports[algName];
+  if (runtimeInfo?.entryPoint && instance.exports[runtimeInfo.entryPoint]) {
+    algName = runtimeInfo.entryPoint;
+    fn = instance.exports[algName];
+  } else if (algName && instance.exports[algName]) {
+    fn = instance.exports[algName];
+  }
   // Additional heuristics for common "main" naming patterns if original name not exported.
   if (!fn) {
     const candidates = ['main','Main','_main','start','нач'];
@@ -700,18 +679,18 @@ async function executeCase(wasmPath, algName, caseBase, algType) {
     fn = instance.exports[algName];
   }
   if (!fn && exportFnNames.length) throw new Error('No executable export found for ' + wasmPath);
-  let ret;
-  if (instance.exports.__qumir_is_coroutine !== undefined) {
-    ret = await runWasmCoroutine(instance, fn, memory, algType);
-  } else {
-    ret = fn();
-  }
-  // Call global destructors if present
-  if (typeof instance.exports.__wasm_call_dtors === 'function') {
+  const retType = runtimeInfo?.entryReturnType ?? resultRuntime.wasmReturnType(bytes, algName);
+  const ret = runtimeInfo?.entryIsCoroutine
+    ? await session.call(fn, [], retType)
+    : fn();
+  if (runtimeInfo?.destructorFunction) {
+    await session.call(instance.exports[runtimeInfo.destructorFunction]);
+  } else if (typeof instance.exports.__wasm_call_dtors === 'function') {
     instance.exports.__wasm_call_dtors();
   }
-  const retType = resultRuntime.wasmReturnType(bytes, algName);
-  return { returnValue: ret, stdout: ioCapture.stdout, exportName: algName, returnType: retType };
+  session.finish();
+  const wasmRetType = retType.startsWith('ptr to ') ? 'i32' : retType;
+  return { returnValue: ret, stdout: ioCapture.stdout, exportName: algName, returnType: wasmRetType };
 }
 
 async function runAll() {

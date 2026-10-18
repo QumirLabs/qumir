@@ -58,6 +58,7 @@ std::string SerializeRuntimeData(const TModule& module) {
         std::ostringstream type;
         module.Types.Print(type, resultType);
         out << ",\"entryPoint\":" << Quote(entry->Name)
+            << ",\"entryIsCoroutine\":" << (entry->IsCoroutine ? "true" : "false")
             << ",\"entryReturnType\":" << Quote(type.str())
             << ",\"entryReturnsString\":" << (entry->ReturnTypeIsString ? "true" : "false");
     }

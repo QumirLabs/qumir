@@ -317,6 +317,40 @@ try {
     assert.ok(result.includes(expected), result);
   }
 
+  // Ordinary Run must distinguish a synchronous entry from unrelated coroutines.
+  await code(page, 'алг цел first\nнач\n  знач := 42\nкон\n'
+    + 'алг other\nнач\n  ждать(1)\nкон\n');
+  await page.click('#btn-run');
+  await finished(page);
+  assert.match(await page.$eval('#errors', el => el.textContent), /Функция "first" вернула: 42/);
+
+  // Ordinary Run reads the entry promise using its source result type.
+  for (const [type, literal, expected] of [
+    ['цел', '42', '42'],
+    ['вещ', '2.5', '2.500000000000000'],
+    ['лит', '"hello"', 'hello'],
+    ['лог', 'да', '1'],
+  ]) {
+    await code(page, `алг ${type} first\nнач\n  ждать(1)\n  знач := ${literal}\nкон\n`);
+    await page.click('#btn-run');
+    await finished(page);
+    const result = await page.$eval('#errors', el => el.textContent);
+    assert.match(result, /Функция "first" вернула:/);
+    assert.ok(result.includes(expected), result);
+  }
+
+  const asyncGlobals = globals.replace('(block (return 42))', '(block (call ждать 1) (return 42))');
+  for (const debug of [false, true]) {
+    await code(page, asyncGlobals, true);
+    await page.click(debug ? '#btn-debug' : '#btn-run');
+    if (debug) {
+      await paused(page);
+      await page.click('[data-debug-action="continue"]');
+    }
+    await finished(page);
+    assert.match(await page.$eval('#stdout', el => el.textContent), /42/);
+  }
+
   const printerResult = await page.evaluate(async () => {
     const { ValuePrinter } = await import('./runtime/value_printer.js');
     const memory = new WebAssembly.Memory({ initial: 1 });
