@@ -93,7 +93,14 @@ void TLLVMModuleArtifacts::Generate(std::ostream& os, bool generateAsm, bool gen
         features = std::move(nativeFeatures);
     }
     std::unique_ptr<llvm::TargetMachine> TM {
-        target->createTargetMachine(triple, cpu, features, opt, RM)
+        target->createTargetMachine(
+            triple,
+            cpu,
+            features,
+            opt,
+            RM,
+            std::nullopt,
+            DebugPoints ? llvm::CodeGenOptLevel::None : llvm::CodeGenOptLevel::Default)
     };
     if (!TM) {
         throw std::runtime_error("createTargetMachine failed");

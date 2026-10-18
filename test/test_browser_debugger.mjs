@@ -351,6 +351,14 @@ try {
     assert.match(await page.$eval('#stdout', el => el.textContent), /42/);
   }
 
+  const nbodyStart = performance.now();
+  await code(page, readFileSync('examples/painter/orbits.kum', 'utf8'));
+  await page.click('#btn-debug');
+  await paused(page);
+  console.log(`N-body compile and first debug pause: ${Math.round(performance.now() - nbodyStart)} ms`);
+  await page.click('#btn-stop');
+  await finished(page);
+
   const printerResult = await page.evaluate(async () => {
     const { ValuePrinter } = await import('./runtime/value_printer.js');
     const memory = new WebAssembly.Memory({ initial: 1 });

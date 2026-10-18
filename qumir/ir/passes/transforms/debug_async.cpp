@@ -1,6 +1,8 @@
 #include "debug_async.h"
 
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace NQumir {
 namespace NIR {
@@ -21,77 +23,55 @@ void LowerDebugAsync(TModule& module) {
             promoted.insert(external.SymId);
         }
     }
-    // Discover the full caller closure before changing instructions so recursive
-    // cycles and forward calls use the same physical ABI on every edge.
-    bool changed;
-    do {
-        changed = false;
-        for (auto& function : module.Functions) {
-            if (function.IsCoroutine) {
-                continue;
-            }
-            bool suspends = false;
-            for (const auto& block : function.Blocks) {
-                for (const auto& instr : block.Instrs) {
-                    suspends |= instr.Op == "await"_op
-                        || (instr.Op == "call"_op && instr.Size() > 0
-                            && instr.Operands[0].Type == TOperand::EType::Imm
-                            && promoted.contains(instr.Operands[0].Imm.Value));
+    // Each call edge is visited once, including recursive cycles.
+    std::unordered_map<int, std::vector<int>> callers;
+    std::vector<int> pending(promoted.begin(), promoted.end());
+    auto promote = [&](TFunction& function) {
+        if (!function.IsCoroutine) {
+            function.IsCoroutine = true;
+            function.CoroutineResultTypeId = function.ReturnTypeId;
+            function.ReturnTypeId = futureType;
+            promoted.insert(function.SymId);
+            pending.push_back(function.SymId);
+        }
+    };
+    for (int index = 0; index < static_cast<int>(module.Functions.size()); ++index) {
+        auto& function = module.Functions[index];
+        for (const auto& block : function.Blocks) {
+            for (const auto& instr : block.Instrs) {
+                if (instr.Op == "await"_op) {
+                    promote(function);
+                } else if (
+                    instr.Op == "call"_op && instr.Size() > 0
+                    && instr.Operands[0].Type == TOperand::EType::Imm)
+                {
+                    callers[instr.Operands[0].Imm.Value].push_back(index);
                 }
             }
-            if (suspends) {
-                function.IsCoroutine = true;
-                function.CoroutineResultTypeId = function.ReturnTypeId;
-                function.ReturnTypeId = futureType;
-                promoted.insert(function.SymId);
-                changed = true;
+        }
+    }
+    for (size_t i = 0; i < pending.size(); ++i) {
+        if (auto it = callers.find(pending[i]); it != callers.end()) {
+            for (int index : it->second) {
+                promote(module.Functions[index]);
             }
         }
-    } while (changed);
+    }
 
     if (promoted.empty()) {
         return;
     }
     for (auto& function : module.Functions) {
         for (auto& block : function.Blocks) {
-            std::vector<TInstr> instructions;
-            std::vector<TInstrDebugInfo> locations;
-            const bool hasLocations = !block.InstrDebugInfo.empty();
-            for (size_t i = 0; i < block.Instrs.size(); ++i) {
-                auto instr = block.Instrs[i];
-                const auto location = i < block.InstrDebugInfo.size()
-                    ? block.InstrDebugInfo[i]
-                    : TInstrDebugInfo{};
+            for (auto& instr : block.Instrs) {
                 if (
                     instr.Op == "call"_op && instr.Size() > 0
                     && instr.Operands[0].Type == TOperand::EType::Imm
                     && promoted.contains(instr.Operands[0].Imm.Value))
                 {
-                    const auto result = instr.Dest;
-                    const TTmp future{function.NextTmpIdx++};
-                    function.SetType(future, futureType);
-                    instr.Dest = future;
-                    instructions.push_back(instr);
-                    TInstr await{
-                        .Op = "await"_op,
-                        .Dest = result,
-                        .Operands = {future},
-                        .OperandCount = 1,
-                    };
-                    instructions.push_back(await);
-                    if (hasLocations) {
-                        locations.push_back(location);
-                        locations.push_back(location);
-                    }
-                } else {
-                    instructions.push_back(instr);
-                    if (hasLocations) {
-                        locations.push_back(location);
-                    }
+                    instr.Op = "await"_op;
                 }
             }
-            block.Instrs = std::move(instructions);
-            block.InstrDebugInfo = std::move(locations);
         }
     }
 }

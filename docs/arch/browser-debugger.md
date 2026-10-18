@@ -42,12 +42,20 @@ initialization/cleanup functions do not emit checkpoints themselves.
 O0 and without debug points. Functions containing `await`, including synthetic
 module initialization/cleanup, are promoted to coroutines. When debug points are
 enabled, the pass also changes the debug import's return type to a Future pointer.
-It discovers the transitive caller closure to a fixed point and promotes callers
-that need to await newly asynchronous calls. This handles forward calls, recursion and mutually recursive cycles.
-Each affected call becomes a call producing a Future followed by `await` with
-the original destination and result type. Existing explicit Future calls retain
+It discovers the transitive caller closure with a reverse call graph and a queue,
+visiting each edge once, including forward calls and recursive cycles. Each
+changed call becomes `await @symbol` by changing its opcode in place. Its
+arguments, destination, result type, instruction storage and debug locations stay
+unchanged. `await %future` continues to wait on an already produced Future. Existing explicit Future calls retain
 their semantics. Instruction debug locations are preserved. Optimization passes
 that promote locals are skipped for debug points so variable addresses stay live.
+
+LLVM codegen shares one ready/suspend loop and a continuation dispatcher across
+all awaits in a function. Void awaits also share their completion and Future
+destruction path. Each checkpoint keeps its original position; only the waiting
+machinery is shared. This avoids generating a separate coroutine suspension state
+and several waiting blocks for every instrumented instruction. Debug artifacts
+use machine code optimization level zero as well as unoptimized source functions.
 
 The custom section holds functions, lexical scope parents, AST local types,
 source identifier bindings and point descriptors. A variable point passes the

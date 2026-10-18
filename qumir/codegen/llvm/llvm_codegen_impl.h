@@ -11,6 +11,7 @@ struct TLLVMModuleArtifacts : ILLVMModuleArtifacts {
     std::unique_ptr<llvm::Module> Module;
     std::vector<std::string> FunctionNames; // defined (non-declaration) function names in module
     bool NativeCode = false;
+    bool DebugPoints = false;
     const std::vector<std::string>& GetDefinedFunctionNames() const override { return FunctionNames; }
     void PrintModule(std::ostream& os) const override;
     void GenerateBitcode(std::ostream& os) const override;

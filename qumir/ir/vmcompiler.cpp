@@ -483,6 +483,9 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 }
             }
             code.emplace_back(); // placeholder
+            if (instr.Op == "await"_op && instr.Operands[0].Type == TOperand::EType::Imm) {
+                code.emplace_back();
+            }
         }
         labelToLastPC[block.Label.Idx] = code.size() - 1;
     }
@@ -971,9 +974,17 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 }
                 break;
             }
+            case "await"_op:
             case "call"_op: {
                 require(ins, 0, 1);
-
+                if (ins.Op == "await"_op && ins.Operands[0].Type == TOperand::EType::Tmp) {
+                    out.Op = ins.Dest.Idx < 0
+                        ? EVMOp::AwaitVoid
+                        : EVMOp::Await;
+                    break;
+                }
+                const bool awaitCall = ins.Op == "await"_op;
+                const TTmp future{function.NextTmpIdx};
                 const int64_t calleeId = ins.Operands[0].Imm.Value;
 
                 if (ins.Dest.Idx < 0) {
@@ -1000,13 +1011,17 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     throw std::runtime_error("Unknown callee id in call: " + std::to_string(calleeId));
                 }
 
-                break;
-            }
-            case "await"_op: {
-                if (ins.Dest.Idx < 0) {
-                    out.Op = EVMOp::AwaitVoid;
-                } else {
-                    out.Op = EVMOp::Await;
+                if (awaitCall) {
+                    out.Operands[0] = future;
+                    auto& resume = *ptr++;
+                    if (ins.Dest.Idx < 0) {
+                        resume.Op = EVMOp::AwaitVoid;
+                        resume.Operands[0] = future;
+                    } else {
+                        resume.Op = EVMOp::Await;
+                        resume.Operands[0] = ins.Dest;
+                        resume.Operands[1] = future;
+                    }
                 }
                 break;
             }
@@ -1097,7 +1112,10 @@ void TVMCompiler::AllocateRegisters(
             tmp.Idx = it->second;
             return;
         }
-        const int typeId = function.GetTmpType(tmpId);
+        // Direct await calls share one backend scratch register for their Future.
+        const int typeId = tmpId == function.NextTmpIdx
+            ? Module.Types.Ptr(Module.Types.I(EKind::Void))
+            : function.GetTmpType(tmpId);
         const bool isStruct = typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct;
         // Existing scalar opcodes read/write a full machine word; struct values are addresses.
         const int size = isStruct

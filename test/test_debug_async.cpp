@@ -1,7 +1,10 @@
 #include <qumir/ir/builder.h>
+#include <qumir/ir/eval.h>
 #include <qumir/ir/passes/transforms/debug_async.h>
 
 #include <gtest/gtest.h>
+
+#include <sstream>
 
 using namespace NQumir::NIR;
 using namespace NQumir::NIR::NLiterals;
@@ -35,21 +38,23 @@ TEST(DebugAsync, RecursiveCallerClosureAndIdempotence) {
     builder.SetReturnType(resultType);
     builder.Emit0("ret"_op, {TImm{7, resultType}});
 
+    const auto* storage = module.Functions[0].Blocks[0].Instrs.data();
+    const auto tmpCount = module.Functions[0].NextTmpIdx;
     NPasses::LowerDebugAsync(module);
+    EXPECT_EQ(module.Functions[0].Blocks[0].Instrs.data(), storage);
+    EXPECT_EQ(module.Functions[0].NextTmpIdx, tmpCount);
     for (int i = 0; i < 4; ++i) {
         const auto& function = module.Functions[i];
         EXPECT_TRUE(function.IsCoroutine);
         EXPECT_EQ(function.ReturnTypeId, futureType);
         EXPECT_EQ(function.CoroutineResultTypeId, resultType);
         const auto& instructions = function.Blocks[0].Instrs;
-        ASSERT_EQ(function.Blocks[0].InstrDebugInfo.size(), instructions.size());
+        ASSERT_EQ(function.Blocks[0].InstrDebugInfo.size(), 1);
         EXPECT_EQ(function.Blocks[0].InstrDebugInfo[0].Location.Line, 7);
-        EXPECT_EQ(function.Blocks[0].InstrDebugInfo[1].Location.Line, 7);
-        EXPECT_EQ(function.Blocks[0].InstrDebugInfo[1].ScopeId, 9);
-        EXPECT_EQ(instructions[0].Op, "call"_op);
-        EXPECT_EQ(function.GetType(instructions[0].Dest), futureType);
-        EXPECT_EQ(instructions[1].Op, "await"_op);
-        EXPECT_EQ(function.GetType(instructions[1].Dest), resultType);
+        EXPECT_EQ(function.Blocks[0].InstrDebugInfo[0].ScopeId, 9);
+        EXPECT_EQ(instructions[0].Op, "await"_op);
+        EXPECT_EQ(instructions[0].Operands[0].Type, TOperand::EType::Imm);
+        EXPECT_EQ(function.GetType(instructions[0].Dest), resultType);
     }
     EXPECT_FALSE(module.Functions[4].IsCoroutine);
     EXPECT_EQ(module.Functions[4].ReturnTypeId, resultType);
@@ -78,9 +83,11 @@ TEST(DebugAsync, ExistingFutureCallIsNotAwaitedTwice) {
     builder.Emit0("ret"_op, {});
     NPasses::LowerDebugAsync(module);
     const auto& instructions = module.Functions[0].Blocks[0].Instrs;
-    ASSERT_EQ(instructions.size(), 5);
-    EXPECT_EQ(instructions[2].Dest, future);
-    EXPECT_EQ(instructions[3].Operands[0].Tmp, future);
+    ASSERT_EQ(instructions.size(), 4);
+    EXPECT_EQ(instructions[0].Op, "await"_op);
+    EXPECT_EQ(instructions[1].Op, "call"_op);
+    EXPECT_EQ(instructions[1].Dest, future);
+    EXPECT_EQ(instructions[2].Operands[0].Tmp, future);
 }
 
 TEST(DebugAsync, AwaitPromotesLifecycleAndCallersWithoutDebugPoints) {
@@ -108,10 +115,40 @@ TEST(DebugAsync, AwaitPromotesLifecycleAndCallersWithoutDebugPoints) {
     EXPECT_EQ(constructor.Blocks[0].Instrs[0].Dest, future);
     const auto& caller = module.Functions[1];
     EXPECT_TRUE(caller.IsCoroutine);
-    ASSERT_EQ(caller.Blocks[0].Instrs.size(), 3);
-    EXPECT_EQ(caller.Blocks[0].Instrs[1].Op, "await"_op);
+    ASSERT_EQ(caller.Blocks[0].Instrs.size(), 2);
+    EXPECT_EQ(caller.Blocks[0].Instrs[0].Op, "await"_op);
     NPasses::LowerDebugAsync(module);
-    EXPECT_EQ(module.Functions[1].Blocks[0].Instrs.size(), 3);
+    EXPECT_EQ(module.Functions[1].Blocks[0].Instrs.size(), 2);
+}
+
+TEST(DebugAsync, DirectAwaitCallsExecuteInVMWithoutChangingIR) {
+    TModule module;
+    const int integer = module.Types.I(EKind::I64);
+    const int futureType = module.Types.Ptr(module.Types.I(EKind::Void));
+    TBuilder builder(module);
+    auto coroutine = [&](const std::string& name, int symbol, int resultType) {
+        builder.NewFunction(name, {}, symbol);
+        builder.SetReturnType(futureType);
+        module.Functions.back().IsCoroutine = true;
+        module.Functions.back().CoroutineResultTypeId = resultType;
+    };
+    coroutine("child", 2, integer);
+    builder.Emit0("ret"_op, {TImm{42, integer}});
+    coroutine("void_child", 3, module.Types.I(EKind::Void));
+    builder.Emit0("ret"_op, {});
+    coroutine("entry", 1, integer);
+    builder.Emit0("await"_op, {TImm{3}});
+    auto result = builder.Emit1("await"_op, {TImm{2}});
+    builder.SetType(result, integer);
+    builder.Emit0("ret"_op, {result});
+    const auto tmpCount = module.Functions.back().NextTmpIdx;
+    TVMCompiler compiler(module);
+    std::ostringstream output;
+    std::istringstream input;
+    TInterpreter interpreter(module, compiler, output, input);
+    EXPECT_EQ(interpreter.EvalRaw(module.Functions.back(), {}, {}), 42);
+    EXPECT_EQ(module.Functions.back().NextTmpIdx, tmpCount);
+    EXPECT_EQ(module.Functions.back().Blocks[0].Instrs.size(), 3);
 }
 
 int main(int argc, char** argv) {

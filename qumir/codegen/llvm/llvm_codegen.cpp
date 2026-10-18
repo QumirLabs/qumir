@@ -1102,6 +1102,7 @@ std::unique_ptr<ILLVMModuleArtifacts> TLLVMCodeGen::Emit(TModule& module, int op
     out->Ctx = std::move(Ctx);
     out->Module = std::move(LModule);
     out->NativeCode = Opts.NativeCode;
+    out->DebugPoints = module.DebugOptions.EmitDebugPoints;
     // Collect defined function names for tests without pulling in LLVM headers
     if (out->Module) {
         for (auto& F : *out->Module) {
@@ -1244,6 +1245,9 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
     auto* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy));
     auto* tokenNone = llvm::ConstantTokenNone::get(ctx);
     auto* resultTy = GetTypeById(fun.CoroutineResultTypeId, module.Types, ctx);
+    auto* awaitFutureSlot = irb->CreateAlloca(ptrTy, nullptr, "await.future");
+    auto* awaitContinuationSlot = irb->CreateAlloca(i32Ty, nullptr, "await.continuation");
+    auto* awaitHasResultSlot = irb->CreateAlloca(i1Ty, nullptr, "await.has_result");
     auto* promise = resultTy->isVoidTy() ? nullptr : irb->CreateAlloca(resultTy, nullptr, "coro.promise");
     if (promise) {
         irb->CreateStore(llvm::Constant::getNullValue(resultTy), promise);
@@ -1311,6 +1315,42 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
         sw->addCase(llvm::ConstantInt::get(i8Ty, 1), cleanup);
     };
 
+    auto futureAwaitReadyFn = getFn("__qumir_future_await_ready",
+        llvm::FunctionType::get(i1Ty, {ptrTy}, false));
+    auto futureAwaitSuspendFn = getFn("__qumir_future_await_suspend",
+        llvm::FunctionType::get(ptrTy, {ptrTy, ptrTy}, false));
+    auto futureAwaitResumeFn = getFn("__qumir_future_await_resume",
+        llvm::FunctionType::get(voidTy, {ptrTy, ptrTy}, false));
+    auto futureDestroyFn = getFn("__qumir_future_destroy",
+        llvm::FunctionType::get(voidTy, {ptrTy}, false));
+
+    // Share the waiting loop and void completion path across all awaits.
+    auto* awaitCheck = llvm::BasicBlock::Create(ctx, "await.check", lfun);
+    auto* awaitWait = llvm::BasicBlock::Create(ctx, "await.wait", lfun);
+    auto* awaitSuspend = llvm::BasicBlock::Create(ctx, "await.suspend", lfun);
+    auto* awaitDone = llvm::BasicBlock::Create(ctx, "await.done", lfun);
+    auto* awaitVoidDone = llvm::BasicBlock::Create(ctx, "await.void.done", lfun);
+    auto* awaitDispatch = llvm::BasicBlock::Create(ctx, "await.dispatch", lfun);
+    irb->SetInsertPoint(awaitCheck);
+    auto* checkedFuture = irb->CreateLoad(ptrTy, awaitFutureSlot, "await.future");
+    auto* ready = irb->CreateCall(futureAwaitReadyFn, {checkedFuture}, "await.ready");
+    irb->CreateCondBr(ready, awaitDone, awaitWait);
+    irb->SetInsertPoint(awaitWait);
+    irb->CreateCall(futureAwaitSuspendFn, {checkedFuture, handle});
+    irb->CreateBr(awaitSuspend);
+    irb->SetInsertPoint(awaitSuspend);
+    suspendAfterStep(awaitCheck);
+    irb->SetInsertPoint(awaitDone);
+    auto* hasResult = irb->CreateLoad(i1Ty, awaitHasResultSlot, "await.has_result");
+    irb->CreateCondBr(hasResult, awaitDispatch, awaitVoidDone);
+    irb->SetInsertPoint(awaitVoidDone);
+    irb->CreateCall(futureAwaitResumeFn, {checkedFuture, nullPtr});
+    irb->CreateCall(futureDestroyFn, {checkedFuture});
+    irb->CreateBr(awaitDispatch);
+    irb->SetInsertPoint(awaitDispatch);
+    auto* continuation = irb->CreateLoad(i32Ty, awaitContinuationSlot, "await.continuation");
+    auto* awaitSwitch = irb->CreateSwitch(continuation, cleanup);
+
     auto castCoroutineResult = [&](llvm::Value* val, llvm::Type* expectedType) -> llvm::Value* {
         auto* actualTy = val->getType();
         if (actualTy == expectedType) {
@@ -1337,36 +1377,34 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
     auto wrapCoroFn = getFn("__qumir_wrap_coro",
         llvm::FunctionType::get(ptrTy, {ptrTy, i64Ty}, false));
 
-    auto lowerAwaitFuture = [&](const NIR::TInstr& instr, int awaitIndex) {
-        assert(instr.Size() >= 1 && instr.Operands[0].Type == TOperand::EType::Tmp);
-        llvm::Value* future = CurFun->TmpValues[instr.Operands[0].Tmp.Idx];
+    auto lowerFutureCall = [&](const NIR::TInstr& instr) {
+        auto call = instr;
+        call.Op = "call"_op;
+        call.Dest = TTmp{-1};
+        auto* future = LowerInstr(call, module);
+        const int symbol = static_cast<int>(instr.Operands[0].Imm.Value);
+        if (auto it = module.SymIdToFuncIdx.find(symbol); it != module.SymIdToFuncIdx.end()) {
+            const auto& child = module.Functions[it->second];
+            if (child.IsCoroutine) {
+                const int64_t size = module.Types.SizeInBytes(child.CoroutineResultTypeId);
+                future = irb->CreateCall(wrapCoroFn,
+                    {future, llvm::ConstantInt::get(i64Ty, size)}, "wrapped.coro");
+            }
+        }
+        return future;
+    };
 
-        auto futureAwaitReadyFn   = getFn("__qumir_future_await_ready",
-            llvm::FunctionType::get(i1Ty,   {ptrTy},         false));
-        auto futureAwaitSuspendFn = getFn("__qumir_future_await_suspend",
-            llvm::FunctionType::get(ptrTy,  {ptrTy, ptrTy},  false));
-        auto futureAwaitResumeFn  = getFn("__qumir_future_await_resume",
-            llvm::FunctionType::get(voidTy, {ptrTy, ptrTy},  false));
-        auto futureDestroyFn      = getFn("__qumir_future_destroy",
-            llvm::FunctionType::get(voidTy, {ptrTy},          false));
-
+    auto lowerAwaitFuture = [&](const NIR::TInstr& instr, int awaitIndex, llvm::Value* future) {
         auto sfx = std::to_string(awaitIndex);
-        auto* checkBB = llvm::BasicBlock::Create(ctx, "await.check."   + sfx, lfun);
-        auto* suspBB  = llvm::BasicBlock::Create(ctx, "await.suspend."  + sfx, lfun);
-        auto* afterBB = llvm::BasicBlock::Create(ctx, "after.await."    + sfx, lfun);
-
-        irb->CreateBr(checkBB);
-
-        irb->SetInsertPoint(checkBB);
-        auto* ready = irb->CreateCall(futureAwaitReadyFn, {future}, "await.ready");
-        irb->CreateCondBr(ready, afterBB, suspBB);
-
-        irb->SetInsertPoint(suspBB);
-        irb->CreateCall(futureAwaitSuspendFn, {future, handle});
-        suspendAfterStep(checkBB);
-
+        auto* afterBB = llvm::BasicBlock::Create(ctx, "after.await." + sfx, lfun);
+        irb->CreateStore(future, awaitFutureSlot);
+        irb->CreateStore(llvm::ConstantInt::get(i32Ty, awaitIndex), awaitContinuationSlot);
+        irb->CreateStore(llvm::ConstantInt::get(i1Ty, instr.Dest.Idx >= 0), awaitHasResultSlot);
+        irb->CreateBr(awaitCheck);
+        awaitSwitch->addCase(llvm::ConstantInt::get(i32Ty, awaitIndex), afterBB);
         irb->SetInsertPoint(afterBB);
         if (instr.Dest.Idx >= 0) {
+            future = irb->CreateLoad(ptrTy, awaitFutureSlot, "await.completed.future");
             const int outputTypeId = CurFun->Fun->GetTmpType(instr.Dest.Idx);
             auto* childResultTy = GetTypeById(outputTypeId, module.Types, ctx);
             auto* resultSlot = irb->CreateAlloca(childResultTy, nullptr, "await.result");
@@ -1397,10 +1435,8 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
             irb->SetInsertPoint(loadBB);
             auto* result = irb->CreateLoad(childResultTy, resultSlot, "await.result.value");
             CurFun->TmpValues[instr.Dest.Idx] = castCoroutineResult(result, childResultTy);
-        } else {
-            irb->CreateCall(futureAwaitResumeFn, {future, nullPtr});
+            irb->CreateCall(futureDestroyFn, {future});
         }
-        irb->CreateCall(futureDestroyFn, {future});
     };
 
     int awaitIndex = 0;
@@ -1426,29 +1462,15 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
                 }
                 irb->CreateBr(final);
             } else if (instr.Op == "await"_op) {
-                lowerAwaitFuture(instr, awaitIndex++);
+                auto* future = instr.Operands[0].Type == TOperand::EType::Imm
+                    ? lowerFutureCall(instr)
+                    : CurFun->TmpValues[instr.Operands[0].Tmp.Idx];
+                lowerAwaitFuture(instr, awaitIndex++, future);
             } else if (instr.Op == "call"_op
                        && instr.Dest.Idx >= 0
                        && instr.Size() >= 1
                        && instr.Operands[0].Type == TOperand::EType::Imm) {
-                // Call to a user coroutine: lower normally then wrap the raw
-                // coro handle in ITypeErasedFuture* so await sees a uniform type.
-                const int symId = static_cast<int>(instr.Operands[0].Imm.Value);
-                const TFunction* childFun = nullptr;
-                for (const auto& f : module.Functions) {
-                    if (f.SymId == symId && f.IsCoroutine) { childFun = &f; break; }
-                }
-                LowerInstr(instr, module);
-                if (childFun) {
-                    auto* raw = CurFun->TmpValues[instr.Dest.Idx];
-                    const int64_t resultSize = (childFun->CoroutineResultTypeId >= 0)
-                        ? static_cast<int64_t>(module.Types.SizeInBytes(childFun->CoroutineResultTypeId))
-                        : 0;
-                    auto* wrapped = irb->CreateCall(wrapCoroFn,
-                        {raw, llvm::ConstantInt::get(i64Ty, resultSize)},
-                        "wrapped.coro");
-                    CurFun->TmpValues[instr.Dest.Idx] = wrapped;
-                }
+                CurFun->TmpValues[instr.Dest.Idx] = lowerFutureCall(instr);
             } else {
                 LowerInstr(instr, module);
             }
@@ -2384,7 +2406,6 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
                 makeCallWithAttrs(nullptr);
                 return nullptr;
             } else {
-                if (instr.Dest.Idx < 0) throw std::runtime_error("call needs a destination tmp");
                 auto call = makeCallWithAttrs("calltmp");
                 return storeTmp(call);
             }

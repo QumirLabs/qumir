@@ -2,6 +2,7 @@
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/ir/builder.h>
 #include <qumir/ir/lowering/lower_ast.h>
+#include <qumir/ir/passes/transforms/debug_async.h>
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/parser.h>
@@ -301,6 +302,48 @@ TEST(LLVMDebugInfo, DebugPointsAndNativeInfoAreIndependent) {
             EXPECT_EQ(calls, 1);
         }
     }
+}
+
+TEST(LLVMDebugInfo, CheckpointsShareOneAwaitLoopPerFunction) {
+    TModule source;
+    source.DebugOptions.EmitDebugPoints = true;
+    const int voidType = source.Types.I(EKind::Void);
+    source.ExternalFunctions.push_back({
+        .Name = "__qumir_debug_point",
+        .MangledName = "__qumir_debug_point",
+        .ReturnTypeId = voidType,
+        .SymId = 100,
+    });
+    source.SymIdToExtFuncIdx[100] = 0;
+    TBuilder builder(source);
+    builder.NewFunction("entry", {}, 1);
+    builder.SetReturnType(voidType);
+    for (int i = 0; i < 64; ++i) {
+        builder.Emit0("call"_op, {TImm{100}});
+    }
+    builder.Emit0("ret"_op, {});
+    NPasses::LowerDebugAsync(source);
+    llvm::LLVMContext context;
+    auto module = Emit(source, context);
+    ASSERT_TRUE(module);
+    auto* resume = module->getFunction("entry.resume");
+    ASSERT_NE(resume, nullptr);
+    unsigned checks = 0;
+    unsigned checkpoints = 0;
+    for (const auto& block : *resume) {
+        for (const auto& instruction : block) {
+            auto* call = llvm::dyn_cast<llvm::CallInst>(&instruction);
+            auto* callee = call ? call->getCalledFunction() : nullptr;
+            if (callee) {
+                checks += callee->getName() == "__qumir_future_await_ready";
+                checkpoints += callee->getName() == "__qumir_debug_point";
+            }
+        }
+    }
+    EXPECT_EQ(checks, 1);
+    EXPECT_LE(resume->size(), 64 + 32);
+    // The first checkpoint executes eagerly in the entry function.
+    EXPECT_EQ(checkpoints, 63);
 }
 
 TEST(LLVMDebugInfo, LoweringRetainsSourceModulePresence) {
