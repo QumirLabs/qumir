@@ -3016,6 +3016,7 @@ async function runWasm(debug = false) {
     document.dispatchEvent(new CustomEvent('qumir-embed-event', { detail: 'run' }));
   }
   try {
+    setCompiling(true);
     const bytes = await api('/api/compile-wasm', { code, O, debug }, true, executionAbort.signal);
     compiled = true;
     const { loadRuntime } = await import('./runtime/loader.js');
@@ -3031,7 +3032,6 @@ async function runWasm(debug = false) {
     });
     executionSession = runtime.session;
     if (__coroStopRequested) executionSession?.stop();
-    if (debug) debuggerUI.bind(runtime);
     const {
       module,
       instance,
@@ -3170,6 +3170,8 @@ async function runWasm(debug = false) {
         __robotModule.__initRobotField();
       }
     }
+    if (debug) debuggerUI.bind(runtime);
+    setCompiling(false);
     let out = '';
   if (instance && instance.exports) {
       // Call global constructors if present (init_array handlers)
@@ -3311,6 +3313,7 @@ async function runWasm(debug = false) {
       renderRobotField();
     }
   } finally {
+    setCompiling(false);
     executionSession?.finish();
     executionSession = null;
     executionAbort = null;
@@ -3323,6 +3326,14 @@ async function runWasm(debug = false) {
     if (embedded) {
       document.dispatchEvent(new CustomEvent('qumir-embed-event', { detail: outcome }));
     }
+  }
+}
+
+function setCompiling(compiling) {
+  const progress = document.getElementById('compile-progress');
+  if (progress) {
+    progress.hidden = !compiling;
+    progress.parentElement.setAttribute('aria-busy', String(compiling));
   }
 }
 

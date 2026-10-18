@@ -2172,6 +2172,12 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(const NAst::TExprPtr
     };
     collectTopLevelRoots(block, scope.Id);
 
+    if (Module.DebugOptions.EmitDebugPoints) {
+        if (auto symbol = Context.Lookup("__qumir_debug_point", scope.Id)) {
+            Module.DebugPointSymbolId = symbol->Id;
+        }
+    }
+
     bool functionSeen = false;
     int constructorFunctionId = -1;
     int destructorFunctionId = -1;

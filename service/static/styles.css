@@ -189,6 +189,12 @@ textarea#code { flex: 1; background: #1e1e1e; color: #e6e6e6; border: none; resi
 .pane-footer-run button { height: 24px; padding: 0 14px; font-size: 12px; line-height: 24px; font-weight: 600; }
 .pane-footer-run #btn-stop { background: #a1260d; }
 .pane-footer-run button:disabled { opacity: 0.6; cursor: default; }
+.compile-progress { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #bbb; }
+.compile-progress[hidden] { display: none; }
+.compile-spinner { width: 12px; height: 12px; border: 2px solid #666; border-top-color: #eee; border-radius: 50%; animation: compile-spin 0.8s linear infinite; }
+@media (max-width: 480px) { .compile-progress > span:last-child { display: none; } }
+@keyframes compile-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .compile-spinner { animation: none; border-top-color: #eee; } }
 #status.status { flex: 1 1 auto; min-width: 0; font-size: 11px; color: #bbb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 pre.scroll { flex: 1; margin: 0; padding: 8px; background: #1b1b1b; overflow: auto; font-size: 12px; min-width: 0; }
 section.io { display: flex; flex-direction: column; gap: 6px; padding: 0; flex: 1 1 auto; min-height: 0; min-width: 0; }
@@ -857,3 +863,7 @@ body.dev-mode .dev-mode-toggle { opacity: 1; filter: brightness(1.3); }
 }
 @media (max-width: 900px) { .q-debug-panel { margin: 0 0 10px; max-height: 300px; } }
 @media (max-width: 600px) { .q-debug-values { grid-template-columns: 1fr; } }
+
+@media (max-width: 480px) {
+  .pane-footer-run button { padding: 0 10px; }
+}

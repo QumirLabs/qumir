@@ -325,6 +325,7 @@ struct TModule {
     bool HasSourceModules = false;
     TDebugOptions DebugOptions;
     std::string AsyncMode;
+    int DebugPointSymbolId = -1;
     std::vector<TDebugPoint> DebugPoints;
     std::vector<TDebugBinding> DebugBindings;
 

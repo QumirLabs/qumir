@@ -99,7 +99,7 @@ try {
       return {
         flag: response.request().headers()['x-qumir-debug-points'],
         metadata: WebAssembly.Module.customSections(module, 'qumir.debug').length,
-        checkpoint: WebAssembly.Module.imports(module).some(imported => imported.name === '__qumir_debug_point'),
+        checkpoint: WebAssembly.Module.imports(module).some(imported => imported.name === '__qumir_debug_slow'),
       };
     }));
   });
@@ -238,7 +238,7 @@ try {
   await page.click('#btn-stop');
   await finished(page);
 
-  await code(page, loop.replace('x < 3', '1 = 1'));
+  await code(page, loop.replace('x < 3', '1 = 1').replace('    x := x + 1', '    ждать(0)\n    x := x + 1'));
   await page.click('#btn-debug');
   await paused(page);
   await page.click('[data-debug-action="continue"]');
@@ -351,6 +351,44 @@ try {
     assert.match(await page.$eval('#stdout', el => el.textContent), /42/);
   }
 
+  const nativeLoop = 'алг цел first\nнач\n  цел i, x\n  x := 0\n'
+    + '  нц для i от 1 до 100000\n    x := x + i\n  кц\n  знач := x\nкон\n';
+  const fastPath = await page.evaluate(async source => {
+    const { loadRuntime } = await import('./runtime/loader.js');
+    const { Debugger } = await import('./runtime/debugger.js');
+    const bytes = await fetch('/api/compile-wasm', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain', 'X-Qumir-Debug-Points': '1' }, body: source,
+    }).then(response => response.arrayBuffer());
+    const debuggerInstance = new Debugger();
+    const runtime = await loadRuntime(bytes, { debugger: debuggerInstance });
+    runtime.arrayEnv.__bindMemory(runtime.instance.exports.memory);
+    runtime.futureEnv.__bindMemory(runtime.instance.exports.memory);
+    runtime.futureEnv.__bindWasm(runtime.instance.exports);
+    debuggerInstance.bindWasm(runtime.instance.exports);
+    debuggerInstance.resume('continue');
+    const started = performance.now();
+    const result = await runtime.session.call(runtime.instance.exports.first, [], 'i64');
+    const output = { result: String(result), callbacks: runtime.session.debugCallbacks, ms: performance.now() - started };
+    runtime.session.finish();
+    return output;
+  }, nativeLoop);
+  assert.equal(fastPath.result, '5000050000');
+  assert.equal(fastPath.callbacks, 0);
+  console.log(`WASM debug Continue: ${Math.round(fastPath.ms)} ms, ${fastPath.callbacks} JS checkpoints`);
+
+  const deepStack = 'алг цел first\nнач\n  знач := descend(40)\nкон\n'
+    + 'алг цел descend(цел n)\nнач\n  если n > 0 то\n    знач := descend(n - 1)\n'
+    + '  иначе\n    знач := 42\n  все\nкон\n';
+  await code(page, deepStack);
+  await breakpoint(page, 10);
+  await page.click('#btn-debug');
+  await paused(page);
+  await action(page, 'continue', 10);
+  assert.equal(await page.$$eval('[data-debug-stack] button', buttons => buttons.length), 42);
+  assert.equal((await locals(page)).n, '0');
+  await page.click('#btn-stop');
+  await finished(page);
+
   const nbodyStart = performance.now();
   await code(page, readFileSync('examples/painter/orbits.kum', 'utf8'));
   await page.click('#btn-debug');
@@ -370,6 +408,52 @@ try {
     return [before, printer.value(type, 8)];
   });
   assert.deepEqual(printerResult, ['9007199254740993', '9007199254740993']);
+
+  let heldRequest;
+  let requestArrived;
+  const intercept = request => {
+    if (request.url().endsWith('/api/compile-wasm')) {
+      heldRequest = request;
+      requestArrived();
+    } else {
+      request.continue();
+    }
+  };
+  await page.setRequestInterception(true);
+  page.on('request', intercept);
+  await code(page, simple);
+  let requested = new Promise(resolve => { requestArrived = resolve; });
+  await page.click('#btn-debug');
+  await requested;
+  assert.equal(await page.$eval('#compile-progress', el => el.hidden), false);
+  await page.screenshot({ path: 'build/compiler-progress-desktop.png' });
+  await page.setViewport({ width: 360, height: 800 });
+  await page.screenshot({ path: 'build/compiler-progress-mobile.png' });
+  assert.equal(await page.$eval('.pane-footer-run', el =>
+    el.getBoundingClientRect().right <= el.parentElement.getBoundingClientRect().right), true);
+  await page.setViewport({ width: 1400, height: 1000 });
+  await heldRequest.continue();
+  await paused(page);
+  assert.equal(await page.$eval('#compile-progress', el => el.hidden), true);
+  await page.click('#btn-stop');
+  await finished(page);
+
+  requested = new Promise(resolve => { requestArrived = resolve; });
+  await page.click('#btn-debug');
+  await requested;
+  await heldRequest.respond({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'test compilation error' }) });
+  await finished(page);
+  assert.equal(await page.$eval('#compile-progress', el => el.hidden), true);
+
+  requested = new Promise(resolve => { requestArrived = resolve; });
+  await page.click('#btn-debug');
+  await requested;
+  await page.click('#btn-stop');
+  await finished(page);
+  assert.equal(await page.$eval('#compile-progress', el => el.hidden), true);
+  await heldRequest.abort();
+  page.off('request', intercept);
+  await page.setRequestInterception(false);
 
   const fallback = await openPage(true);
   assert.equal(await fallback.$eval('#btn-debug', el => el.disabled), false);

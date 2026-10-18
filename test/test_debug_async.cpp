@@ -151,6 +151,30 @@ TEST(DebugAsync, DirectAwaitCallsExecuteInVMWithoutChangingIR) {
     EXPECT_EQ(module.Functions.back().Blocks[0].Instrs.size(), 3);
 }
 
+TEST(DebugAsync, SynchronousCheckpointFactoryDoesNotBecomeCoroutine) {
+    TModule module;
+    module.DebugOptions.EmitDebugPoints = true;
+    const int voidType = module.Types.I(EKind::Void);
+    const int futureType = module.Types.Ptr(voidType);
+    TBuilder builder(module);
+    builder.NewFunction("__qumir_debug_point", {}, 100);
+    builder.SetReturnType(futureType);
+    builder.Emit0("ret"_op, {TImm{0, futureType}});
+    builder.NewFunction("caller", {}, 1);
+    builder.SetReturnType(voidType);
+    builder.Emit0("call"_op, {TImm{100}});
+    builder.Emit0("ret"_op, {});
+    module.DebugPointSymbolId = 100;
+    NPasses::LowerDebugAsync(module);
+    EXPECT_FALSE(module.Functions[0].IsCoroutine);
+    EXPECT_EQ(module.Functions[0].ReturnTypeId, futureType);
+    EXPECT_TRUE(module.Functions[1].IsCoroutine);
+    EXPECT_EQ(module.Functions[1].Blocks[0].Instrs[0].Op, "await"_op);
+    NPasses::LowerDebugAsync(module);
+    EXPECT_FALSE(module.Functions[0].IsCoroutine);
+    EXPECT_EQ(module.Functions[1].Blocks[0].Instrs.size(), 2);
+}
+
 int main(int argc, char** argv) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

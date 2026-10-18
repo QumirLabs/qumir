@@ -8,9 +8,8 @@ export class ExecutionSession {
     this.render = render;
     this.delay = delay;
     this.controller = new AbortController();
-    this.lastYield = performance.now();
-    this.lastRender = this.lastYield;
-    this.checks = 0;
+    this.lastRender = performance.now();
+    this.debugCallbacks = 0;
     this.instance = null;
   }
 
@@ -71,14 +70,6 @@ export class ExecutionSession {
     this.check();
     const paused = this.debugger?.point(id, address);
     if (paused instanceof Promise) return this.wait(paused);
-    if (++this.checks >= 512) {
-      this.checks = 0;
-      const now = performance.now();
-      if (now - this.lastYield >= 16) {
-        this.lastYield = now;
-        return this.sleep(0);
-      }
-    }
     return undefined;
   }
 
@@ -124,7 +115,8 @@ export class ExecutionSession {
 
   stop() {
     if (!this.controller.signal.aborted) this.controller.abort(new ExecutionStopped());
-    this.debugger?.finish();
+    this.debugger?.requestStop();
+    this.debugger?.finish(false);
     this.instance = null;
   }
 
@@ -138,8 +130,10 @@ export class ExecutionSession {
 
 export function bindDebugImport(env, session, futureRuntime) {
   session.futureRuntime = futureRuntime;
-  env.__qumir_debug_point = (id, address) => {
+  const checkpoint = (id, address, reason = 1) => {
     session.check();
+    if (reason === 2) throw new ExecutionStopped();
+    ++session.debugCallbacks;
     const h = futureRuntime.allocFuture();
     futureRuntime.enqueuePendingOp({
       h,
@@ -148,4 +142,6 @@ export function bindDebugImport(env, session, futureRuntime) {
     });
     return h;
   };
+  env.__qumir_debug_point = checkpoint;
+  env.__qumir_debug_slow = checkpoint;
 }

@@ -117,6 +117,7 @@ add_subdirectory(codegen/llvm)
 # Modules written in oz are read at compile time, next to the binaries that use them.
 install(FILES
     modules/complex.oz
+    modules/debug.oz
     modules/vector.oz
     modules/modalias
     DESTINATION ${QUMIR_PRIVATE_DIR}/modules

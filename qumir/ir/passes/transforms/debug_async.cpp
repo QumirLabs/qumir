@@ -13,6 +13,9 @@ using namespace NLiterals;
 void LowerDebugAsync(TModule& module) {
     const int futureType = module.Types.Ptr(module.Types.I(EKind::Void));
     std::unordered_set<int> promoted;
+    if (module.DebugOptions.EmitDebugPoints && module.DebugPointSymbolId >= 0) {
+        promoted.insert(module.DebugPointSymbolId);
+    }
     for (auto& external : module.ExternalFunctions) {
         if (
             module.DebugOptions.EmitDebugPoints

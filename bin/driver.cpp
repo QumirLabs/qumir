@@ -45,6 +45,7 @@ namespace {
 struct TModuleConfig {
     std::vector<std::string> Paths;
     std::vector<std::string> Files;
+    bool IncludeDebugRuntime = false;
 };
 
 std::expected<NAst::TExprPtr, TError> ParseInput(
@@ -80,6 +81,18 @@ std::expected<NAst::TExprPtr, TError> ParseInput(
     }
     if (!parsed) {
         return parsed;
+    }
+
+    if (modules.IncludeDebugRuntime) {
+        auto runtime = loader.Load("debug");
+        if (!runtime) {
+            return std::unexpected(runtime.error());
+        }
+        for (auto& stmt : NAst::TMaybeNode<NAst::TBlockExpr>((*runtime)->Ast).Cast()->Stmts) {
+            if (auto function = NAst::TMaybeNode<NAst::TFunDecl>(stmt)) {
+                function.Cast()->Used = true;
+            }
+        }
     }
 
     auto composed = NFrontend::LoadAndCompose(loader, *parsed, mainPragmas);
@@ -693,6 +706,7 @@ int main(int argc, char** argv) {
         moduleConfig.Paths.insert(moduleConfig.Paths.begin(), dir.empty() ? "." : dir.string());
     }
 
+    moduleConfig.IncludeDebugRuntime = debugOptions.EmitDebugPoints;
     if (generateAst || generateTransformedAst) {
         if (outputFile.empty()) {
             outputFile = OutputFilename(inputFile, ".ast");

@@ -931,7 +931,10 @@ std::unique_ptr<ILLVMModuleArtifacts> TLLVMCodeGen::Emit(TModule& module, int op
             throw std::runtime_error("function already declared");
         }
         MarkPointerArgsNoAlias(lfun);
-        if (module.DebugOptions.EmitDebugPoints || f.Name.find("__repl") == 0) { // repl functions should not be optimized
+        if (
+            (module.DebugOptions.EmitDebugPoints && !f.Name.starts_with("__qumir_debug_"))
+            || f.Name.find("__repl") == 0)
+        {
             lfun->addFnAttr(llvm::Attribute::NoInline);
             lfun->addFnAttr(llvm::Attribute::OptimizeNone);
             lfun->addFnAttr("disable-tail-calls", "true");
@@ -1326,6 +1329,7 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
 
     // Share the waiting loop and void completion path across all awaits.
     auto* awaitCheck = llvm::BasicBlock::Create(ctx, "await.check", lfun);
+    auto* awaitReady = llvm::BasicBlock::Create(ctx, "await.ready", lfun);
     auto* awaitWait = llvm::BasicBlock::Create(ctx, "await.wait", lfun);
     auto* awaitSuspend = llvm::BasicBlock::Create(ctx, "await.suspend", lfun);
     auto* awaitDone = llvm::BasicBlock::Create(ctx, "await.done", lfun);
@@ -1333,6 +1337,9 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
     auto* awaitDispatch = llvm::BasicBlock::Create(ctx, "await.dispatch", lfun);
     irb->SetInsertPoint(awaitCheck);
     auto* checkedFuture = irb->CreateLoad(ptrTy, awaitFutureSlot, "await.future");
+    auto* empty = irb->CreateICmpEQ(checkedFuture, nullPtr, "await.empty");
+    irb->CreateCondBr(empty, awaitDispatch, awaitReady);
+    irb->SetInsertPoint(awaitReady);
     auto* ready = irb->CreateCall(futureAwaitReadyFn, {checkedFuture}, "await.ready");
     irb->CreateCondBr(ready, awaitDone, awaitWait);
     irb->SetInsertPoint(awaitWait);

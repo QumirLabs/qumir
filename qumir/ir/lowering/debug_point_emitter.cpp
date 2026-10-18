@@ -15,9 +15,13 @@ TDebugPointEmitter::TDebugPointEmitter(TModule& module, TBuilder& builder)
 void TDebugPointEmitter::Point(std::string_view kind, const TInstrDebugInfo& info, int localId, std::string_view op) {
     if (
         !Module_.DebugOptions.EmitDebugPoints
-        || Module_.Functions[Builder_.CurrentFunctionIdx()].Name.starts_with("$$"))
+        || Module_.Functions[Builder_.CurrentFunctionIdx()].Name.starts_with("$$")
+        || Module_.Functions[Builder_.CurrentFunctionIdx()].Name.starts_with("__qumir_debug_"))
     {
         return;
+    }
+    if (SymbolId_ < 0 && Module_.DebugPointSymbolId >= 0) {
+        SymbolId_ = Module_.DebugPointSymbolId;
     }
     if (SymbolId_ < 0) {
         SymbolId_ = std::numeric_limits<int>::max();

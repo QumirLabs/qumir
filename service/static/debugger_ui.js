@@ -21,6 +21,7 @@ export class DebuggerUI {
       if (this.breakpoints.has(line + 1)) this.breakpoints.delete(line + 1);
       else this.breakpoints.add(line + 1);
       this.drawBreakpoints();
+      this.debugger?.setBreakpoint(line + 1, this.breakpoints.has(line + 1));
       if (this.breakpoints.has(line + 1)) {
         panel.dispatchEvent(new CustomEvent('qumir-breakpoint-set', { bubbles: true, detail: { line: line + 1 } }));
       }
@@ -65,6 +66,7 @@ export class DebuggerUI {
 
   bind(runtime) {
     if (!runtime.debugData) throw new Error('В программе нет debug points');
+    this.debugger.bindWasm(runtime.instance.exports);
     this.printer = new ValuePrinter(runtime.instance.exports.memory, runtime.stringEnv, runtime.debugData.pointerSize);
   }
 
