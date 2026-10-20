@@ -2997,7 +2997,7 @@ function showCelebration() {
   }, 1500);
 }
 
-async function runWasm(debug = false) {
+async function runWasm(debug = false, { stopAtEntry = true } = {}) {
   if (__coroRunning) return;
   const code = getCode();
   const { type: algType } = parseAlgHeader(code);
@@ -3009,7 +3009,7 @@ async function runWasm(debug = false) {
   let runtime = null;
   let compiled = false;
   let outcome = 'run_ok';
-  const debuggerInstance = debug ? debuggerUI?.begin() : null;
+  const debuggerInstance = debug ? debuggerUI?.begin({ stopAtEntry }) : null;
   executionAbort = new AbortController();
   setCoroRunning(true);
   if (embedded) {
@@ -4907,7 +4907,8 @@ show($('#view').value);
 $('#btn-run').addEventListener('click', async () => {
   if (window.__runHintOnRun) window.__runHintOnRun();
 
-  activeRun = runWasm();
+  // A user who set breakpoints expects Run to stop at them, not at the first statement.
+  activeRun = runWasm(debuggerUI?.breakpoints.size > 0, { stopAtEntry: false });
   await activeRun;
   activeRun = null;
   show($('#view').value, { clearErrorsOnSuccess: false });

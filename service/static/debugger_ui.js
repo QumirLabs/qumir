@@ -28,9 +28,13 @@ export class DebuggerUI {
     });
     editor.on('changes', () => {
       if (this.debugger) return;
-      // A changed source has different executable locations.
+      // Gutter markers move with their lines; a deleted line takes its breakpoint with it.
       this.breakpoints.clear();
-      this.drawBreakpoints();
+      let line = 0;
+      editor.eachLine(handle => {
+        line += 1;
+        if (editor.lineInfo(handle).gutterMarkers?.['q-debug-gutter']) this.breakpoints.add(line);
+      });
     });
     panel.querySelectorAll('[data-debug-action]').forEach(button => {
       button.addEventListener('click', () => {
@@ -54,7 +58,8 @@ export class DebuggerUI {
     }
   }
 
-  begin() {
+  begin({ stopAtEntry = true } = {}) {
+    this.stopAtEntry = stopAtEntry;
     this.debugger = new Debugger({ breakpoints: this.breakpoints, onChange: () => this.update() });
     this.previousReadOnly = this.editor.getOption('readOnly');
     this.editor.setOption('readOnly', true);
@@ -67,6 +72,7 @@ export class DebuggerUI {
   bind(runtime) {
     if (!runtime.debugData) throw new Error('В программе нет debug points');
     this.debugger.bindWasm(runtime.instance.exports);
+    if (!this.stopAtEntry) this.debugger.resume('continue');
     this.printer = new ValuePrinter(runtime.instance.exports.memory, runtime.stringEnv, runtime.debugData.pointerSize);
   }
 

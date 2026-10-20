@@ -238,6 +238,17 @@ try {
   await page.click('#btn-stop');
   await finished(page);
 
+  // Breakpoints follow their lines through edits, and Run stops at them without the entry pause.
+  await code(page, loop);
+  await breakpoint(page, 6);
+  await page.evaluate(() => document.querySelector('.CodeMirror').CodeMirror.replaceRange('  | считаем\n', { line: 4, ch: 0 }));
+  await page.click('#btn-run');
+  await paused(page, 7);
+  assert.equal((await locals(page)).x, '0');
+  assert.deepEqual(await compilations.at(-1), { flag: '1', metadata: 1, checkpoint: true });
+  await page.click('#btn-stop');
+  await finished(page);
+
   await code(page, loop.replace('x < 3', '1 = 1'));
   await page.click('#btn-debug');
   await paused(page);
