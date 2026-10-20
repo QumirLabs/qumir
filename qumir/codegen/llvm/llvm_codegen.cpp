@@ -50,6 +50,14 @@ using namespace NQumir::NIR::NLiterals;
 
 namespace {
 
+bool HasTerminator(const llvm::BasicBlock& block) {
+#if LLVM_VERSION_MAJOR >= 23
+    return block.hasTerminator();
+#else
+    return block.getTerminator() != nullptr;
+#endif
+}
+
 llvm::Type* GetTypeById(int typeId, const TTypeTable& tt, llvm::LLVMContext& ctx) {
     if (typeId < 0) {
         // untyped, assume int64
@@ -466,7 +474,11 @@ static const std::unordered_map<std::string, EBuiltinIntrinsic> BuiltinIntrinsic
 
 int ByteMatchBackend(const llvm::TargetMachine& tm) {
     const auto arch = tm.getTargetTriple().getArch();
+#if LLVM_VERSION_MAJOR >= 23
+    const auto* features = &tm.getMCSubtargetInfo();
+#else
     const auto* features = tm.getMCSubtargetInfo();
+#endif
     if ((arch == llvm::Triple::x86 || arch == llvm::Triple::x86_64) &&
         features && features->checkFeatures("+sse2"))
     {
@@ -1450,13 +1462,13 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
     for (size_t i = 0; i < fun.Blocks.size(); ++i) {
         irb->SetInsertPoint(bbs[i]);
         for (const auto& phi : fun.Blocks[i].Phis) {
-            if (irb->GetInsertBlock()->getTerminator()) {
+            if (HasTerminator(*irb->GetInsertBlock())) {
                 throw std::runtime_error("attempt to emit instruction after terminator");
             }
             EmitPhi(phi, module);
         }
         for (const auto& instr : fun.Blocks[i].Instrs) {
-            if (irb->GetInsertBlock()->getTerminator()) {
+            if (HasTerminator(*irb->GetInsertBlock())) {
                 throw std::runtime_error("attempt to emit instruction after terminator");
             }
             if (instr.Op == "ret"_op) {
@@ -1529,14 +1541,14 @@ void TLLVMCodeGen::LowerBlock(
     auto* irb = static_cast<llvm::IRBuilder<>*>(BuilderBase.get());
     irb->SetCurrentDebugLocation({});
     for (const auto& instr : blk.Phis) {
-        if (irb->GetInsertBlock()->getTerminator()) {
+        if (HasTerminator(*irb->GetInsertBlock())) {
             throw std::runtime_error("attempt to emit instruction after terminator");
         }
         EmitPhi(instr, module);
     }
 
     for (size_t i = 0; i < blk.Instrs.size(); ++i) {
-        if (irb->GetInsertBlock()->getTerminator()) {
+        if (HasTerminator(*irb->GetInsertBlock())) {
             throw std::runtime_error("attempt to emit instruction after terminator");
         }
         if (debugInfo) {
@@ -2534,7 +2546,6 @@ void TLLVMCodeGen::Optimize(int optLevel) {
         case 1: OL = llvm::OptimizationLevel::O1; break;
         case 2: OL = llvm::OptimizationLevel::O2; break;
         case 3: OL = llvm::OptimizationLevel::O3; break;
-        case 4: OL = llvm::OptimizationLevel::Oz; break;
         default: OL = llvm::OptimizationLevel::O2; break;
     }
     llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(OL);

@@ -130,6 +130,13 @@ void SetObjectLinkingLayerCreator(llvm::orc::LLJITBuilder& builder) {
         {
             return std::make_unique<llvm::orc::ObjectLinkingLayer>(es);
         });
+#elif LLVM_VERSION_MAJOR >= 23
+    builder.setObjectLinkingLayerCreator(
+        [](llvm::orc::ExecutionSession& es, llvm::jitlink::JITLinkMemoryManager& memoryManager)
+            -> llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>>
+        {
+            return std::make_unique<llvm::orc::ObjectLinkingLayer>(es, memoryManager);
+        });
 #else
     builder.setObjectLinkingLayerCreator(
         [](llvm::orc::ExecutionSession& es)
