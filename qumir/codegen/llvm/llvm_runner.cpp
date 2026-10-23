@@ -14,6 +14,11 @@
 #if defined(__linux__)
 #include <llvm/ExecutionEngine/Orc/Debugging/PerfSupportPlugin.h>
 #include <llvm/ExecutionEngine/Orc/TargetProcess/JITLoaderPerf.h>
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <fstream>
+#include <mutex>
 #endif
 #include <llvm/TargetParser/Host.h>
 
@@ -90,6 +95,48 @@ std::optional<T> TakeExpected(llvm::Expected<T> expected, std::string* error) {
     return std::move(*expected);
 }
 
+#if defined(__linux__) && LLVM_VERSION_MAJOR < 22
+// LLVM before 22 writes the jitdump header from an uninitialized struct, so
+// its reserved Pad1 and Flags fields hold stack garbage. perf inject rejects a
+// dump with unknown flags ("invalid or unsupported flags"), which hides every
+// JIT frame; on AArch64 this happens on every run. The header reaches the file
+// on the first flush, at the end of the first record batch, so the repair runs
+// after it.
+void RepairPerfJitDumpHeader() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        // The loader maps the dump as the perf marker, which names its path.
+        const std::string suffix = "/jit-" + std::to_string(getpid()) + ".dump";
+        std::ifstream maps("/proc/self/maps");
+        std::string line;
+        while (std::getline(maps, line)) {
+            auto pathPos = line.find('/');
+            if (pathPos == std::string::npos || !line.ends_with(suffix)) {
+                continue;
+            }
+            int fd = open(line.c_str() + pathPos, O_WRONLY);
+            if (fd < 0) {
+                return;
+            }
+            // Offsets of Pad1 and Flags in the version 1 jitdump header.
+            const uint32_t pad1 = 0;
+            const uint64_t flags = 0;
+            (void)!pwrite(fd, &pad1, sizeof(pad1), 16);
+            (void)!pwrite(fd, &flags, sizeof(flags), 32);
+            close(fd);
+            return;
+        }
+    });
+}
+
+extern "C" llvm::orc::shared::CWrapperFunctionResult
+QumirRegisterJITLoaderPerfImpl(const char* argData, size_t argSize) {
+    auto result = llvm_orc_registerJITLoaderPerfImpl(argData, argSize);
+    RepairPerfJitDumpHeader();
+    return result;
+}
+#endif
+
 bool EnablePerfSupport(llvm::orc::LLJIT& jit, std::string* error) {
 #if defined(__linux__)
     auto* objectLayer = llvm::dyn_cast<llvm::orc::ObjectLinkingLayer>(&jit.getObjLinkingLayer());
@@ -110,7 +157,11 @@ bool EnablePerfSupport(llvm::orc::LLJIT& jit, std::string* error) {
         epc,
         llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfStart),
         llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfEnd),
+#if LLVM_VERSION_MAJOR < 22
+        llvm::orc::ExecutorAddr::fromPtr(&QumirRegisterJITLoaderPerfImpl),
+#else
         llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfImpl),
+#endif
         /*EmitDebugInfo=*/true,
         /*EmitUnwindInfo=*/true);
     objectLayer->addPlugin(std::move(plugin));
