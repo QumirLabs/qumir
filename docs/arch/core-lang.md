@@ -1130,6 +1130,7 @@ precedes the body. Multiple attributes can be combined:
 | `used` | Keep a function reachable even without an explicit call |
 | `cacheable` | Mark a function for the compiler's native object-cache mechanism |
 | `inline` | Request LLVM `alwaysinline` for an ordinary definition |
+| `noinline` | Keep calls out of line: LLVM `noinline`, and the body is never imported into another module |
 | `(expect_after expression)` | Check the function's postcondition on exit |
 | `(expect_before expression)` | Parsed for compatibility, but currently not applied |
 
@@ -1140,6 +1141,11 @@ Recursive calls cannot always be inlined. Native object caching can import
 reachable inline bodies and a bounded set of small helpers so callers can
 still optimize through them; marking a function `cacheable` is not a purity
 assertion or a promise that compilation will be skipped.
+
+`noinline` is the opposite request, for an out-of-line boundary. An entry point
+is compiled into every module that exports it, so without the attribute on the
+functions it calls, that module imports and compiles again every small helper
+they reach, although a host calls the entry point only once per batch of work.
 
 Unknown bare attributes are currently ignored. Use the documented spellings;
 a misspelled attribute need not produce a diagnostic.

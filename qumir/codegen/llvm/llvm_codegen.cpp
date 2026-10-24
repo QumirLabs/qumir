@@ -759,7 +759,8 @@ std::unordered_set<std::string> CollectInlineDefinitions(
         }
         const auto& function = *found->second;
         if (!definitions.count(function.Name)) {
-            if (function.IsCoroutine || !cacheable.count(function.Name)) {
+            if (function.IsCoroutine || function.NoInline
+                || !cacheable.count(function.Name)) {
                 continue;
             }
             size_t instructions = 0;
@@ -952,6 +953,8 @@ std::unique_ptr<ILLVMModuleArtifacts> TLLVMCodeGen::Emit(TModule& module, int op
             lfun->addFnAttr("disable-tail-calls", "true");
         } else if (f.Inline && !f.Blocks.empty() && !f.IsCoroutine) {
             lfun->addFnAttr(llvm::Attribute::AlwaysInline);
+        } else if (f.NoInline) {
+            lfun->addFnAttr(llvm::Attribute::NoInline);
         }
         SymIdToLFun[f.SymId] = lfun;
         if (

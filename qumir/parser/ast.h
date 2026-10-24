@@ -687,6 +687,9 @@ struct TFunDecl : TExpr {
     bool Cacheable = false;
     // `inline` attribute: request LLVM alwaysinline on a function definition.
     bool Inline = false;
+    // `noinline` attribute: keep every call to this function out of line, so
+    // it is neither inlined nor imported into another compilation unit.
+    bool NoInline = false;
     // Set once the resolver finalized the emit symbol (overload/cacheable mangling);
     // guards against re-mangling when the mangled name is re-declared.
     bool Mangled = false;

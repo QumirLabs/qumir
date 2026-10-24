@@ -264,6 +264,7 @@ struct TFunction {
     bool CfgBuilt = false;
     bool Cacheable = false; // eligible for the JIT object cache (see TFunDecl::Cacheable)
     bool Inline = false; // explicit inline request, preserved through specialization
+    bool NoInline = false; // never inlined or imported into another module
 
     int SymId;
     int UniqueId; // unique within module, updated function will have same SymId and new UniqueId

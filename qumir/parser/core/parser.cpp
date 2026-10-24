@@ -874,6 +874,7 @@ TListHandlerMap MakeDefaultHandlers() {
             bool used = false;
             bool cacheable = false;
             bool inlineFunction = false;
+            bool noInlineFunction = false;
             tok = ctx.Stream.Next();
             if (IsOp(tok, '(')) {
                 auto peek = ctx.Stream.Next();
@@ -927,6 +928,8 @@ TListHandlerMap MakeDefaultHandlers() {
                                 cacheable = true;
                             } else if (attrTok.Name == "inline") {
                                 inlineFunction = true;
+                            } else if (attrTok.Name == "noinline") {
+                                noInlineFunction = true;
                             }
                         } else {
                             co_return Error(attrTok, "expected function attribute");
@@ -953,6 +956,7 @@ TListHandlerMap MakeDefaultHandlers() {
             funDecl->Used = used;
             funDecl->Cacheable = cacheable;
             funDecl->Inline = inlineFunction;
+            funDecl->NoInline = noInlineFunction;
             if (externSymbol) {
                 funDecl->MangledName = std::move(*externSymbol);
             }

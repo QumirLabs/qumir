@@ -1789,6 +1789,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         Module.Functions[funcIdx].IsCoroutine = isCoroutine;
         Module.Functions[funcIdx].Cacheable = fun->Cacheable;
         Module.Functions[funcIdx].Inline = fun->Inline;
+        Module.Functions[funcIdx].NoInline = fun->NoInline;
         if (isCoroutine) {
             Module.Functions[funcIdx].CoroutineResultTypeId = FromAstType(coroutineResultType, Module.Types);
         }

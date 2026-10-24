@@ -126,6 +126,46 @@ TEST(InlineAttribute, PrintingAndDeepCloningPreserveAttributes) {
     }
 }
 
+TEST(InlineAttribute, NoInlineKeepsCallsOutOfLine) {
+    const std::string source = R"((block
+      (fun twice ((var x i64)) -> i64 (attrs noinline)
+        (block (return (+ x x))))
+      (fun kernel ((var x i64)) -> i64
+        (block (return (call twice x))))))";
+    auto parsed = Parse(source);
+    ASSERT_TRUE(parsed) << parsed.error().ToString();
+    std::ostringstream out;
+    NAst::NCore::TPrinter printer(out, {});
+    printer.PrintExpr(NAst::DeepCloneExpr(*parsed));
+    auto reparsed = Parse(out.str());
+    ASSERT_TRUE(reparsed) << reparsed.error().ToString();
+    auto block = NAst::TMaybeNode<NAst::TBlockExpr>(*reparsed).Cast();
+    ASSERT_NE(block, nullptr);
+    auto function = NAst::TMaybeNode<NAst::TFunDecl>(block->Stmts.front()).Cast();
+    ASSERT_NE(function, nullptr);
+    EXPECT_TRUE(function->NoInline);
+    EXPECT_FALSE(function->Inline);
+
+    TLLVMRunner runner({
+        .PrintLlvm = true,
+        .NativeCode = true,
+        .CoreInput = true,
+        .ResolveCoreInput = true,
+        .AllowOverloads = true,
+        .OptLevel = 3,
+    });
+    std::string llvmIr;
+    auto* entry = Compile(source, "kernel", runner, llvmIr);
+    ASSERT_NE(entry, nullptr);
+    EXPECT_EQ(reinterpret_cast<int64_t (*)(int64_t)>(entry)(21), 42);
+    EXPECT_NE(llvmIr.find("noinline"), std::string::npos) << llvmIr;
+    const auto begin = llvmIr.rfind("@kernel(");
+    ASSERT_NE(begin, std::string::npos) << llvmIr;
+    const auto end = llvmIr.find("\n}", begin);
+    ASSERT_NE(end, std::string::npos) << llvmIr;
+    EXPECT_NE(llvmIr.substr(begin, end - begin).find("twice"), std::string::npos) << llvmIr;
+}
+
 TEST(InlineAttribute, OrdinaryDefinitionReachesLlvmAndIsInlined) {
     CheckDefinition("");
 }

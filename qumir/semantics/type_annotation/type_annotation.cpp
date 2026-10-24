@@ -2584,6 +2584,7 @@ TFunDeclTask InstantiateGenericFunction(
         ? genericDecl->Name
         : genericDecl->OriginalName;
     cloned->Inline = genericDecl->Inline;
+    cloned->NoInline = genericDecl->NoInline;
     cloned->LastAssert = CloneAndSubstituteExpr(genericDecl->LastAssert, genericParams, bindings);
     cloned->Type = std::make_shared<TFunctionType>(std::move(paramTypes), cloned->RetType);
 

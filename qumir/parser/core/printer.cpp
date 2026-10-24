@@ -434,6 +434,7 @@ void TPrinter::PrintFun(TFunDecl& node, int level) {
         || node.LiteralSuffix
         || node.Cacheable
         || node.Inline
+        || node.NoInline
         || node.IsExternal();
     if (hasAttrs) {
         Space();
@@ -445,6 +446,10 @@ void TPrinter::PrintFun(TFunDecl& node, int level) {
         if (node.Inline) {
             Separator(level + 2);
             *Out << "inline";
+        }
+        if (node.NoInline) {
+            Separator(level + 2);
+            *Out << "noinline";
         }
         if (node.LastAssert) {
             Separator(level + 2);
