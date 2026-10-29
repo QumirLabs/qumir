@@ -1,15 +1,35 @@
 # Qumir
 
-Qumir is a compiler and runtime for the Kumir educational programming language. It accepts the familiar Russian-keyword `.kum` syntax and can execute programs with its own IR interpreter, compile them with LLVM, or produce WebAssembly for the browser.
+Qumir is a compiler and runtime for implementing embedded and standalone
+programming languages. Its C++ library provides type checking, optimization,
+code generation, and runtime support. Use it when an application needs to run
+user-defined formulas or processing rules, or when a language implementation
+needs a shared foundation for execution.
 
-The same compiler pipeline also exposes **core lang** (historically called **oz-lang**): a small typed S-expression language intended for compiler experiments and embedding in C++ applications. Both frontends share the AST, semantic passes, IR, interpreter, LLVM JIT/AOT backend, and WebAssembly target.
+**oz-lang** is Qumir's typed core language. It can serve as an intermediate
+language for your frontend or for generated computations. You can generate
+oz-lang source or construct its abstract syntax tree (AST) directly through
+the C++ API. The compiler lowers that representation to its own SSA IR, then
+to bytecode for Qumir's VM or to native code and WebAssembly through LLVM.
+The documentation also calls oz-lang *core lang*.
 
-- Try it online: [qumir.dev](https://qumir.dev)
-- User documentation: [docs/ru/index.md](docs/ru/index.md)
-- Language syntax: [docs/ru/syntax.md](docs/ru/syntax.md)
-- Examples: [docs/ru/examples.md](docs/ru/examples.md)
-- Compiler architecture: [docs/arch/overview.md](docs/arch/overview.md)
+**Kumir (КуМир)** is an existing educational language with Russian keywords.
+**Qumir** is the compiler project, which includes a ready-to-use Kumir
+frontend. It translates `.kum` programs into the shared AST and uses the same
+compiler infrastructure as oz-lang. This frontend supports running Kumir
+programs on a computer or in a browser.
+
+[QumirDB](https://github.com/QumirLabs/qumirdb) demonstrates another use of
+the library: its SQL planner generates computational kernels using oz-lang
+and Qumir's compiler pipeline. The database supplies SQL semantics, query
+planning, and scheduling; Qumir supplies the compilation layer.
+
+- Try Kumir in the browser: [qumir.dev](https://qumir.dev)
+- Kumir user documentation: [docs/ru/index.md](docs/ru/index.md)
+- Kumir syntax: [docs/ru/syntax.md](docs/ru/syntax.md)
+- Kumir examples: [docs/ru/examples.md](docs/ru/examples.md)
 - oz-lang tutorial and reference: [docs/arch/core-lang.md](docs/arch/core-lang.md)
+- Compiler architecture: [docs/arch/overview.md](docs/arch/overview.md)
 
 ## Contents
 
@@ -26,15 +46,19 @@ The same compiler pipeline also exposes **core lang** (historically called **oz-
 
 Qumir provides:
 
-- the Kumir-compatible `.kum` frontend with Russian keywords;
-- scalar types, strings, arrays, functions, references, control flow, and file I/O;
-- the Robot, Turtle, Painter, Drawer, Colors, Complex Numbers, and Keyboard modules;
-- an IR interpreter for fast execution and compiler debugging;
-- LLVM JIT and ahead-of-time native compilation;
-- WebAssembly output and the browser runtime used by the online playground;
-- core lang, a lower-level textual representation of the compiler AST.
+- oz-lang, a typed core language with a textual syntax and an AST API;
+- a shared semantic pipeline and SSA IR for optimization and code generation;
+- a bytecode compiler and VM for execution without LLVM JIT compilation;
+- an LLVM backend for native JIT, ahead-of-time compilation, and WebAssembly;
+- runtime support for strings, arrays, structs, and calls to host functions;
+- a Kumir-compatible `.kum` frontend with Russian keywords;
+- the Robot, Turtle, Painter, Drawer, Colors, Complex Numbers, and Keyboard
+  modules, and the browser runtime used by the Kumir playground.
 
-The project aims for practical compatibility with Kumir programs and teaching materials. If a `.kum` program behaves differently from Kumir, please [open an issue](https://github.com/resetius/qumir/issues) with a minimal example.
+The Kumir frontend aims for practical compatibility with existing programs
+and teaching materials. If a `.kum` program behaves differently from Kumir,
+please [open an issue](https://github.com/QumirLabs/qumir/issues) with a
+minimal example.
 
 ## Quick start
 
@@ -114,24 +138,51 @@ Use `build/bin/qumirc --help` for all output modes and optimization flags. See [
 
 ## Compiler architecture
 
-Both source languages use the same pipeline:
+Kumir and oz-lang have separate parsers that build the same AST. A host
+application can also construct that AST directly. The shared semantic passes
+resolve names, check types and definite assignment, and make lifetime
+operations explicit before lowering to Qumir's SSA IR.
 
-```text
-.kum or core lang source
-        -> lexer and parser
-        -> name resolution and type annotation
-        -> definite-assignment checks and AST transforms
-        -> custom SSA-like IR
-        -> IR interpreter, LLVM native code, or WebAssembly
+```mermaid
+flowchart TD
+    Kumir["Kumir source (.kum)"] -->|Kumir frontend| AST["Shared AST"]
+    Oz["oz-lang source (.oz)"] -->|oz-lang parser| AST
+    App["Your frontend or code generator"] --> AST
+    AST --> Semantics["Semantic passes"]
+    Semantics --> IR["Qumir SSA IR"]
+    IR --> Bytecode["VM bytecode"]
+    Bytecode --> VM["Qumir VM"]
+    IR --> LLVM["LLVM backend"]
+    LLVM --> Native["Native JIT / AOT"]
+    LLVM --> Wasm["WebAssembly"]
 ```
 
-The command-line tools are thin wrappers around the reusable `qumir` library. Built-in modules register external types and functions with the name resolver; native LLVM execution uses ordinary function pointers, while the IR interpreter uses packed thunks.
+The bytecode backend compiles IR to instructions for Qumir's own VM.
+The LLVM backend generates native code for JIT or ahead-of-time execution,
+and WebAssembly for browser execution. The CLI tools are wrappers around
+the same library used by embedded applications.
 
-For the component map, IR model, runtime ABI, and module system, start with [docs/arch/overview.md](docs/arch/overview.md). Separate notes cover [arrays](docs/arch/arrays.md), [strings](docs/arch/strings.md), [structs](docs/arch/structs.md), and [coroutines](docs/arch/coroutine.md).
+To add a language frontend, generate oz-lang or construct the shared AST
+and reuse the semantic passes and backends. To add an execution backend,
+consume Qumir IR and implement instruction lowering and runtime integration
+for the target. The existing frontends and semantic passes can be reused.
+
+Host modules expose types and functions to the language. Native execution
+uses registered function pointers; VM execution uses packed call thunks.
+The [embedding section](#embedding-in-c) shows how these bindings are registered.
+
+For the IR model, runtime ABI, and module system, start with
+[the architecture overview](docs/arch/overview.md). Separate notes cover
+[arrays](docs/arch/arrays.md), [strings](docs/arch/strings.md),
+[structs](docs/arch/structs.md), and [coroutines](docs/arch/coroutine.md).
 
 ## Core lang and embedding
 
-Core lang, also known as oz-lang after the `.oz` files in [test/regtest/cases/corelang](test/regtest/cases/corelang), is the internal surface syntax for the Qumir AST. It is useful when a host application needs a compact typed language without adopting the Russian `.kum` syntax.
+oz-lang, also called core lang, is the textual syntax for Qumir's shared AST.
+An application can use it to express formulas, filters, or generated
+computational kernels, then execute them with the VM or compile them through
+LLVM. A language frontend can generate this representation while relying on
+Qumir for the shared compilation stages.
 
 It supports typed and overloaded functions, generic specialization, references, managed strings, arrays, structs, SIMD vectors, and coroutines. The [oz-lang guide](docs/arch/core-lang.md) teaches these features through complete programs and includes a syntax reference and current implementation limits.
 
