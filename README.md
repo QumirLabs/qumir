@@ -6,11 +6,12 @@ code generation, and runtime support. Use it when an application needs to run
 user-defined formulas or processing rules, or when a language implementation
 needs a shared foundation for execution.
 
-**oz-lang** is Qumir's typed core language. It can serve as an intermediate
-language for your frontend or for generated computations. You can generate
-oz-lang source or construct its abstract syntax tree (AST) directly through
-the C++ API. The compiler lowers that representation to its own SSA IR, then
-to bytecode for Qumir's VM or to native code and WebAssembly through LLVM.
+**oz-lang** is Qumir's typed core language: a textual representation of its
+shared abstract syntax tree (AST), written as **S-expressions**. It can serve
+as an intermediate language for your frontend or for generated computations.
+You can generate oz-lang source or construct the same AST directly through
+the C++ API. The compiler lowers the AST to its own SSA IR, then to bytecode
+for Qumir's VM or to native code and WebAssembly through LLVM.
 The documentation also calls oz-lang *core lang*.
 
 **Kumir (КуМир)** is an existing educational language with Russian keywords.
@@ -178,7 +179,7 @@ For the IR model, runtime ABI, and module system, start with
 
 ## Core lang and embedding
 
-oz-lang, also called core lang, is the textual syntax for Qumir's shared AST.
+oz-lang, also called core lang, represents Qumir's shared AST as S-expressions.
 An application can use it to express formulas, filters, or generated
 computational kernels, then execute them with the VM or compile them through
 LLVM. A language frontend can generate this representation while relying on
