@@ -216,7 +216,8 @@ Each invocation uses one aligned byte buffer for all registers, including
 narrower types, while 128-bit slots use sixteen bytes with sixteen-byte
 alignment. An `f32` value occupies the low four bytes of its slot and has
 its own scalar opcodes (`FAdd32`, `FCmpLT32`, `FExt32`, ...); an `f32`
-immediate carries the float bits in the low four bytes of `Imm.Value`. Struct registers hold addresses of storage in the call frame.
+immediate carries the float bits in the low four bytes of `Imm.Value`.
+Struct registers hold addresses of storage in the call frame.
 Function calls save and restore the complete register file as one byte range.
 
 ### 6.1 Execution model
