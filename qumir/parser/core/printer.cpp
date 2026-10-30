@@ -89,13 +89,15 @@ bool TPrinter::ShouldWrapType(const TExprPtr& expr) const {
     }
     return TMaybeType<TNamedType>(expr->Type)
         || TMaybeNode<TStructConstructExpr>(expr)
-        || IsNonDefaultIntegerLiteral(expr);
+        || IsNonDefaultNumberLiteral(expr);
 }
 
-bool TPrinter::IsNonDefaultIntegerLiteral(const TExprPtr& expr) const {
-    auto number = TMaybeNode<TNumberExpr>(expr);
-    if (!number || number.Cast()->IsFloat()) {
+bool TPrinter::IsNonDefaultNumberLiteral(const TExprPtr& expr) const {
+    if (!TMaybeNode<TNumberExpr>(expr)) {
         return false;
+    }
+    if (auto floatType = TMaybeType<TFloatType>(expr->Type)) {
+        return floatType.Cast()->Kind != TFloatType::F64;
     }
     auto integerType = TMaybeType<TIntegerType>(expr->Type);
     return integerType && integerType.Cast()->Kind != TIntegerType::I64;
@@ -181,8 +183,8 @@ void TPrinter::PrintType(TTypePtr type, int level) {
         *Out << "nil";
     } else if (auto t = TMaybeType<TIntegerType>(type)) {
         PrintScalarType(t.Cast()->ToString(), type);
-    } else if (TMaybeType<TFloatType>(type)) {
-        PrintScalarType("f64", type);
+    } else if (auto t = TMaybeType<TFloatType>(type)) {
+        PrintScalarType(t.Cast()->ToString(), type);
     } else if (TMaybeType<TBoolType>(type)) {
         PrintScalarType("bool", type);
     } else if (TMaybeType<TStringType>(type)) {

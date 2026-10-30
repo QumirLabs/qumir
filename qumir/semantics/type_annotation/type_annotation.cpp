@@ -197,6 +197,16 @@ bool WideningIntOK(TTypePtr typeSrc, TTypePtr typeDst) {
     return false;
 }
 
+bool IsNumericType(const TTypePtr& type) {
+    return TMaybeType<TIntegerType>(type) || TMaybeType<TFloatType>(type);
+}
+
+bool WideningFloatOK(TTypePtr typeSrc, TTypePtr typeDst) {
+    auto src = TMaybeType<TFloatType>(typeSrc).Cast();
+    auto dst = TMaybeType<TFloatType>(typeDst).Cast();
+    return src && dst && dst->BitWidth() >= src->BitWidth();
+}
+
 bool IntegerLiteralFits(int64_t value, const TIntegerType& type) {
     if (!type.IsSigned() && value < 0) {
         return false;
@@ -239,6 +249,11 @@ bool RetypeIntegerLiteralIfFits(TExprPtr expr, TTypePtr toType) {
 
     auto number = maybeNumber.Cast();
     if (number->IsFloat()) {
+        // A float literal takes the float width the context asks for.
+        if (TMaybeType<TFloatType>(toType)) {
+            number->Type = std::move(toType);
+            return true;
+        }
         return false;
     }
     if (!TMaybeType<TIntegerType>(number->Type)) {
@@ -274,8 +289,7 @@ bool IntegerLiteralCanUseType(TExprPtr expr, TTypePtr toType) {
     }
     auto maybeNumber = TMaybeNode<TNumberExpr>(expr);
     if (maybeNumber && TMaybeType<TFloatType>(toType)) {
-        return !maybeNumber.Cast()->IsFloat()
-            && TMaybeType<TIntegerType>(maybeNumber.Cast()->Type);
+        return IsNumericType(maybeNumber.Cast()->Type);
     }
     auto maybeInteger = TMaybeType<TIntegerType>(toType);
     return maybeNumber
@@ -302,8 +316,7 @@ bool EqualTypes(TTypePtr a, TTypePtr b) {
     auto maybeAFloat = TMaybeType<TFloatType>(a);
     auto maybeBFloat = TMaybeType<TFloatType>(b);
     if (maybeAFloat && maybeBFloat) {
-        // we hame 1 float type for now
-        return true;
+        return maybeAFloat.Cast()->Kind == maybeBFloat.Cast()->Kind;
     }
 
     auto maybeANamed = TMaybeType<TNamedType>(a);
@@ -338,6 +351,9 @@ bool CanImplicit(TTypePtr S, TTypePtr D, NSemantics::TNameResolver* ctx) {
     }
     if (TMaybeType<TIntegerType>(S) && TMaybeType<TFloatType>(D)) {
         return true;
+    }
+    if (TMaybeType<TFloatType>(S) && TMaybeType<TFloatType>(D)) {
+        return WideningFloatOK(S, D);
     }
     if (TMaybeType<TFloatType>(S) && TMaybeType<TIntegerType>(D)) {
         return true; // float to int conversion allowed
@@ -471,13 +487,17 @@ TExprPtr MakeModuleOpCall(const std::string& synthName, std::vector<TExprPtr> ar
 }
 
 TTypePtr CommonNumericType(TTypePtr a, TTypePtr b) {
-    if (TMaybeType<TFloatType>(a) && TMaybeType<TFloatType>(b)) {
+    auto maybeAFloat = TMaybeType<TFloatType>(a);
+    auto maybeBFloat = TMaybeType<TFloatType>(b);
+    if (maybeAFloat && maybeBFloat) {
+        return maybeAFloat.Cast()->BitWidth() >= maybeBFloat.Cast()->BitWidth()
+            ? a
+            : b;
+    }
+    if (maybeAFloat && TMaybeType<TIntegerType>(b)) {
         return a;
     }
-    if (TMaybeType<TFloatType>(a) && TMaybeType<TIntegerType>(b)) {
-        return a;
-    }
-    if (TMaybeType<TIntegerType>(a) && TMaybeType<TFloatType>(b)) {
+    if (TMaybeType<TIntegerType>(a) && maybeBFloat) {
         return b;
     }
     if (TMaybeType<TIntegerType>(a) && TMaybeType<TIntegerType>(b)) {
@@ -1060,7 +1080,7 @@ TExprPtr TryModuleBinaryOp(TExprPtr left, TExprPtr right,
 }
 
 void RetypeIntegerLiteralOperands(TExprPtr& leftExpr, TExprPtr& rightExpr, TTypePtr& leftType, TTypePtr& rightType) {
-    if (!TMaybeType<TIntegerType>(leftType) || !TMaybeType<TIntegerType>(rightType)) {
+    if (!IsNumericType(leftType) || !IsNumericType(rightType)) {
         return;
     }
 
@@ -1080,10 +1100,6 @@ struct TBinaryOpTypes {
 };
 
 using TBinaryOpTypesResult = std::expected<TBinaryOpTypes, TError>;
-
-bool IsNumericType(const TTypePtr& type) {
-    return TMaybeType<TIntegerType>(type) || TMaybeType<TFloatType>(type);
-}
 
 TTask AnnotateVector(
     std::shared_ptr<TVectorExpr> vector,
@@ -1163,7 +1179,7 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
         if (!common || (integerOnly && !TMaybeType<TIntegerType>(common))) {
             return error(std::move(message));
         }
-        if (binary->Operator == TOperator("/")) {
+        if (binary->Operator == TOperator("/") && !TMaybeType<TFloatType>(common)) {
             common = std::make_shared<TFloatType>();
         }
         return TBinaryOpTypes{common, common, common};
@@ -1180,7 +1196,7 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
             return commonNumeric(true, "binary expression operands must be both integer types");
         case TOperator("**"):
             if (TMaybeType<TFloatType>(left) && IsNumericType(right)) {
-                return TBinaryOpTypes{left, right, std::make_shared<TFloatType>()};
+                return TBinaryOpTypes{left, right, left};
             }
             if (TMaybeType<TIntegerType>(left) && TMaybeType<TIntegerType>(right)) {
                 return TBinaryOpTypes{left, right, std::make_shared<TIntegerType>()};
@@ -1636,8 +1652,8 @@ TTypePtr CloneTypeShape(const TTypePtr& shape) {
     if (auto t = TMaybeType<TIntegerType>(shape)) {
         return std::make_shared<TIntegerType>(t.Cast()->Kind);
     }
-    if (TMaybeType<TFloatType>(shape)) {
-        return std::make_shared<TFloatType>();
+    if (auto t = TMaybeType<TFloatType>(shape)) {
+        return std::make_shared<TFloatType>(t.Cast()->Kind);
     }
     if (TMaybeType<TBoolType>(shape)) {
         return std::make_shared<TBoolType>();

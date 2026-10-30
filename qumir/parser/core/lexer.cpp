@@ -137,7 +137,7 @@ Types:
   Primitive:
       i8/i16/i32/i64/u8/u16/u32/u64
                 -> TIntegerType, TypeId = "Int"
-      f64       -> TFloatType, TypeId = "Float"
+      f32/f64   -> TFloatType, TypeId = "Float"
       bool      -> TBoolType, TypeId = "Bool"
       string    -> TStringType, TypeId = "String"
       char      -> TSymbolType, TypeId = "Char"

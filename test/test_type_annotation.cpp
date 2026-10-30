@@ -58,23 +58,30 @@ TEST(BinaryTypeAnnotation, NumericVectorPromotionAndDivision) {
     };
     const std::vector<TCase> cases = {
         {"+", "<vec i32 4>", "<vec i32 4>", "Vector::i32::4", "Vector::i32::4", "Vector::i32::4"},
-        {"+", "<vec i32 4>", "<vec f64 4>", "Vector::Float::4", "Vector::Float::4", "Vector::Float::4"},
-        {"+", "<vec f64 4>", "<vec i32 4>", "Vector::Float::4", "Vector::Float::4", "Vector::Float::4"},
+        {"+", "<vec i32 4>", "<vec f64 4>", "Vector::f64::4", "Vector::f64::4", "Vector::f64::4"},
+        {"+", "<vec f64 4>", "<vec i32 4>", "Vector::f64::4", "Vector::f64::4", "Vector::f64::4"},
         {"*", "<vec i32 4>", "i64", "Vector::i64::4", "Vector::i64::4", "i64"},
-        {"+", "<vec i32 4>", "f64", "Vector::Float::4", "Vector::Float::4", "Float"},
+        {"+", "<vec i32 4>", "f64", "Vector::f64::4", "Vector::f64::4", "f64"},
         {"-", "i32", "<vec i32 4>", "Vector::i32::4", "i32", "Vector::i32::4"},
-        {"/", "<vec i32 4>", "<vec i32 4>", "Vector::Float::4", "Vector::Float::4", "Vector::Float::4"},
-        {"/", "i32", "<vec i32 4>", "Vector::Float::4", "Float", "Vector::Float::4"},
+        {"/", "<vec i32 4>", "<vec i32 4>", "Vector::f64::4", "Vector::f64::4", "Vector::f64::4"},
+        {"/", "i32", "<vec i32 4>", "Vector::f64::4", "f64", "Vector::f64::4"},
         {"//", "<vec i32 4>", "<vec i32 4>", "Vector::i32::4", "Vector::i32::4", "Vector::i32::4"},
         {"%", "<vec i32 4>", "i32", "Vector::i32::4", "Vector::i32::4", "i32"},
-        {">", "<vec i32 4>", "f64", "Vector::Bool::4", "Vector::Float::4", "Float"},
+        {">", "<vec i32 4>", "f64", "Vector::Bool::4", "Vector::f64::4", "f64"},
         {"==", "<vec bool 4>", "bool", "Vector::Bool::4", "Vector::Bool::4", "Bool"},
         {"&", "<vec bool 4>", "<vec bool 4>", "Vector::Bool::4", "Vector::Bool::4", "Vector::Bool::4"},
         {"|", "bool", "<vec bool 4>", "Vector::Bool::4", "Bool", "Vector::Bool::4"},
         {"&&", "<vec i32 4>", "i32", "Vector::Bool::4", "Vector::Bool::4", "Bool"},
         {">>", "<vec u32 4>", "i64", "Vector::u32::4", "Vector::u32::4", "u32"},
-        {"+", "i32", "f64", "Float", "Float", "Float"},
-        {"/", "i32", "i32", "Float", "Float", "Float"},
+        {"+", "i32", "f64", "f64", "f64", "f64"},
+        {"/", "i32", "i32", "f64", "f64", "f64"},
+        {"+", "f32", "f32", "f32", "f32", "f32"},
+        {"+", "f32", "f64", "f64", "f64", "f64"},
+        {"*", "i64", "f32", "f32", "f32", "f32"},
+        {"/", "f32", "f32", "f32", "f32", "f32"},
+        {"/", "f32", "i32", "f32", "f32", "f32"},
+        {"<", "f32", "f64", "Bool", "f64", "f64"},
+        {"+", "<vec f32 4>", "f32", "Vector::f32::4", "Vector::f32::4", "f32"},
         {"//", "i32", "i32", "i32", "i32", "i32"},
         {">>", "u32", "i64", "u32", "u32", "i64"},
     };
@@ -88,6 +95,24 @@ TEST(BinaryTypeAnnotation, NumericVectorPromotionAndDivision) {
         EXPECT_EQ(TypeName(binary->Left->Type), test.LeftOperand);
         EXPECT_EQ(TypeName(binary->Right->Type), test.RightOperand);
     }
+}
+
+TEST(FloatWidthAnnotation, LiteralsAndConversions) {
+    auto root = Annotate(
+        "(block (var a f32) (= a (: 1.5 f32)) (var b = (+ a 2.0)) (var c f64) (= c a)"
+        " (var d = (cast c f32)) (var e = (* a 2)) (var f = (/ a 2)))");
+    ASSERT_TRUE(root.has_value()) << root.error().ToString();
+    auto stmts = TMaybeNode<TBlockExpr>(*root).Cast()->Stmts;
+    auto init = [&](size_t index) {
+        return TypeName(TMaybeNode<TVarStmt>(stmts[index]).Cast()->Init->Type);
+    };
+    EXPECT_EQ(init(2), "f32"); // the 2.0 literal takes the f32 width
+    EXPECT_EQ(init(5), "f32");
+    EXPECT_EQ(init(6), "f32");
+    EXPECT_EQ(init(7), "f32");
+
+    // Narrowing f64 -> f32 needs an explicit cast.
+    EXPECT_FALSE(Annotate("(block (var a f64) (var b f32) (= b a))").has_value());
 }
 
 TEST(BinaryTypeAnnotation, RejectsInvalidVectorOperands) {
@@ -156,14 +181,14 @@ TEST(BinaryTypeAnnotation, VectorAssignmentsCheckShapeAndElementType) {
     ASSERT_TRUE(root.has_value()) << root.error().ToString();
     auto assignment = TMaybeNode<TAssignExpr>(TMaybeNode<TBlockExpr>(*root).Cast()->Stmts.back()).Cast();
     ASSERT_NE(assignment, nullptr);
-    EXPECT_EQ(TypeName(assignment->Value->Type), "Vector::Float::4");
+    EXPECT_EQ(TypeName(assignment->Value->Type), "Vector::f64::4");
     EXPECT_TRUE(TMaybeNode<TCastExpr>(assignment->Value));
 }
 
 TEST(VectorTypeAnnotation, InfersTypeFromScalarExpressions) {
     const std::vector<std::pair<std::string, std::string>> cases = {
         {"(vec 1 (+ 2 3) 4 5)", "Vector::i64::4"},
-        {"(vec 0.5 2.5)", "Vector::Float::2"},
+        {"(vec 0.5 2.5)", "Vector::f64::2"},
         {"(vec #t #f)", "Vector::Bool::2"},
         {"(vec (: 1 i16) (: 2 i16))", "Vector::i16::2"},
     };
@@ -183,10 +208,10 @@ TEST(VectorTypeAnnotation, ConvertsElementsToExplicitType) {
     auto variable = TMaybeNode<TVarStmt>(TMaybeNode<TBlockExpr>(*result).Cast()->Stmts.back()).Cast();
     auto vector = TMaybeNode<TVectorExpr>(variable->Init).Cast();
     ASSERT_NE(vector, nullptr);
-    EXPECT_EQ(TypeName(vector->Type), "Vector::Float::2");
+    EXPECT_EQ(TypeName(vector->Type), "Vector::f64::2");
     for (const auto& element : vector->Elements) {
         ASSERT_TRUE(TMaybeNode<TCastExpr>(element));
-        EXPECT_EQ(TypeName(element->Type), "Float");
+        EXPECT_EQ(TypeName(element->Type), "f64");
     }
     NCore::TPrintOptions options;
     options.Pretty = false;
@@ -208,7 +233,7 @@ TEST(VectorTypeAnnotation, ConvertsReferencedElementsToExplicitType) {
     ASSERT_NE(vector, nullptr);
     for (const auto& element : vector->Elements) {
         EXPECT_TRUE(TMaybeNode<TCastExpr>(element));
-        EXPECT_EQ(TypeName(element->Type), "Float");
+        EXPECT_EQ(TypeName(element->Type), "f64");
     }
 }
 
@@ -374,10 +399,10 @@ TEST(VectorTypeAnnotation, AllowsScalar128BitValuesConvertedToFloatElements) {
         ASSERT_TRUE(constructed) << constructed.error().ToString();
         auto arithmetic = AnnotateBinary("+", "<vec f64 2>", scalar);
         ASSERT_TRUE(arithmetic) << arithmetic.error().ToString();
-        EXPECT_EQ(TypeName((*arithmetic)->Type), "Vector::Float::2");
+        EXPECT_EQ(TypeName((*arithmetic)->Type), "Vector::f64::2");
         auto division = AnnotateBinary("/", scalar == "i128" ? "<vec i64 2>" : "<vec u64 2>", scalar);
         ASSERT_TRUE(division) << division.error().ToString();
-        EXPECT_EQ(TypeName((*division)->Type), "Vector::Float::2");
+        EXPECT_EQ(TypeName((*division)->Type), "Vector::f64::2");
         auto scalarArithmetic = AnnotateBinary("+", scalar, scalar);
         ASSERT_TRUE(scalarArithmetic) << scalarArithmetic.error().ToString();
         EXPECT_EQ(TypeName((*scalarArithmetic)->Type), scalar);
@@ -443,7 +468,7 @@ TEST(VectorTypeAnnotation, VectorIndexInfersScalarElementType) {
         {"(index (vec 1 2) 0)", "i64"},
         {"(index (: (vec -1 127) <vec i8 2>) (: 1 i32))", "i8"},
         {"(index (vec #t #f) 1)", "Bool"},
-        {"(index (vec 1.0 2.0) 0)", "Float"},
+        {"(index (vec 1.0 2.0) 0)", "f64"},
     }) {
         SCOPED_TRACE(source);
         auto result = Annotate(source);
@@ -463,10 +488,10 @@ TEST(VectorTypeAnnotation, IntrinsicsKeepCallsAndInferResults) {
         {"(call builtin::all (vec #t #f))", "Bool"},
         {"(call builtin::any (vec #t #f))", "Bool"},
         {"(call builtin::shuffle (: (vec 1 2) <vec i8 2>) (vec 1 0))", "Vector::i8::2"},
-        {"(call builtin::shuffle (vec 1.5 2.5) (vec 0 0))", "Vector::Float::2"},
+        {"(call builtin::shuffle (vec 1.5 2.5) (vec 0 0))", "Vector::f64::2"},
         {"(call builtin::movemask (vec #t #f))", "u32"},
         {"(call builtin::select (vec #t #f) (vec 1 2) (vec 3 4))", "Vector::i64::2"},
-        {"(call builtin::gather (cast 0 <ptr f64>) (: (vec 0 1) <vec u8 2>))", "Vector::Float::2"},
+        {"(call builtin::gather (cast 0 <ptr f64>) (: (vec 0 1) <vec u8 2>))", "Vector::f64::2"},
         {"(call builtin::prefetch (cast 0 <ptr i8>))", "Void"}})
     {
         SCOPED_TRACE(source);
