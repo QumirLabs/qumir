@@ -935,6 +935,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 const int srcType = typeIdOp(ins.Operands[0]);
                 if (isF32(typeId(ins.Dest))) {
                     if (is128(srcType)) {
+                        // TODO: add I2F128 variants that produce f32
                         throw std::runtime_error("VM: 128-bit integer to f32 conversion is not supported");
                     }
                     out.Op = EVMOp::I2F32;
@@ -955,6 +956,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 1);
                 if (isF32(typeIdOp(ins.Operands[0]))) {
                     if (is128(typeId(ins.Dest))) {
+                        // TODO: add an F2I128 variant that reads f32
                         throw std::runtime_error("VM: f32 to 128-bit integer conversion is not supported");
                     }
                     out.Op = EVMOp::F2I32;

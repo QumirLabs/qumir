@@ -35,10 +35,6 @@ TImm FloatImm(const NAst::TNumberExpr& num, TTypeTable& types) {
     return TImm{.Value = std::bit_cast<int64_t>(num.FloatValue), .TypeId = types.I(EKind::F64)};
 }
 
-} // namespace
-
-namespace {
-
 struct TInstrEmitter {
     TBuilder& Builder;
     TInstrDebugInfo DebugInfo;
