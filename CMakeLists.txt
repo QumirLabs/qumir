@@ -4,6 +4,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(QUMIR_BUILD_SERVICE "Build Qumir service component with externals" OFF)
 option(QUMIR_BUILD_TESTS "Build Qumir tests" OFF)
+option(QUMIR_USE_CCACHE "Compile through ccache when it is installed" ON)
 option(QUMIR_LLVM_LINK_SHARED "Link the shared libLLVM instead of static LLVM archives" OFF)
 set(QUMIR_BUILD_NUMBER "0" CACHE STRING "Build number, becomes the Debian revision after the hyphen")
 
@@ -36,6 +37,23 @@ message(STATUS "Qumir version string: ${QUMIR_VERSION_STRING}")
 set(QUMIR_PRIVATE_DIR "lib/qumir-${QUMIR_RELEASE}")
 set(QUMIR_PRIVATE_BINDIR "${QUMIR_PRIVATE_DIR}/bin")
 set(QUMIR_PRIVATE_LIBDIR "${QUMIR_PRIVATE_DIR}/lib")
+
+# Set before any target exists; the submodules under externals/ inherit it.
+# A launcher passed on the command line (CI does) or by a parent project takes precedence.
+if(QUMIR_USE_CCACHE AND NOT CMAKE_C_COMPILER_LAUNCHER AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+        message(STATUS "ccache: using ${CCACHE_PROGRAM}")
+    else()
+        message(STATUS "ccache: not found, compiling directly")
+    endif()
+elseif(CMAKE_C_COMPILER_LAUNCHER OR CMAKE_CXX_COMPILER_LAUNCHER)
+    message(STATUS "ccache: compiler launcher already set (C: '${CMAKE_C_COMPILER_LAUNCHER}', C++: '${CMAKE_CXX_COMPILER_LAUNCHER}')")
+else()
+    message(STATUS "ccache: disabled")
+endif()
 
 add_subdirectory(qumir)
 if(QUMIR_BUILD_TESTS)
