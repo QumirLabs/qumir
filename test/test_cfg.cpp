@@ -106,6 +106,21 @@ TEST(IRType, VectorPayloadUsesElementWidthWithoutPadding) {
     EXPECT_EQ(types.SizeInBytes(types.Vec(types.I(EKind::I128), 32)), 512);
 }
 
+TEST(IRType, NestedStructAlignsLikeItsWidestField) {
+    TTypeTable types;
+    const int wide = types.Struct({types.I(EKind::I128)});
+    const int pair = types.Struct({types.I(EKind::I64), types.I(EKind::I64)});
+    EXPECT_EQ(types.AlignInBytes(wide), 16);
+    EXPECT_EQ(types.AlignInBytes(pair), 8);
+
+    const int flagged = types.Struct({types.I(EKind::I1), wide});
+    EXPECT_EQ(types.FieldOffset(flagged, 1), 16);
+    EXPECT_EQ(types.SizeInBytes(flagged), 32);
+    const int flaggedPair = types.Struct({types.I(EKind::I1), pair});
+    EXPECT_EQ(types.FieldOffset(flaggedPair, 1), 8);
+    EXPECT_EQ(types.SizeInBytes(flaggedPair), 24);
+}
+
 TEST(IRType, AstVectorAliasesUseTheSameIRType) {
     TTypeTable types;
     auto vector = std::make_shared<NAst::TVectorType>(

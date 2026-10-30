@@ -475,6 +475,15 @@ int TTypeTable::SizeInBytes(int typeId) const {
 int TTypeTable::AlignInBytes(int typeId) const {
     if (typeId < 0 || typeId >= (int)Types.size()) return 8;
     auto kind = Types[typeId].Kind;
+    if (kind == EKind::Struct) {
+        // A struct is as aligned as its widest field, like in C; LLVM places a
+        // nested struct with an i128 field at 16, so this table must too.
+        int align = 1;
+        for (int f : Structs[Types[typeId].Aux].FieldTypes) {
+            align = std::max(align, AlignInBytes(f));
+        }
+        return align;
+    }
     // 128-bit integers are the only payload wider than a machine word, and the
     // C ABI aligns them to their size.
     int cap = (kind == EKind::I128 || kind == EKind::U128) ? 16 : 8;
