@@ -145,8 +145,9 @@ expression, or `void` if it ends with a statement that produces no value.
 | `void` | No result, as for a procedure |
 
 An unannotated integer literal starts as `i64`, and a floating-point literal as
-`f64`; a literal adapts to the width its context asks for. `f32` widens to
-`f64` implicitly, while `f64` to `f32` needs an explicit `cast`. Use
+`f64`; as a binary operand or call argument a literal adapts to the width of
+the other side, while an assignment needs an annotated literal. `f32` widens
+to `f64` implicitly, while `f64` to `f32` needs an explicit `cast`. Use
 `(: expression type)` to give an expression a type annotation.
 This is especially useful for numeric literals and aggregate constructors.
 For a conversion of an already typed value, use `(cast expression type)`.
