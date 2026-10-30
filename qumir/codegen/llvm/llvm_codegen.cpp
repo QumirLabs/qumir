@@ -1971,6 +1971,9 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
                 ? irb->CreateSIToFP(val, expectedType, "cast")
                 : irb->CreateUIToFP(val, expectedType, "cast");
         }
+        if (actualTy->isFloatingPointTy() && expectedType->isFloatingPointTy()) {
+            return irb->CreateFPCast(val, expectedType, "cast");
+        }
 
         throw std::runtime_error(
             "unexpected cast request while lowering IR instruction: " + formatInstr()
@@ -2327,6 +2330,8 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
                     v = irb->CreateIntToPtr(v, outputType, "inttoptr");
                 } else if (sourceType->isPointerTy() && outputType->isPointerTy()) {
                     v = irb->CreateBitCast(v, outputType, "ptrcast");
+                } else if (sourceType->isFloatingPointTy() && outputType->isFloatingPointTy()) {
+                    v = irb->CreateFPCast(v, outputType, "movcast");
                 } else {
                     throw std::runtime_error("mov type mismatch");
                 }
