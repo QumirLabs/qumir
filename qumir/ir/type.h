@@ -22,7 +22,7 @@ enum class EKind : uint8_t {
     U32, // unused
     U64, // unused
     U128,
-    F32, // unused
+    F32,
     F64,
     Void,
     Undef, // bad type for optimization errors

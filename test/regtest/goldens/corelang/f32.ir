@@ -1,0 +1,220 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    stre local(0,f32) imm(1069547520,f32) 
+    load tmp(0,f32) = local(0,f32) 
+    mov tmp(1,f64) = tmp(0,f32) 
+    stre local(1,f64) tmp(1,f64) 
+    load tmp(2,f32) = local(0,f32) 
+    + tmp(3,f32) = tmp(2,f32) imm(1074790400,f32) 
+    stre local(2,f32) tmp(3,f32) 
+    mov tmp(4,f32) = imm(4591870180066957722,f64) 
+    stre local(3,f32) tmp(4,f32) 
+    i2f tmp(5,f32) = imm(16777217,i64) 
+    stre local(4,f32) tmp(5,f32) 
+    stre local(9,i64) imm(0,i64) 
+    - tmp(6,i64) = imm(2,i64) imm(0,i64) 
+    + tmp(7,i64) = tmp(6,i64) imm(1,i64) 
+    stre local(10,i64) tmp(7,i64) 
+    * tmp(8,i64) = imm(1,i64) tmp(7,i64) 
+    stre local(11,i64) tmp(8,i64) 
+    load tmp(9,i64) = local(11,i64) 
+    * tmp(10,i64) = tmp(9,i64) imm(4,i64) 
+    arg tmp(10,i64) 
+    call tmp(11,ptr to f32) = array_create 
+    stre local(5,ptr to f32) tmp(11,ptr to f32) 
+    load tmp(12,ptr to f32) = local(5,ptr to f32) 
+    load tmp(13,i64) = local(9,i64) 
+    - tmp(14,i64) = imm(0,i64) tmp(13,i64) 
+    * tmp(15,i64) = tmp(14,i64) imm(4,i64) 
+    + tmp(16,ptr to f32) = tmp(12,ptr to f32) tmp(15,i64) 
+    load tmp(17,f32) = local(0,f32) 
+    ste tmp(16,ptr to f32) tmp(17,f32) 
+    load tmp(18,ptr to f32) = local(5,ptr to f32) 
+    load tmp(19,i64) = local(9,i64) 
+    - tmp(20,i64) = imm(1,i64) tmp(19,i64) 
+    * tmp(21,i64) = tmp(20,i64) imm(4,i64) 
+    + tmp(22,ptr to f32) = tmp(18,ptr to f32) tmp(21,i64) 
+    load tmp(23,f32) = local(0,f32) 
+    arg tmp(23,f32) 
+    call tmp(24,f32) = half 
+    ste tmp(22,ptr to f32) tmp(24,f32) 
+    load tmp(25,ptr to f32) = local(5,ptr to f32) 
+    load tmp(26,i64) = local(9,i64) 
+    - tmp(27,i64) = imm(2,i64) tmp(26,i64) 
+    * tmp(28,i64) = tmp(27,i64) imm(4,i64) 
+    + tmp(29,ptr to f32) = tmp(25,ptr to f32) tmp(28,i64) 
+    load tmp(30,f32) = local(0,f32) 
+    neg tmp(31,f32) = tmp(30,f32) 
+    ste tmp(29,ptr to f32) tmp(31,f32) 
+    stre local(6,f32) imm(0,f32) 
+    stre local(7,i64) imm(0,i64) 
+    stre local(7,i64) imm(0,i64) 
+    stre local(13,i64) imm(1,i64) 
+    load tmp(32,i64) = local(7,i64) 
+    stre local(14,i64) tmp(32,i64) 
+    stre local(12,i64) imm(2,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(2)
+    load tmp(33,i64) = local(12,i64) 
+    load tmp(34,i64) = local(14,i64) 
+    load tmp(35,i64) = local(13,i64) 
+    - tmp(36,i64) = tmp(33,i64) tmp(34,i64) 
+    * tmp(37,i64) = tmp(36,i64) tmp(35,i64) 
+    >= tmp(38,i1) = tmp(37,i64) imm(0,i64) 
+    cmp tmp(38,i1) label(3) label(5) 
+  }
+  block {
+    label: label(3)
+    load tmp(39,i64) = local(14,i64) 
+    stre local(7,i64) tmp(39,i64) 
+    load tmp(40,f32) = local(6,f32) 
+    load tmp(41,i64) = local(7,i64) 
+    load tmp(42,ptr to f32) = local(5,ptr to f32) 
+    load tmp(43,i64) = local(9,i64) 
+    - tmp(44,i64) = tmp(41,i64) tmp(43,i64) 
+    * tmp(45,i64) = tmp(44,i64) imm(4,i64) 
+    + tmp(46,ptr to f32) = tmp(42,ptr to f32) tmp(45,i64) 
+    lde tmp(47,f32) = tmp(46,ptr to f32) 
+    + tmp(48,f32) = tmp(40,f32) tmp(47,f32) 
+    stre local(6,f32) tmp(48,f32) 
+    jmp label(4) 
+  }
+  block {
+    label: label(4)
+    load tmp(49,i64) = local(14,i64) 
+    load tmp(50,i64) = local(13,i64) 
+    + tmp(51,i64) = tmp(49,i64) tmp(50,i64) 
+    stre local(14,i64) tmp(51,i64) 
+    jmp label(2) 
+  }
+  block {
+    label: label(5)
+    salloc tmp(52,ptr to struct { f32; f32}) = imm(8,i64) 
+    + tmp(53,ptr to f32) = tmp(52,ptr to struct { f32; f32}) imm(0,i64) 
+    ste tmp(53,ptr to f32) imm(1067450368,f32) 
+    + tmp(54,ptr to f32) = tmp(52,ptr to struct { f32; f32}) imm(4,i64) 
+    ste tmp(54,ptr to f32) imm(1075838976,f32) 
+    stre local(8,struct { f32; f32}) tmp(52,ptr to struct { f32; f32}) 
+    load tmp(55,f64) = local(1,f64) 
+    arg tmp(55,f64) 
+    arg imm(0,i64) 
+    arg imm(-1,i64) 
+    call output_double 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(56,f32) = local(2,f32) 
+    mov tmp(57,f64) = tmp(56,f32) 
+    arg tmp(57,f64) 
+    arg imm(0,i64) 
+    arg imm(-1,i64) 
+    call output_double 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(58,f32) = local(0,f32) 
+    * tmp(59,f32) = tmp(58,f32) imm(1073741824,f32) 
+    mov tmp(60,f64) = tmp(59,f32) 
+    arg tmp(60,f64) 
+    arg imm(0,i64) 
+    arg imm(-1,i64) 
+    call output_double 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(61,f32) = local(3,f32) 
+    mov tmp(62,f64) = tmp(61,f32) 
+    arg tmp(62,f64) 
+    arg imm(0,i64) 
+    arg imm(-1,i64) 
+    call output_double 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(63,f32) = local(4,f32) 
+    f2i tmp(64,i64) = tmp(63,f32) 
+    arg tmp(64,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(65,f32) = local(6,f32) 
+    mov tmp(66,f64) = tmp(65,f32) 
+    arg tmp(66,f64) 
+    arg imm(0,i64) 
+    arg imm(-1,i64) 
+    call output_double 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(67,f32) = local(0,f32) 
+    load tmp(68,f32) = local(2,f32) 
+    < tmp(69,i1) = tmp(67,f32) tmp(68,f32) 
+    arg tmp(69,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(70,f32) = local(0,f32) 
+    == tmp(71,i1) = tmp(70,f32) imm(1069547520,f32) 
+    arg tmp(71,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(72,f32) = local(2,f32) 
+    f2i tmp(73,i64) = tmp(72,f32) 
+    arg tmp(73,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(74,f32) = local(0,f32) 
+    ! tmp(75,i1) = tmp(74,f32) 
+    arg tmp(75,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    lea tmp(76,ptr to struct { f32; f32}) = local(8,struct { f32; f32}) 
+    + tmp(77,ptr to f32) = tmp(76,ptr to struct { f32; f32}) imm(0,i64) 
+    lde tmp(78,f32) = tmp(77,ptr to f32) 
+    lea tmp(79,ptr to struct { f32; f32}) = local(8,struct { f32; f32}) 
+    + tmp(80,ptr to f32) = tmp(79,ptr to struct { f32; f32}) imm(4,i64) 
+    lde tmp(81,f32) = tmp(80,ptr to f32) 
+    + tmp(82,f32) = tmp(78,f32) tmp(81,f32) 
+    mov tmp(83,f64) = tmp(82,f32) 
+    arg tmp(83,f64) 
+    arg imm(0,i64) 
+    arg imm(-1,i64) 
+    call output_double 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(84,ptr to struct { f32; f32}) = local(8,struct { f32; f32}) 
+    + tmp(85,ptr to f32) = tmp(84,ptr to struct { f32; f32}) imm(4,i64) 
+    lde tmp(86,f32) = tmp(85,ptr to f32) 
+    f2i tmp(87,i64) = tmp(86,f32) 
+    arg tmp(87,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(88,ptr to f32) = local(5,ptr to f32) 
+    arg tmp(88,ptr to f32) 
+    call array_destroy 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function half (local(0)) { ; f32
+  block {
+    label: label(0)
+    load tmp(0,f32) = local(0,f32) 
+    / tmp(1,f32) = tmp(0,f32) imm(1073741824,f32) 
+    stre local(1,f32) tmp(1,f32) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    load tmp(2,f32) = local(1,f32) 
+    ret tmp(2,f32) 
+  }
+}

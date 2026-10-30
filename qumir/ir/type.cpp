@@ -138,7 +138,7 @@ int FromAstType(const NAst::TTypePtr& t, TTypeTable& tt) {
         }
     }
     if (auto f = NAst::TMaybeType<NAst::TFloatType>(t)) {
-        return tt.I(EKind::F64);
+        return tt.I(f.Cast()->Kind == NAst::TFloatType::F32 ? EKind::F32 : EKind::F64);
     }
 
     if (NAst::TMaybeType<NAst::TBoolType>(t)) {
@@ -303,7 +303,11 @@ void TTypeTable::Format(std::ostream& out, uint64_t bitRepr, int typeId) const {
             ss << static_cast<uint64_t>(bitRepr);
             break;
         }
-        case EKind::F32:
+        case EKind::F32: {
+            float f = std::bit_cast<float>(static_cast<uint32_t>(bitRepr));
+            ss << std::fixed << std::setprecision(15) << f;
+            break;
+        }
         case EKind::F64: {
             double d = std::bit_cast<double>(bitRepr);
             ss << std::fixed << std::setprecision(15) << d;

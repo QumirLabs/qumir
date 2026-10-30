@@ -600,6 +600,14 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
         return Is128BitInteger(Module.Types, typeId);
     };
 
+    auto isF32 = [&](int typeId) -> bool {
+        return typeId >= 0 && Module.Types.GetKind(typeId) == EKind::F32;
+    };
+
+    auto cmpF32 = [&](const TInstr& ins) -> bool {
+        return isF32(typeIdOp(ins.Operands[0])) || isF32(typeIdOp(ins.Operands[1]));
+    };
+
     auto ins2vm = [&](const TInstr& ins, TVMInstr*& ptr) {
         if (ins.Op == "prefetch"_op) {
             return;
@@ -688,7 +696,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto t = typeId(out.Operands[0].Tmp);
                 if (Module.Types.IsFloat(t)) {
-                    out.Op = EVMOp::FAdd;
+                    out.Op = isF32(t) ? EVMOp::FAdd32 : EVMOp::FAdd;
                 } else {
                     out.Op = is128(t) ? EVMOp::IAdd128 : EVMOp::IAdd;
                 }
@@ -698,7 +706,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto t = typeId(out.Operands[0].Tmp);
                 if (Module.Types.IsFloat(t)) {
-                    out.Op = EVMOp::FSub;
+                    out.Op = isF32(t) ? EVMOp::FSub32 : EVMOp::FSub;
                 } else {
                     out.Op = is128(t) ? EVMOp::ISub128 : EVMOp::ISub;
                 }
@@ -708,7 +716,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto t = typeId(out.Operands[0].Tmp);
                 if (Module.Types.IsFloat(t)) {
-                    out.Op = EVMOp::FMul;
+                    out.Op = isF32(t) ? EVMOp::FMul32 : EVMOp::FMul;
                 } else if (is128(t)) {
                     out.Op = EVMOp::IMul128;
                 } else {
@@ -720,7 +728,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto t = typeId(out.Operands[0].Tmp);
                 if (Module.Types.IsFloat(t)) {
-                    out.Op = EVMOp::FDiv;
+                    out.Op = isF32(t) ? EVMOp::FDiv32 : EVMOp::FDiv;
                 } else if (is128(t)) {
                     out.Op = isSignedInteger(t) ? EVMOp::IDivS128 : EVMOp::IDivU128;
                 } else {
@@ -790,7 +798,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto cType = cmpType(ins);
                 if (cType == 0) {
-                    out.Op = EVMOp::FCmpLT;
+                    out.Op = cmpF32(ins) ? EVMOp::FCmpLT32 : EVMOp::FCmpLT;
                 } else if (cType == 1) {
                     out.Op = cmp128(ins) ? EVMOp::ICmpLTU128 : EVMOp::ICmpLTU;
                 } else {
@@ -802,7 +810,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto cType = cmpType(ins);
                 if (cType == 0) {
-                    out.Op = EVMOp::FCmpGT;
+                    out.Op = cmpF32(ins) ? EVMOp::FCmpGT32 : EVMOp::FCmpGT;
                 } else if (cType == 1) {
                     out.Op = cmp128(ins) ? EVMOp::ICmpGTU128 : EVMOp::ICmpGTU;
                 } else {
@@ -814,7 +822,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto cType = cmpType(ins);
                 if (cType == 0) {
-                    out.Op = EVMOp::FCmpLE;
+                    out.Op = cmpF32(ins) ? EVMOp::FCmpLE32 : EVMOp::FCmpLE;
                 } else if (cType == 1) {
                     out.Op = cmp128(ins) ? EVMOp::ICmpLEU128 : EVMOp::ICmpLEU;
                 } else {
@@ -826,7 +834,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 2);
                 auto cType = cmpType(ins);
                 if (cType == 0) {
-                    out.Op = EVMOp::FCmpGE;
+                    out.Op = cmpF32(ins) ? EVMOp::FCmpGE32 : EVMOp::FCmpGE;
                 } else if (cType == 1) {
                     out.Op = cmp128(ins) ? EVMOp::ICmpGEU128 : EVMOp::ICmpGEU;
                 } else {
@@ -837,7 +845,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             case "=="_op: {
                 require(ins, 1, 2);
                 if (cmpType(ins) == 0) {
-                    out.Op = EVMOp::FCmpEQ;
+                    out.Op = cmpF32(ins) ? EVMOp::FCmpEQ32 : EVMOp::FCmpEQ;
                 } else {
                     out.Op = cmp128(ins) ? EVMOp::ICmpEQ128 : EVMOp::ICmpEQ;
                 }
@@ -846,7 +854,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             case "!="_op: {
                 require(ins, 1, 2);
                 if (cmpType(ins) == 0) {
-                    out.Op = EVMOp::FCmpNE;
+                    out.Op = cmpF32(ins) ? EVMOp::FCmpNE32 : EVMOp::FCmpNE;
                 } else {
                     out.Op = cmp128(ins) ? EVMOp::ICmpNE128 : EVMOp::ICmpNE;
                 }
@@ -856,7 +864,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 1);
                 auto t = typeId(out.Operands[0].Tmp);
                 if (Module.Types.IsFloat(t)) {
-                    out.Op = EVMOp::FNeg;
+                    out.Op = isF32(t) ? EVMOp::FNeg32 : EVMOp::FNeg;
                 } else {
                     out.Op = is128(t) ? EVMOp::INeg128 : EVMOp::INeg;
                 }
@@ -865,7 +873,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             case "!"_op: {
                 require(ins, 1, 1);
                 if (Module.Types.IsFloat(typeIdOp(ins.Operands[0]))) {
-                    out.Op = EVMOp::FCmpEQ;
+                    out.Op = isF32(typeIdOp(ins.Operands[0])) ? EVMOp::FCmpEQ32 : EVMOp::FCmpEQ;
                     out.Operands[2] = TUntypedImm{0};
                 } else {
                     out.Op = is128(typeIdOp(ins.Operands[0])) ? EVMOp::INot128 : EVMOp::INot;
@@ -895,7 +903,9 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 const bool isImm = ins.Operands[0].Type == TOperand::EType::Imm;
                 const int dstType = typeId(ins.Dest);
                 const int srcType = typeIdOp(ins.Operands[0]);
-                if (is128(dstType)) {
+                if (Module.Types.IsFloat(dstType) && Module.Types.IsFloat(srcType) && isF32(dstType) != isF32(srcType)) {
+                    out.Op = isF32(srcType) ? EVMOp::FExt32 : EVMOp::FTrunc64;
+                } else if (is128(dstType)) {
                     // A 128-bit literal carries its low half only, so an immediate
                     // widens exactly like a 64-bit register does.
                     const bool signExtend = isImm ? isSignedInteger(dstType) : isSignedInteger(srcType);
@@ -923,7 +933,13 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             case "i2f"_op: {
                 require(ins, 1, 1);
                 const int srcType = typeIdOp(ins.Operands[0]);
-                if (is128(srcType)) {
+                if (isF32(typeId(ins.Dest))) {
+                    if (is128(srcType)) {
+                        // TODO: add I2F128 variants that produce f32
+                        throw std::runtime_error("VM: 128-bit integer to f32 conversion is not supported");
+                    }
+                    out.Op = EVMOp::I2F32;
+                } else if (is128(srcType)) {
                     out.Op = isSignedInteger(srcType) ? EVMOp::I2F128S : EVMOp::I2F128U;
                 } else {
                     out.Op = EVMOp::I2F;
@@ -932,13 +948,21 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             }
             case "f2b"_op: {
                 require(ins, 1, 1);
-                out.Op = EVMOp::FCmpNE;
+                out.Op = isF32(typeIdOp(ins.Operands[0])) ? EVMOp::FCmpNE32 : EVMOp::FCmpNE;
                 out.Operands[2] = TUntypedImm{0};
                 break;
             }
             case "f2i"_op: {
                 require(ins, 1, 1);
-                out.Op = is128(typeId(ins.Dest)) ? EVMOp::F2I128 : EVMOp::F2I;
+                if (isF32(typeIdOp(ins.Operands[0]))) {
+                    if (is128(typeId(ins.Dest))) {
+                        // TODO: add an F2I128 variant that reads f32
+                        throw std::runtime_error("VM: f32 to 128-bit integer conversion is not supported");
+                    }
+                    out.Op = EVMOp::F2I32;
+                } else {
+                    out.Op = is128(typeId(ins.Dest)) ? EVMOp::F2I128 : EVMOp::F2I;
+                }
                 break;
             }
             case "bitcast"_op: {

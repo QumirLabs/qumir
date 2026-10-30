@@ -40,6 +40,8 @@ inline Dest ReadOperand(const TRegisterFile& regs, const TVMOperand& op) {
             const auto& i = op.Imm;
             if constexpr (sizeof(Dest) == sizeof(int64_t)) {
                 return std::bit_cast<Dest>(i.Value);
+            } else if constexpr (std::is_same_v<Dest, float>) {
+                return std::bit_cast<float>(static_cast<uint32_t>(i.Value));
             } else {
                 return static_cast<Dest>(i.Value);
             }
@@ -51,6 +53,10 @@ inline Dest ReadOperand(const TRegisterFile& regs, const TVMOperand& op) {
     }
 }
 
+inline int64_t FloatBits(float value) {
+    return static_cast<int64_t>(std::bit_cast<uint32_t>(value));
+}
+
 template<typename Dest, typename T>
 inline int64_t EvalAlu(const TRegisterFile& regs, const TVMInstr& instr, T lambda) {
     Dest lhs = ReadOperand<Dest>(regs, instr.Operands[1]);
@@ -58,6 +64,8 @@ inline int64_t EvalAlu(const TRegisterFile& regs, const TVMInstr& instr, T lambd
     auto res = lambda(lhs, rhs);
     if constexpr (sizeof(res) == sizeof(int64_t)) {
         return std::bit_cast<int64_t>(res);
+    } else if constexpr (std::is_same_v<decltype(res), float>) {
+        return FloatBits(res);
     } else {
         return static_cast<int64_t>(res);
     }
@@ -904,6 +912,56 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 instr.Operands[1]);
             break;
         }
+
+        case EVMOp::FNeg32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(-ReadOperand<float>(Runtime.Regs, instr.Operands[1]));
+            break;
+        case EVMOp::FAdd32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::plus<float>{});
+            break;
+        case EVMOp::FSub32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::minus<float>{});
+            break;
+        case EVMOp::FMul32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::multiplies<float>{});
+            break;
+        case EVMOp::FDiv32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::divides<float>{});
+            break;
+        case EVMOp::FCmpLT32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::less<float>{});
+            break;
+        case EVMOp::FCmpGT32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::greater<float>{});
+            break;
+        case EVMOp::FCmpLE32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::less_equal<float>{});
+            break;
+        case EVMOp::FCmpGE32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::greater_equal<float>{});
+            break;
+        case EVMOp::FCmpEQ32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::equal_to<float>{});
+            break;
+        case EVMOp::FCmpNE32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::not_equal_to<float>{});
+            break;
+        case EVMOp::I2F32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(
+                static_cast<float>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1])));
+            break;
+        case EVMOp::F2I32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = static_cast<int64_t>(
+                ReadOperand<float>(Runtime.Regs, instr.Operands[1]));
+            break;
+        case EVMOp::FExt32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(
+                static_cast<double>(ReadOperand<float>(Runtime.Regs, instr.Operands[1])));
+            break;
+        case EVMOp::FTrunc64:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(
+                static_cast<float>(ReadOperand<double>(Runtime.Regs, instr.Operands[1])));
+            break;
         case EVMOp::I2F: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
             int64_t ival = ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]);
