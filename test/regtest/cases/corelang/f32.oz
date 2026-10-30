@@ -1,4 +1,3 @@
-; disable_llvm
 (block
   (type Point <struct (X f32) (Y f32)>)
 
