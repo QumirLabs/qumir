@@ -80,6 +80,21 @@ cmake --build build -j
 
 The resulting tools are `build/bin/qumiri` and `build/bin/qumirc`.
 
+CMake compiles through ccache automatically when it is installed (turn it off
+with `-DQUMIR_USE_CCACHE=OFF`; an explicit `CMAKE_*_COMPILER_LAUNCHER` wins). To
+share one cache across git worktrees, put this in `ccache.conf` (`ccache -sv`
+shows its path):
+
+```ini
+base_dir = /path/to/workspace-root
+hash_dir = false
+sloppiness = include_file_ctime,include_file_mtime,time_macros
+max_size = 40G
+```
+
+With `hash_dir = false` the debug info of a cache hit names the worktree that
+compiled the object first.
+
 Run a program directly:
 
 ```bash

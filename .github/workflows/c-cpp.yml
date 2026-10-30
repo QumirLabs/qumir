@@ -36,7 +36,18 @@ jobs:
     - name: apt-get update
       run: sudo apt-get update
     - name: Install packages
-      run: sudo apt-get install libcmocka-dev liburing-dev cmake ninja-build llvm-20-dev libgtest-dev libreadline-dev lld nodejs g++-14
+      run: sudo apt-get install ccache libcmocka-dev liburing-dev cmake ninja-build llvm-20-dev libgtest-dev libreadline-dev lld nodejs g++-14
+    - name: Set up ccache
+      uses: Chocobo1/setup-ccache-action@a4d08616f5b614053bce228ddf881592f69d61d4 # v1.5.9
+      with:
+        install_ccache: false
+        update_packager_index: false
+        prepend_symlinks_to_path: false
+        # Only pushes to master save the cache; pull requests restore it.
+        store_cache: ${{ github.event_name == 'push' }}
+        remove_stale_cache: false
+        ccache_options: |
+          max_size=2G
     - name: configure
       run: |
         mkdir build
@@ -45,6 +56,8 @@ jobs:
           -DCMAKE_PREFIX_PATH="$(llvm-config-20 --prefix)" \
           -DCMAKE_CXX_COMPILER=g++-14 \
           -DCMAKE_C_COMPILER=gcc-14 \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
           -DQUMIR_BUILD_TESTS=ON
     - name: make
       run: cmake --build build
