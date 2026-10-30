@@ -66,8 +66,8 @@ TTypePtr CloneTypeWithGenericBindings(
     if (auto t = TMaybeType<TIntegerType>(type)) {
         return CopyTypeAttrs(std::make_shared<TIntegerType>(t.Cast()->Kind), type);
     }
-    if (TMaybeType<TFloatType>(type)) {
-        return CopyTypeAttrs(std::make_shared<TFloatType>(), type);
+    if (auto t = TMaybeType<TFloatType>(type)) {
+        return CopyTypeAttrs(std::make_shared<TFloatType>(t.Cast()->Kind), type);
     }
     if (TMaybeType<TBoolType>(type)) {
         return CopyTypeAttrs(std::make_shared<TBoolType>(), type);
@@ -235,7 +235,7 @@ std::string OverloadTypeKey(
 {
     if (!type) return "unknown";
     if (auto integer = TMaybeType<TIntegerType>(type)) return integer.Cast()->ToString();
-    if (TMaybeType<TFloatType>(type)) return "f64";
+    if (auto floating = TMaybeType<TFloatType>(type)) return floating.Cast()->ToString();
     if (TMaybeType<TBoolType>(type)) return "bool";
     if (TMaybeType<TStringType>(type)) return "string";
     if (TMaybeType<TSymbolType>(type)) return "char";

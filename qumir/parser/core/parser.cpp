@@ -57,7 +57,8 @@ std::shared_ptr<TIntegerType> IntegerTypeByName(const std::string& name) {
 
 TTypePtr ScalarTypeByName(const std::string& name) {
     if (auto integerType = IntegerTypeByName(name)) return integerType;
-    if (name == "f64") return std::make_shared<TFloatType>();
+    if (name == "f32") return std::make_shared<TFloatType>(TFloatType::F32);
+    if (name == "f64") return std::make_shared<TFloatType>(TFloatType::F64);
     if (name == "bool") return std::make_shared<TBoolType>();
     if (name == "string") return std::make_shared<TStringType>();
     if (name == "char") return std::make_shared<TSymbolType>();

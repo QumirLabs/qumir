@@ -138,14 +138,16 @@ expression, or `void` if it ends with a statement that produces no value.
 |---|---|
 | `i8`, `i16`, `i32`, `i64`, `i128` | Signed integers of the stated bit width |
 | `u8`, `u16`, `u32`, `u64`, `u128` | Unsigned integers of the stated bit width |
-| `f64` | Double-precision floating-point number |
+| `f32`, `f64` | Floating-point numbers of the stated bit width |
 | `bool` | Boolean value |
 | `char` | Unicode character |
 | `string` | Managed string |
 | `void` | No result, as for a procedure |
 
 An unannotated integer literal starts as `i64`, and a floating-point literal as
-`f64`. Use `(: expression type)` to give an expression a type annotation.
+`f64`; a literal adapts to the width its context asks for. `f32` widens to
+`f64` implicitly, while `f64` to `f32` needs an explicit `cast`. Use
+`(: expression type)` to give an expression a type annotation.
 This is especially useful for numeric literals and aggregate constructors.
 For a conversion of an already typed value, use `(cast expression type)`.
 

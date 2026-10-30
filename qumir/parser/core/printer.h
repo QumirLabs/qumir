@@ -72,7 +72,7 @@ private:
     bool ForceMultiline(const TExprPtr& expr) const;
     void PrintCompact(TExprPtr expr, bool allowTypeWrap, int level);
     bool ShouldWrapType(const TExprPtr& expr) const;
-    bool IsNonDefaultIntegerLiteral(const TExprPtr& expr) const;
+    bool IsNonDefaultNumberLiteral(const TExprPtr& expr) const;
     bool HasPrintableTypeAttrs(TTypePtr type) const;
     void PrintTypeAttrs(TTypePtr type);
     void PrintScalarType(std::string_view name, TTypePtr type);

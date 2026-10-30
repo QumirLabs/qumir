@@ -157,7 +157,24 @@ struct TIntegerType : TType {
 struct TFloatType : TType {
     static constexpr const char* TypeId = "Float";
 
-    // Only 1 float type
+    enum EKind {
+        F32,
+        F64,
+    } Kind = F64;
+
+    TFloatType() = default;
+    explicit TFloatType(EKind kind)
+        : Kind(kind)
+    {}
+
+    int BitWidth() const {
+        return Kind == F32 ? 32 : 64;
+    }
+
+    std::string ToString() const override {
+        return Kind == F32 ? "f32" : "f64";
+    }
+
     const std::string_view TypeName() const override {
         return TFloatType::TypeId;
     }
@@ -522,8 +539,8 @@ inline std::string TypeDiagnosticName(const TTypePtr& type) {
     if (auto integer = TMaybeType<TIntegerType>(type)) {
         return integer.Cast()->ToString();
     }
-    if (TMaybeType<TFloatType>(type)) {
-        return "f64";
+    if (auto floating = TMaybeType<TFloatType>(type)) {
+        return floating.Cast()->ToString();
     }
     if (TMaybeType<TBoolType>(type)) {
         return "bool";
@@ -605,6 +622,7 @@ inline std::string TypeDiagnosticName(const TTypePtr& type) {
 inline std::string TypeKey(const TTypePtr& t) {
     if (!t) return "unknown";
     if (auto integer = TMaybeType<TIntegerType>(t)) return integer.Cast()->ToString();
+    if (auto floating = TMaybeType<TFloatType>(t)) return floating.Cast()->ToString();
     if (auto named = TMaybeType<TNamedType>(t)) {
         auto value = std::string("Named::") + named.Cast()->Name;
         if (!named.Cast()->TypeArgs.empty()) {
@@ -671,7 +689,7 @@ inline std::string GenericArgMangleKey(const TGenericArg& arg) {
 inline std::string TypeMangleKey(const TTypePtr& t) {
     if (!t) return "unknown";
     if (auto integer = TMaybeType<TIntegerType>(t)) return integer.Cast()->ToString();
-    if (TMaybeType<TFloatType>(t)) return "f64";
+    if (auto floating = TMaybeType<TFloatType>(t)) return floating.Cast()->ToString();
     if (TMaybeType<TBoolType>(t)) return "bool";
     if (TMaybeType<TStringType>(t)) return "string";
     if (TMaybeType<TSymbolType>(t)) return "char";

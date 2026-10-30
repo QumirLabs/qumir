@@ -213,6 +213,12 @@ bool WideningInt(const TTypePtr& from, const TTypePtr& to) {
     return false;
 }
 
+bool WideningFloat(const TTypePtr& from, const TTypePtr& to) {
+    auto s = TMaybeType<TFloatType>(from).Cast();
+    auto d = TMaybeType<TFloatType>(to).Cast();
+    return s && d && d->BitWidth() >= s->BitWidth();
+}
+
 } // namespace
 
 std::optional<TArgCost> ArgCost(
@@ -248,7 +254,7 @@ std::optional<TArgCost> ArgCost(
         return TArgCost{.ConversionCost = 2};
     }
     if (TMaybeType<TFloatType>(from) && TMaybeType<TFloatType>(to)) {
-        return TArgCost{.ConversionCost = 1};
+        return WideningFloat(from, to) ? std::optional<TArgCost>{TArgCost{.ConversionCost = 1}} : std::nullopt;
     }
 
     if (ctx && ctx->GetCast(from, to)) {

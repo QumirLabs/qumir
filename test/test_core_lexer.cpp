@@ -22,6 +22,7 @@ using NQumir::NAst::TFutureType;
 using NQumir::NAst::TGenericArg;
 using NQumir::NAst::TGenericParam;
 using NQumir::NAst::TIntegerType;
+using NQumir::NAst::TFloatType;
 using NQumir::NAst::TNamedType;
 using NQumir::NAst::TPointerType;
 using NQumir::NAst::TStructType;
@@ -313,6 +314,8 @@ TEST(CoreTypeTest, IntegerWidthsPrintAndParse) {
     EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::U16)), "u16");
     EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::U32)), "u32");
     EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::U64)), "u64");
+    EXPECT_EQ(PrintType(std::make_shared<TFloatType>(TFloatType::F32)), "f32");
+    EXPECT_EQ(PrintType(std::make_shared<TFloatType>()), "f64");
 
     std::istringstream input("(var x u32)");
     TTokenStream tokens(input);
@@ -327,6 +330,7 @@ TEST(CoreParseTypeTest, ParsesStandaloneType) {
     const std::vector<std::string> types = {
         "i64",
         "u8",
+        "f32",
         "f64",
         "bool",
         "string",
@@ -368,7 +372,7 @@ TEST(CoreParseTypeTest, ParsesGenericNamedType) {
     EXPECT_EQ(named->TypeArgs[2].Kind, TGenericArg::EKind::Type);
     EXPECT_TRUE(TMaybeType<TPointerType>(named->TypeArgs[2].Type));
 
-    EXPECT_EQ(TypeKey(*type), "Named::Pair[i64,Value::42,Ptr::Float]");
+    EXPECT_EQ(TypeKey(*type), "Named::Pair[i64,Value::42,Ptr::f64]");
     EXPECT_EQ(PrintType(*type), "<named Pair [i64 42 <ptr f64>]>");
 }
 
