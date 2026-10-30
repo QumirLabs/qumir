@@ -1,0 +1,282 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    * tmp(0,i128) = imm(1000000000000,i128) imm(1000000000,i128) 
+    stre local(0,i128) tmp(0,i128) 
+    salloc tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) = imm(64,i64) 
+    + tmp(2,ptr to i8) = tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) imm(0,i64) 
+    ste tmp(2,ptr to i8) imm(6,i8) 
+    salloc tmp(3,ptr to struct { i8; i128}) = imm(32,i64) 
+    + tmp(4,ptr to i8) = tmp(3,ptr to struct { i8; i128}) imm(0,i64) 
+    ste tmp(4,ptr to i8) imm(9,i8) 
+    load tmp(5,i128) = local(0,i128) 
+    + tmp(6,ptr to i128) = tmp(3,ptr to struct { i8; i128}) imm(16,i64) 
+    ste tmp(6,ptr to i128) tmp(5,i128) 
+    + tmp(7,ptr to struct { i8; i128}) = tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    copy tmp(7,ptr to struct { i8; i128}) tmp(3,ptr to struct { i8; i128}) imm(32) 
+    + tmp(8,ptr to i64) = tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) imm(48,i64) 
+    ste tmp(8,ptr to i64) imm(43,i64) 
+    stre local(1,struct { i8; struct { i8; i128}; i64}) tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) 
+    arg imm(1,ptr to i8) 
+    call tmp(9,ptr to i8) = str_from_lit 
+    stre local(4,ptr to i8) tmp(9,ptr to i8) 
+    load tmp(10,ptr to i8) = local(4,ptr to i8) 
+    lea tmp(11,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    arg tmp(10,ptr to i8) 
+    arg tmp(11,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call show 
+    load tmp(12,ptr to i8) = local(4,ptr to i8) 
+    arg tmp(12,ptr to i8) 
+    call str_release 
+    lea tmp(13,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    arg tmp(13,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call tmp(14,struct { i8; struct { i8; i128}; i64}) = bump 
+    stre local(9,struct { i8; struct { i8; i128}; i64}) tmp(14,struct { i8; struct { i8; i128}; i64}) 
+    lea tmp(15,ptr to struct { i8; struct { i8; i128}; i64}) = local(9,struct { i8; struct { i8; i128}; i64}) 
+    stre local(2,struct { i8; struct { i8; i128}; i64}) tmp(15,ptr to struct { i8; struct { i8; i128}; i64}) 
+    arg imm(2,ptr to i8) 
+    call tmp(16,ptr to i8) = str_from_lit 
+    stre local(5,ptr to i8) tmp(16,ptr to i8) 
+    load tmp(17,ptr to i8) = local(5,ptr to i8) 
+    lea tmp(18,ptr to struct { i8; struct { i8; i128}; i64}) = local(2,struct { i8; struct { i8; i128}; i64}) 
+    arg tmp(17,ptr to i8) 
+    arg tmp(18,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call show 
+    load tmp(19,ptr to i8) = local(5,ptr to i8) 
+    arg tmp(19,ptr to i8) 
+    call str_release 
+    lea tmp(20,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    arg tmp(20,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call scale 
+    arg imm(3,ptr to i8) 
+    call tmp(21,ptr to i8) = str_from_lit 
+    stre local(6,ptr to i8) tmp(21,ptr to i8) 
+    load tmp(22,ptr to i8) = local(6,ptr to i8) 
+    lea tmp(23,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    arg tmp(22,ptr to i8) 
+    arg tmp(23,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call show 
+    load tmp(24,ptr to i8) = local(6,ptr to i8) 
+    arg tmp(24,ptr to i8) 
+    call str_release 
+    stre local(10,i64) imm(0,i64) 
+    - tmp(25,i64) = imm(2,i64) imm(0,i64) 
+    + tmp(26,i64) = tmp(25,i64) imm(1,i64) 
+    stre local(11,i64) tmp(26,i64) 
+    * tmp(27,i64) = imm(1,i64) tmp(26,i64) 
+    stre local(12,i64) tmp(27,i64) 
+    load tmp(28,i64) = local(12,i64) 
+    * tmp(29,i64) = tmp(28,i64) imm(64,i64) 
+    arg tmp(29,i64) 
+    call tmp(30,ptr to struct { i8; struct { i8; i128}; i64}) = array_create 
+    stre local(3,ptr to struct { i8; struct { i8; i128}; i64}) tmp(30,ptr to struct { i8; struct { i8; i128}; i64}) 
+    load tmp(31,ptr to struct { i8; struct { i8; i128}; i64}) = local(3,ptr to struct { i8; struct { i8; i128}; i64}) 
+    load tmp(32,i64) = local(10,i64) 
+    - tmp(33,i64) = imm(0,i64) tmp(32,i64) 
+    * tmp(34,i64) = tmp(33,i64) imm(64,i64) 
+    + tmp(35,ptr to struct { i8; struct { i8; i128}; i64}) = tmp(31,ptr to struct { i8; struct { i8; i128}; i64}) tmp(34,i64) 
+    lea tmp(36,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    copy tmp(35,ptr to struct { i8; struct { i8; i128}; i64}) tmp(36,ptr to struct { i8; struct { i8; i128}; i64}) imm(64) 
+    load tmp(37,ptr to struct { i8; struct { i8; i128}; i64}) = local(3,ptr to struct { i8; struct { i8; i128}; i64}) 
+    load tmp(38,i64) = local(10,i64) 
+    - tmp(39,i64) = imm(1,i64) tmp(38,i64) 
+    * tmp(40,i64) = tmp(39,i64) imm(64,i64) 
+    + tmp(41,ptr to struct { i8; struct { i8; i128}; i64}) = tmp(37,ptr to struct { i8; struct { i8; i128}; i64}) tmp(40,i64) 
+    lea tmp(42,ptr to struct { i8; struct { i8; i128}; i64}) = local(2,struct { i8; struct { i8; i128}; i64}) 
+    copy tmp(41,ptr to struct { i8; struct { i8; i128}; i64}) tmp(42,ptr to struct { i8; struct { i8; i128}; i64}) imm(64) 
+    load tmp(43,ptr to struct { i8; struct { i8; i128}; i64}) = local(3,ptr to struct { i8; struct { i8; i128}; i64}) 
+    load tmp(44,i64) = local(10,i64) 
+    - tmp(45,i64) = imm(2,i64) tmp(44,i64) 
+    * tmp(46,i64) = tmp(45,i64) imm(64,i64) 
+    + tmp(47,ptr to struct { i8; struct { i8; i128}; i64}) = tmp(43,ptr to struct { i8; struct { i8; i128}; i64}) tmp(46,i64) 
+    lea tmp(48,ptr to struct { i8; struct { i8; i128}; i64}) = local(2,struct { i8; struct { i8; i128}; i64}) 
+    arg tmp(48,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call tmp(49,struct { i8; struct { i8; i128}; i64}) = bump 
+    stre local(13,struct { i8; struct { i8; i128}; i64}) tmp(49,struct { i8; struct { i8; i128}; i64}) 
+    lea tmp(50,ptr to struct { i8; struct { i8; i128}; i64}) = local(13,struct { i8; struct { i8; i128}; i64}) 
+    copy tmp(47,ptr to struct { i8; struct { i8; i128}; i64}) tmp(50,ptr to struct { i8; struct { i8; i128}; i64}) imm(64) 
+    arg imm(4,ptr to i8) 
+    call tmp(51,ptr to i8) = str_from_lit 
+    stre local(7,ptr to i8) tmp(51,ptr to i8) 
+    load tmp(52,ptr to i8) = local(7,ptr to i8) 
+    load tmp(53,ptr to struct { i8; struct { i8; i128}; i64}) = local(3,ptr to struct { i8; struct { i8; i128}; i64}) 
+    load tmp(54,i64) = local(10,i64) 
+    - tmp(55,i64) = imm(0,i64) tmp(54,i64) 
+    * tmp(56,i64) = tmp(55,i64) imm(64,i64) 
+    + tmp(57,ptr to struct { i8; struct { i8; i128}; i64}) = tmp(53,ptr to struct { i8; struct { i8; i128}; i64}) tmp(56,i64) 
+    arg tmp(52,ptr to i8) 
+    arg tmp(57,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call show 
+    load tmp(58,ptr to i8) = local(7,ptr to i8) 
+    arg tmp(58,ptr to i8) 
+    call str_release 
+    arg imm(5,ptr to i8) 
+    call tmp(59,ptr to i8) = str_from_lit 
+    stre local(8,ptr to i8) tmp(59,ptr to i8) 
+    load tmp(60,ptr to i8) = local(8,ptr to i8) 
+    load tmp(61,ptr to struct { i8; struct { i8; i128}; i64}) = local(3,ptr to struct { i8; struct { i8; i128}; i64}) 
+    load tmp(62,i64) = local(10,i64) 
+    - tmp(63,i64) = imm(2,i64) tmp(62,i64) 
+    * tmp(64,i64) = tmp(63,i64) imm(64,i64) 
+    + tmp(65,ptr to struct { i8; struct { i8; i128}; i64}) = tmp(61,ptr to struct { i8; struct { i8; i128}; i64}) tmp(64,i64) 
+    arg tmp(60,ptr to i8) 
+    arg tmp(65,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call show 
+    load tmp(66,ptr to i8) = local(8,ptr to i8) 
+    arg tmp(66,ptr to i8) 
+    call str_release 
+    load tmp(67,ptr to struct { i8; struct { i8; i128}; i64}) = local(3,ptr to struct { i8; struct { i8; i128}; i64}) 
+    arg tmp(67,ptr to struct { i8; struct { i8; i128}; i64}) 
+    call array_destroy 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function show (local(0), local(1)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,ptr to i8) = local(0,ptr to i8) 
+    arg tmp(0,ptr to i8) 
+    call output_string 
+    lea tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(2,ptr to i8) = tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) imm(0,i64) 
+    lde tmp(3,i8) = tmp(2,ptr to i8) 
+    mov tmp(4,i64) = tmp(3,i8) 
+    arg tmp(4,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(6,ptr to i8) 
+    call output_string 
+    lea tmp(5,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(6,ptr to struct { i8; i128}) = tmp(5,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(7,ptr to i8) = tmp(6,ptr to struct { i8; i128}) imm(0,i64) 
+    lde tmp(8,i8) = tmp(7,ptr to i8) 
+    mov tmp(9,i64) = tmp(8,i8) 
+    arg tmp(9,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(6,ptr to i8) 
+    call output_string 
+    lea tmp(10,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(11,ptr to struct { i8; i128}) = tmp(10,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(12,ptr to i128) = tmp(11,ptr to struct { i8; i128}) imm(16,i64) 
+    lde tmp(13,i128) = tmp(12,ptr to i128) 
+    >> tmp(14,i128) = tmp(13,i128) imm(64,i128) 
+    mov tmp(15,i64) = tmp(14,i128) 
+    arg tmp(15,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(6,ptr to i8) 
+    call output_string 
+    lea tmp(16,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(17,ptr to struct { i8; i128}) = tmp(16,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(18,ptr to i128) = tmp(17,ptr to struct { i8; i128}) imm(16,i64) 
+    lde tmp(19,i128) = tmp(18,ptr to i128) 
+    mov tmp(20,i64) = tmp(19,i128) 
+    arg tmp(20,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(6,ptr to i8) 
+    call output_string 
+    lea tmp(21,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(22,ptr to i64) = tmp(21,ptr to struct { i8; struct { i8; i128}; i64}) imm(48,i64) 
+    lde tmp(23,i64) = tmp(22,ptr to i64) 
+    arg tmp(23,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(7,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function bump (local(0)) { ; struct { i8; struct { i8; i128}; i64}
+  block {
+    label: label(0)
+    salloc tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) = imm(64,i64) 
+    lea tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(2,ptr to i8) = tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) imm(0,i64) 
+    lde tmp(3,i8) = tmp(2,ptr to i8) 
+    + tmp(4,i8) = tmp(3,i8) imm(1,i8) 
+    + tmp(5,ptr to i8) = tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) imm(0,i64) 
+    ste tmp(5,ptr to i8) tmp(4,i8) 
+    salloc tmp(6,ptr to struct { i8; i128}) = imm(32,i64) 
+    lea tmp(7,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(8,ptr to struct { i8; i128}) = tmp(7,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(9,ptr to i8) = tmp(8,ptr to struct { i8; i128}) imm(0,i64) 
+    lde tmp(10,i8) = tmp(9,ptr to i8) 
+    + tmp(11,ptr to i8) = tmp(6,ptr to struct { i8; i128}) imm(0,i64) 
+    ste tmp(11,ptr to i8) tmp(10,i8) 
+    lea tmp(12,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(13,ptr to struct { i8; i128}) = tmp(12,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(14,ptr to i128) = tmp(13,ptr to struct { i8; i128}) imm(16,i64) 
+    lde tmp(15,i128) = tmp(14,ptr to i128) 
+    lea tmp(16,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(17,ptr to struct { i8; i128}) = tmp(16,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(18,ptr to i128) = tmp(17,ptr to struct { i8; i128}) imm(16,i64) 
+    lde tmp(19,i128) = tmp(18,ptr to i128) 
+    + tmp(20,i128) = tmp(15,i128) tmp(19,i128) 
+    + tmp(21,ptr to i128) = tmp(6,ptr to struct { i8; i128}) imm(16,i64) 
+    ste tmp(21,ptr to i128) tmp(20,i128) 
+    + tmp(22,ptr to struct { i8; i128}) = tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    copy tmp(22,ptr to struct { i8; i128}) tmp(6,ptr to struct { i8; i128}) imm(32) 
+    lea tmp(23,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,struct { i8; struct { i8; i128}; i64}) 
+    + tmp(24,ptr to i64) = tmp(23,ptr to struct { i8; struct { i8; i128}; i64}) imm(48,i64) 
+    lde tmp(25,i64) = tmp(24,ptr to i64) 
+    + tmp(26,i64) = tmp(25,i64) imm(1,i64) 
+    + tmp(27,ptr to i64) = tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) imm(48,i64) 
+    ste tmp(27,ptr to i64) tmp(26,i64) 
+    stre local(1,struct { i8; struct { i8; i128}; i64}) tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    lea tmp(28,ptr to struct { i8; struct { i8; i128}; i64}) = local(1,struct { i8; struct { i8; i128}; i64}) 
+    ret tmp(28,ptr to struct { i8; struct { i8; i128}; i64}) 
+  }
+}
+function scale (local(0)) { ; void
+  block {
+    label: label(0)
+    salloc tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) = imm(64,i64) 
+    load tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,ptr to struct { i8; struct { i8; i128}; i64}) 
+    + tmp(2,ptr to i8) = tmp(1,ptr to struct { i8; struct { i8; i128}; i64}) imm(0,i64) 
+    lde tmp(3,i8) = tmp(2,ptr to i8) 
+    + tmp(4,ptr to i8) = tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) imm(0,i64) 
+    ste tmp(4,ptr to i8) tmp(3,i8) 
+    salloc tmp(5,ptr to struct { i8; i128}) = imm(32,i64) 
+    load tmp(6,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,ptr to struct { i8; struct { i8; i128}; i64}) 
+    + tmp(7,ptr to struct { i8; i128}) = tmp(6,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(8,ptr to i8) = tmp(7,ptr to struct { i8; i128}) imm(0,i64) 
+    lde tmp(9,i8) = tmp(8,ptr to i8) 
+    + tmp(10,ptr to i8) = tmp(5,ptr to struct { i8; i128}) imm(0,i64) 
+    ste tmp(10,ptr to i8) tmp(9,i8) 
+    load tmp(11,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,ptr to struct { i8; struct { i8; i128}; i64}) 
+    + tmp(12,ptr to struct { i8; i128}) = tmp(11,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    + tmp(13,ptr to i128) = tmp(12,ptr to struct { i8; i128}) imm(16,i64) 
+    lde tmp(14,i128) = tmp(13,ptr to i128) 
+    * tmp(15,i128) = tmp(14,i128) imm(3,i128) 
+    + tmp(16,ptr to i128) = tmp(5,ptr to struct { i8; i128}) imm(16,i64) 
+    ste tmp(16,ptr to i128) tmp(15,i128) 
+    + tmp(17,ptr to struct { i8; i128}) = tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) imm(16,i64) 
+    copy tmp(17,ptr to struct { i8; i128}) tmp(5,ptr to struct { i8; i128}) imm(32) 
+    load tmp(18,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,ptr to struct { i8; struct { i8; i128}; i64}) 
+    + tmp(19,ptr to i64) = tmp(18,ptr to struct { i8; struct { i8; i128}; i64}) imm(48,i64) 
+    lde tmp(20,i64) = tmp(19,ptr to i64) 
+    + tmp(21,ptr to i64) = tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) imm(48,i64) 
+    ste tmp(21,ptr to i64) tmp(20,i64) 
+    load tmp(22,ptr to struct { i8; struct { i8; i128}; i64}) = local(0,ptr to struct { i8; struct { i8; i128}; i64}) 
+    copy tmp(22,ptr to struct { i8; struct { i8; i128}; i64}) tmp(0,ptr to struct { i8; struct { i8; i128}; i64}) imm(64) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
