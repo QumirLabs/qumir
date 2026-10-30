@@ -93,7 +93,7 @@ Types are `shared_ptr<TType>` subtypes, matched with `TMaybeType<T>`:
 | C++ type           | Language concept                       |
 |--------------------|----------------------------------------|
 | `TIntegerType`     | `цел` — one 64-bit signed integer      |
-| `TFloatType`       | `вещ` — IEEE-754 float (`f32`/`f64`)  |
+| `TFloatType`       | `вещ` — IEEE-754 double                |
 | `TBoolType`        | `лог` — boolean                        |
 | `TStringType`      | `лит` — managed string handle          |
 | `TSymbolType`      | `сим` — Unicode code point (i32)       |
