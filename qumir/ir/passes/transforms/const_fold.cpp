@@ -179,15 +179,25 @@ void ConstFold(TFunction& function, TModule& module) {
             if (module.Types.IsFloat(instr.Operands[0].Imm.TypeId) &&
                 module.Types.IsFloat(instr.Operands[1].Imm.TypeId))
             {
-                double v1 = std::bit_cast<double>(instr.Operands[0].Imm.Value);
-                double v2 = std::bit_cast<double>(instr.Operands[1].Imm.Value);
-                double v;
-                if (auto result = applyBinOp(op, v1, v2)) {
-                    v = *result;
+                int64_t v;
+                if (module.Types.GetKind(destTypeId) == EKind::F32) {
+                    auto v1 = std::bit_cast<float>(static_cast<uint32_t>(instr.Operands[0].Imm.Value));
+                    auto v2 = std::bit_cast<float>(static_cast<uint32_t>(instr.Operands[1].Imm.Value));
+                    auto result = applyBinOp(op, v1, v2);
+                    if (!result) {
+                        return false;
+                    }
+                    v = static_cast<int64_t>(std::bit_cast<uint32_t>(*result));
                 } else {
-                    return false;
+                    double v1 = std::bit_cast<double>(instr.Operands[0].Imm.Value);
+                    double v2 = std::bit_cast<double>(instr.Operands[1].Imm.Value);
+                    auto result = applyBinOp(op, v1, v2);
+                    if (!result) {
+                        return false;
+                    }
+                    v = std::bit_cast<int64_t>(*result);
                 }
-                replaceTmpWithOp(instr.Dest, TImm{std::bit_cast<int64_t>(v), destTypeId});
+                replaceTmpWithOp(instr.Dest, TImm{v, destTypeId});
                 instr.Clear();
                 return true;
             }

@@ -53,6 +53,23 @@ enum class EVMOp : uint8_t {
     FCmpEQ, // ==
     FCmpNE, // !=
 
+    // f32 ALU ops: the value is the low four bytes of an eight-byte register
+    FNeg32,
+    FAdd32,
+    FSub32,
+    FMul32,
+    FDiv32,
+    FCmpLT32,
+    FCmpGT32,
+    FCmpLE32,
+    FCmpGE32,
+    FCmpEQ32,
+    FCmpNE32,
+    I2F32, // int to f32
+    F2I32, // f32 to int
+    FExt32, // f32 to f64
+    FTrunc64, // f64 to f32
+
     // load/store
     Load,
     Store,

@@ -199,7 +199,7 @@ opcodes can be added without touching an enum.
 ### 5.4 IR type table
 
 `TTypeTable` interns IR-level types by kind: `I1`, `I8`, `I32`, `I64`,
-`F64`, `Void`, `Ptr`, `Struct`, `Func`.  AST types map to IR types via
+`F32`, `F64`, `Void`, `Ptr`, `Struct`, `Func`.  AST types map to IR types via
 `FromAstType()`.
 
 ---
@@ -214,7 +214,9 @@ ids remain unchanged; only VM operands contain the assigned byte offsets.
 Each invocation uses one aligned byte buffer for all registers, including
 128-bit integers. Existing scalar opcodes use eight-byte slots even for
 narrower types, while 128-bit slots use sixteen bytes with sixteen-byte
-alignment. Struct registers hold addresses of storage in the call frame.
+alignment. An `f32` value occupies the low four bytes of its slot and has
+its own scalar opcodes (`FAdd32`, `FCmpLT32`, `FExt32`, ...); an `f32`
+immediate carries the float bits in the low four bytes of `Imm.Value`. Struct registers hold addresses of storage in the call frame.
 Function calls save and restore the complete register file as one byte range.
 
 ### 6.1 Execution model

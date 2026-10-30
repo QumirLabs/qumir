@@ -22,6 +22,23 @@ using namespace NLiterals;
 
 namespace {
 
+// An f32 immediate keeps its float bits in the low four bytes, so the VM and
+// LLVM read it the same way as a stored f32 value.
+TImm FloatImm(const NAst::TNumberExpr& num, TTypeTable& types) {
+    auto floatType = NAst::TMaybeType<NAst::TFloatType>(num.Type);
+    if (floatType && floatType.Cast()->Kind == NAst::TFloatType::F32) {
+        return TImm{
+            .Value = static_cast<int64_t>(std::bit_cast<uint32_t>(static_cast<float>(num.FloatValue))),
+            .TypeId = types.I(EKind::F32),
+        };
+    }
+    return TImm{.Value = std::bit_cast<int64_t>(num.FloatValue), .TypeId = types.I(EKind::F64)};
+}
+
+} // namespace
+
+namespace {
+
 struct TInstrEmitter {
     TBuilder& Builder;
     TInstrDebugInfo DebugInfo;
@@ -1065,6 +1082,10 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         } else if (NAst::TMaybeType<NAst::TIntegerType>(NAst::UnwrapNamedType(expr->Type))
             && NAst::TMaybeType<NAst::TIntegerType>(NAst::UnwrapNamedType(cast->Operand->Type))) {
             tmp = emitter.Emit1("mov"_op, {*operand.Value});
+        } else if (NAst::TMaybeType<NAst::TFloatType>(NAst::UnwrapNamedType(expr->Type))
+            && NAst::TMaybeType<NAst::TFloatType>(NAst::UnwrapNamedType(cast->Operand->Type))) {
+            // f32 <-> f64: like integer widths, a typed mov that backends turn into a conversion
+            tmp = emitter.Emit1("mov"_op, {*operand.Value});
         } else if (arrayToPtrCast) {
             tmp = emitter.Emit1("mov"_op, {*operand.Value});
         } else if (FromAstType(NAst::UnwrapNamedType(expr->Type), Module.Types)
@@ -1092,7 +1113,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     } else if (auto maybeNum = NAst::TMaybeNode<NAst::TNumberExpr>(expr)) {
         auto num = maybeNum.Cast();
         if (num->IsFloat()) {
-            co_return TValueWithBlock{ TImm{.Value = std::bit_cast<int64_t>(num->FloatValue), .TypeId = Module.Types.I(EKind::F64)}, Builder.CurrentBlockLabel() };
+            co_return TValueWithBlock{ FloatImm(*num, Module.Types), Builder.CurrentBlockLabel() };
         } else {
             int typeId = num->Type && (
                 NAst::TMaybeType<NAst::TIntegerType>(num->Type)
@@ -2268,7 +2289,7 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(const NAst::TExprPtr
                 if (maybeNumber) {
                     auto num = maybeNumber.Cast();
                     if (num->IsFloat()) {
-                        Module.GlobalValues[sid->Id] = TImm{.Value = std::bit_cast<int64_t>(num->FloatValue), .TypeId = Module.Types.I(EKind::F64)};
+                        Module.GlobalValues[sid->Id] = FloatImm(*num, Module.Types);
                     } else {
                         Module.GlobalValues[sid->Id] = TImm{.Value = num->IntValue, .TypeId = Module.Types.I(EKind::I64)};
                     }
