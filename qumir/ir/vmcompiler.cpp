@@ -1008,11 +1008,15 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                         // TODO: add I2F128 variants that produce f32
                         throw std::runtime_error("VM: 128-bit integer to f32 conversion is not supported");
                     }
-                    out.Op = Module.Types.GetKind(srcType) == EKind::I1 ? EVMOp::B2F32 : EVMOp::I2F32;
+                    out.Op = Module.Types.GetKind(srcType) == EKind::I1
+                        ? EVMOp::B2F32
+                        : EVMOp::I2F32;
                 } else if (is128(srcType)) {
                     out.Op = isSignedInteger(srcType) ? EVMOp::I2F128S : EVMOp::I2F128U;
                 } else {
-                    out.Op = Module.Types.GetKind(srcType) == EKind::I1 ? EVMOp::B2F : EVMOp::I2F;
+                    out.Op = Module.Types.GetKind(srcType) == EKind::I1
+                        ? EVMOp::B2F
+                        : EVMOp::I2F;
                 }
                 break;
             }

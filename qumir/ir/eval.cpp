@@ -1154,7 +1154,9 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         case EVMOp::B2I128:
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) =
-                ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]) ? -1 : 0;
+                ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1])
+                    ? -1
+                    : 0;
             break;
         case EVMOp::CmovU128:
         case EVMOp::ZExt128:
