@@ -1019,6 +1019,10 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(
                 static_cast<float>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1])));
             break;
+        case EVMOp::B2F32:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(
+                -static_cast<float>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1])));
+            break;
         case EVMOp::F2I32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = static_cast<int64_t>(
                 ReadOperand<float>(Runtime.Regs, instr.Operands[1]));
@@ -1038,6 +1042,10 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(fval);
             break;
         }
+        case EVMOp::B2F:
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(
+                -static_cast<double>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1])));
+            break;
         case EVMOp::F2I: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
             double fval = ReadOperand<double>(Runtime.Regs, instr.Operands[1]);

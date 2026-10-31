@@ -55,6 +55,7 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::FCmpEQ32: return os << "FCmpEQ32";
     case EVMOp::FCmpNE32: return os << "FCmpNE32";
     case EVMOp::I2F32: return os << "I2F32";
+    case EVMOp::B2F32: return os << "B2F32";
     case EVMOp::F2I32: return os << "F2I32";
     case EVMOp::FExt32: return os << "FExt32";
     case EVMOp::FTrunc64: return os << "FTrunc64";
@@ -63,6 +64,7 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::Mov: return os << "Mov";
     case EVMOp::Cmov: return os << "Cmov";
     case EVMOp::I2F: return os << "I2F";
+    case EVMOp::B2F: return os << "B2F";
     case EVMOp::F2I: return os << "F2I";
     case EVMOp::Bitcast: return os << "Bitcast";
     case EVMOp::Jmp: return os << "Jmp";

@@ -66,6 +66,7 @@ enum class EVMOp : uint8_t {
     FCmpEQ32,
     FCmpNE32,
     I2F32, // int to f32
+    B2F32, // bool to f32, true is -1.0 as in LLVM
     F2I32, // f32 to int
     FExt32, // f32 to f64
     FTrunc64, // f64 to f32
@@ -78,6 +79,7 @@ enum class EVMOp : uint8_t {
     Mov,
     Cmov, // convert imm to tmp
     I2F, // int to float
+    B2F, // bool to f64, true is -1.0 as in LLVM
     F2I, // float to int
     Bitcast,
 
