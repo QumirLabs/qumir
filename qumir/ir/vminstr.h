@@ -142,6 +142,8 @@ enum class EVMOp : uint8_t {
     Ste128,
     ArgTmp128,
     Ret128,
+    ArgVec, // push the bytes of a vector register as a call argument
+    RetVec, // return the bytes of a vector register
 
     // Vector arithmetic uses Format; scalar arithmetic keeps its fixed width.
     VIAdd,

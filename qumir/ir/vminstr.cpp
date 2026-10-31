@@ -121,6 +121,8 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::Ste128: return os << "Ste128";
     case EVMOp::ArgTmp128: return os << "ArgTmp128";
     case EVMOp::Ret128: return os << "Ret128";
+    case EVMOp::ArgVec: return os << "ArgVec";
+    case EVMOp::RetVec: return os << "RetVec";
     case EVMOp::VIAdd: return os << "VIAdd";
     case EVMOp::VISub: return os << "VISub";
     case EVMOp::VIMul: return os << "VIMul";

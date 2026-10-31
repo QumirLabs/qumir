@@ -142,7 +142,8 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
             vectorType = pointee;
         }
     }
-    if (vectorType < 0) {
+    // A vector call result is stored by the generic call path.
+    if (vectorType < 0 || instr.Op == "call"_op) {
         return false;
     }
     out.Format = VectorFormat(types, vectorType);
@@ -234,6 +235,18 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
             if (types.IsSigned(elementType)) {
                 out.Format |= TVMInstr::SignedElement;
             }
+            return true;
+        }
+        case "arg"_op:
+        case "ret"_op: {
+            if (instr.Operands[0].Type != TOperand::EType::Tmp) {
+                throw std::runtime_error("VM vector " + instr.Op.ToString() + " operand must be a temporary");
+            }
+            if (function.IsCoroutine && instr.Op == "ret"_op) {
+                // The future result is a single word.
+                throw std::runtime_error("VM coroutines cannot return vectors");
+            }
+            out.Op = instr.Op == "arg"_op ? EVMOp::ArgVec : EVMOp::RetVec;
             return true;
         }
         case "lea"_op:
@@ -581,9 +594,6 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             funcOut.ArgByteOffsets.push_back(funcOut.LocalByteOffsets[argLocal.Idx]);
             int typeId = (argLocal.Idx < (int)function.LocalTypes.size())
                 ? function.LocalTypes[argLocal.Idx] : -1;
-            if (Module.Types.IsVector(typeId)) {
-                throw std::runtime_error("VM vector arguments are not supported yet");
-            }
             funcOut.ArgTypeIds.push_back(typeId);
         }
     }
@@ -1068,6 +1078,13 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 } else if (Module.SymIdToExtFuncIdx.contains(calleeId)) {
                     const int64_t calleeIdx = Module.SymIdToExtFuncIdx.at(calleeId);
                     assert(calleeIdx >=0 && calleeIdx < Module.ExternalFunctions.size() && "Invalid callee idx");
+                    const auto& ext = Module.ExternalFunctions[calleeIdx];
+                    if (Module.Types.IsVector(ext.ReturnTypeId)
+                        || std::any_of(ext.ArgTypes.begin(), ext.ArgTypes.end(),
+                            [&](int typeId) { return Module.Types.IsVector(typeId); }))
+                    {
+                        throw std::runtime_error("VM external calls with vectors are not supported");
+                    }
                     NFFI::IFunction* thunk = GetOrCreateExternalThunk(static_cast<int>(calleeIdx));
                     if (!thunk) {
                         throw std::runtime_error(

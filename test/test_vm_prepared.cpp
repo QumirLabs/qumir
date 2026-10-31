@@ -222,6 +222,30 @@ TEST(VMPrepared, InvokeRejectsWideArgument) {
     EXPECT_FALSE(instance.Interpreter.Invoke(entry, {-1}));
 }
 
+TEST(VMPrepared, InvokeRejectsVectorArgument) {
+    TProgram program(R"((block
+      (fun entry ((var x <vec u64 2>)) -> u64 (block (return (index x 0))))))");
+    auto& entry = program.Get("entry");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    auto res = instance.Interpreter.Invoke(entry, {1});
+    ASSERT_FALSE(res);
+    EXPECT_NE(res.error().ToString().find("vector argument"), std::string::npos) << res.error().ToString();
+}
+
+TEST(VMPrepared, InvokeRejectsVectorResult) {
+    TProgram program(R"((block
+      (fun entry () -> <vec u64 2> (block (return (: (vec 1 2) <vec u64 2>))))))");
+    auto& entry = program.Get("entry");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    auto res = instance.Interpreter.Invoke(entry, {});
+    ASSERT_FALSE(res);
+    EXPECT_NE(res.error().ToString().find("returns a vector"), std::string::npos) << res.error().ToString();
+}
+
 TEST(VMPrepared, FailedConstructorIsNotFinalized) {
     TProgram program(R"((block
       (var counter = (: 5 i64))

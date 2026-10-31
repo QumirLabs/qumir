@@ -309,6 +309,15 @@ std::expected<int64_t, TError> TInterpreter::InvokePrepared(TFunction& function,
         return std::unexpected(TError("function `" + name + "' expects "
             + std::to_string(function.ArgLocals.size()) + " arguments, got " + std::to_string(args.size())));
     }
+    // Entry arguments and results are single words; vectors only work between VM functions.
+    if (Module.Types.IsVector(function.ReturnTypeId)) {
+        return std::unexpected(TError("function `" + name + "' returns a vector; vector results are not supported by Invoke"));
+    }
+    for (const int typeId : function.Exec->ArgTypeIds) {
+        if (Module.Types.IsVector(typeId)) {
+            return std::unexpected(TError("function `" + name + "' has a vector argument; vector arguments are not supported by Invoke"));
+        }
+    }
     // Argument words have no high half.
     for (const int typeId : function.Exec->ArgTypeIds) {
         if (typeId >= 0 && Module.Types.GetKind(typeId) != EKind::Struct && Module.Types.SizeInBytes(typeId) > 8) {
@@ -318,6 +327,7 @@ std::expected<int64_t, TError> TInterpreter::InvokePrepared(TFunction& function,
     // A previous throw may have left partial extern call arguments.
     Runtime.Args.clear();
     Runtime.Args128.clear();
+    Runtime.ArgBytes.clear();
     try {
         auto future = DoEvalRawAsync<false>(function, std::move(args), {});
         if (!future.done()) {
@@ -426,6 +436,12 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             if (typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct) {
                 // struct arg: value is a pointer - copy the struct into the frame
                 std::memcpy(frameBase + byteOff, reinterpret_cast<const void*>(srcArgs[i]), argSize);
+            } else if (typeId >= 0 && Module.Types.IsVector(typeId)) {
+                // vector arg: srcArgs[i] is the offset of its bytes in ArgBytes
+                if (srcArgs[i] < 0 || static_cast<size_t>(srcArgs[i]) + argSize > Runtime.ArgBytes.size()) {
+                    throw std::runtime_error("VM vector argument is not passed by a call instruction");
+                }
+                std::memcpy(frameBase + byteOff, Runtime.ArgBytes.data() + srcArgs[i], argSize);
             } else if (typeId >= 0 && argSize == 16 && i < (int)Runtime.Args128.size()) {
                 std::memcpy(frameBase + byteOff, &Runtime.Args128[i], 16);
             } else {
@@ -438,6 +454,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
 
     std::optional<int64_t> retVal;
     bool retIs128 = false;
+    size_t retVecSize = 0;
     auto materializeStructTmp = [&](const TFrame& targetFrame, int32_t registerOffset, const void* src) -> std::optional<int64_t> {
         const TExecFunc* exec = targetFrame.Exec;
         auto it = exec->StructRegisters.find(registerOffset);
@@ -1188,6 +1205,16 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         }
 
+        case EVMOp::ArgVec: {
+            const size_t size = instr.SizeInBytes();
+            Runtime.Args.push_back(static_cast<int64_t>(Runtime.ArgBytes.size()));
+            Runtime.Args128.push_back(0);
+            Runtime.ArgBytes.resize(Runtime.ArgBytes.size() + size);
+            std::memcpy(Runtime.ArgBytes.data() + Runtime.ArgBytes.size() - size,
+                        Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx, size);
+            break;
+        }
+
         case EVMOp::Jmp: {
             assert(instr.Operands[0].Type == TVMOperand::EType::Imm);
             frame.PC = reinterpret_cast<TVMInstr*>(instr.Operands[0].Imm.Value);
@@ -1229,6 +1256,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             }
             Runtime.Args.clear();
             Runtime.Args128.clear();
+            Runtime.ArgBytes.clear();
 
             break;
         }
@@ -1274,6 +1302,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
 
             Runtime.Args.clear();
             Runtime.Args128.clear();
+            Runtime.ArgBytes.clear();
             callStack.emplace_back(TFrame {
                 .Exec = calleeExec,
                 .StackBase = base,
@@ -1300,7 +1329,13 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             retIs128 = true;
             [[fallthrough]];
         case EVMOp::Ret:
-            if (!retIs128) {
+        case EVMOp::RetVec:
+            if (instr.Op == EVMOp::RetVec) {
+                retVecSize = instr.SizeInBytes();
+                Runtime.RetBytes.assign(Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx,
+                                        Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx + retVecSize);
+                retVal = 0;
+            } else if (!retIs128) {
                 retVal = ReadOperand(Runtime.Regs, instr.Operands[0]);
             }
         case EVMOp::RetVoid: {
@@ -1336,6 +1371,8 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                         completed = MakeCompletedValueFuture(static_cast<uint64_t>(retVal.value_or(0)));
                     }
                     Runtime.Regs.Get<int64_t>(link.CallerDst) = reinterpret_cast<int64_t>(completed);
+                } else if (retVecSize != 0 && link.CallerDst >= 0) {
+                    std::memcpy(Runtime.Regs.Data() + link.CallerDst, Runtime.RetBytes.data(), retVecSize);
                 } else if (retIs128 && link.CallerDst >= 0) {
                     Runtime.Regs.Get<__int128_t>(link.CallerDst) = Runtime.Ret128Value;
                 } else if (retVal.has_value() && link.CallerDst >= 0) {
@@ -1344,6 +1381,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 Runtime.Stack.resize(savedRegsStart);
                 retVal = std::nullopt;
                 retIs128 = false;
+                retVecSize = 0;
             }
             break;
         }
