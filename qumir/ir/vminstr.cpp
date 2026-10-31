@@ -77,6 +77,7 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::RetVoid: return os << "RetVoid";
     case EVMOp::Ste: return os << "Ste";
     case EVMOp::Lde: return os << "Lde";
+    case EVMOp::LdeS: return os << "LdeS";
     case EVMOp::Lea: return os << "Lea";
     case EVMOp::Copy: return os << "Copy";
     case EVMOp::StructStore: return os << "StructStore";

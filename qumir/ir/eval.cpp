@@ -523,7 +523,8 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             std::memcpy(addr, &value, size);
             break;
         }
-        case EVMOp::Lde: {
+        case EVMOp::Lde:
+        case EVMOp::LdeS: {
             int64_t intAddr = ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]);
             void* addr = reinterpret_cast<void*>(intAddr);
             int64_t value = 0;
@@ -532,6 +533,10 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 size = sizeof(int64_t);
             }
             std::memcpy(&value, addr, size);
+            if (instr.Op == EVMOp::LdeS && size < sizeof(int64_t)) {
+                const int shift = 64 - 8 * static_cast<int>(size);
+                value = static_cast<int64_t>(static_cast<uint64_t>(value) << shift) >> shift;
+            }
             assert(instr.Operands[0].Tmp.Idx >= 0);
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = value;
             break;
