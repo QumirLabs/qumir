@@ -135,6 +135,7 @@ enum class EVMOp : uint8_t {
     CmovU128, // zero-extend a 64-bit immediate into a 128-bit register
     SExt128,  // sign-extend a 64-bit register into a 128-bit one
     ZExt128,  // zero-extend a 64-bit register into a 128-bit one
+    B2I128,   // bool register into 128 bits, true is all ones as in LLVM
     Trunc128, // low 64 bits of a 128-bit register into a 64-bit one
     I2B128,
     I2F128S,

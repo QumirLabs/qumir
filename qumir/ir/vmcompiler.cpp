@@ -959,6 +959,14 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     if (is128(srcType) && !isImm) {
                         out.Op = EVMOp::Mov;
                         out.Format = TVMInstr::MakeFormat(4);
+                    } else if (Module.Types.GetKind(srcType) == EKind::I1) {
+                        // A bool widens to all ones, as on LLVM.
+                        if (isImm) {
+                            out.Op = EVMOp::CmovS128;
+                            out.Operands[1] = TImm{ins.Operands[0].Imm.Value ? -1 : 0};
+                        } else {
+                            out.Op = EVMOp::B2I128;
+                        }
                     } else if (isImm) {
                         out.Op = signExtend ? EVMOp::CmovS128 : EVMOp::CmovU128;
                     } else {

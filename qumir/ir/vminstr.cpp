@@ -114,6 +114,7 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::CmovU128: return os << "CmovU128";
     case EVMOp::SExt128: return os << "SExt128";
     case EVMOp::ZExt128: return os << "ZExt128";
+    case EVMOp::B2I128: return os << "B2I128";
     case EVMOp::Trunc128: return os << "Trunc128";
     case EVMOp::I2B128: return os << "I2B128";
     case EVMOp::I2F128S: return os << "I2F128S";
