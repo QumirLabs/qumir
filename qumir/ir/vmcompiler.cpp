@@ -467,7 +467,7 @@ std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& 
             pending.push_back(&Module.Functions[id]);
         }
     }
-    // Functions compiled by this call; they become prepared only if the whole closure compiles.
+    // Marked prepared only if the whole closure compiles.
     std::unordered_set<TFunction*> visited;
     std::vector<TFunction*> added;
     TFunction* current = nullptr;
@@ -483,7 +483,7 @@ std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& 
             if (!hadExec) {
                 added.push_back(current);
             }
-            // Await calls are compiled to Call too, so this covers every internal callee.
+            // Await is compiled to Call too.
             for (const auto& instr : current->Exec->VMCode) {
                 if (instr.Op == EVMOp::Call) {
                     pending.push_back(&Module.Functions[instr.Operands[1].Imm.Value]);
@@ -491,8 +491,7 @@ std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& 
             }
         }
     } catch (const std::exception& e) {
-        // Roll back so no function without all its callees looks prepared; a failed Compile
-        // also leaves a half-built cache entry that must not be reused.
+        // Roll back, including the half-built cache entry of the failed Compile.
         if (!current->Exec) {
             CodeCache.erase(current->SymId);
         }

@@ -228,18 +228,17 @@ The interpreter loop dispatches on `EVMOp` enum values.  Frames are linked
 
 ### 6.1.1 Prepared program and instances
 
-`Eval`/`EvalRaw` compile callees lazily and pump the global async event queues,
-so they are for one interpreter at a time. A host that calls the VM from several
-threads uses the second path: `TVMCompiler::Prepare(roots)` compiles every
-reachable function and resolves externs up front, then each thread owns a
-`TInterpreter` and calls `Initialize()`, `Invoke(function, args)` and
-`Finalize()`. `Prepare` is all or nothing: after success every callee of a
-prepared function is prepared, so `Invoke` compiles nothing and the program is
-read-only; after a failure nothing from that call stays prepared. Limits:
-`Prepare` must not run concurrently with `Invoke`; `Invoke` needs `Initialize()`,
-rejects non-struct arguments wider than 64 bits and truncates an `i128` result;
-an exception thrown by an extern function terminates the process; extern
-functions of io, robot, painter and similar modules use unsynchronized globals.
+`Eval`/`EvalRaw` compile lazily and pump the global async event queues, so they
+suit one interpreter at a time. For multi-threaded hosts,
+`TVMCompiler::Prepare(roots)` compiles all reachable functions and resolves
+externs up front (all or nothing); each thread then owns a `TInterpreter` and
+calls `Initialize()`, `Invoke(function, args)`, `Finalize()`. `Invoke` compiles
+nothing, so the prepared program is read-only.
+
+Limits: `Prepare` must not run concurrently with `Invoke`; non-struct arguments
+wider than 64 bits are rejected and an `i128` result is truncated; an exception
+from an extern terminates the process; io, robot and painter externs use
+unsynchronized globals.
 
 ### 6.2 Calling convention for external (runtime) functions
 

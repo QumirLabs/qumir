@@ -72,17 +72,11 @@ public:
     // results whose caller already knows the function's return type.
     std::optional<int64_t> EvalRaw(TFunction& function, std::vector<int64_t> args, TOptions options);
 
-    // Calls bytecode accepted by TVMCompiler::Prepare. Unlike Eval/EvalRaw it compiles nothing
-    // (Prepare guarantees every callee of a prepared function is prepared), runs no module
-    // constructor/destructor and does not pump the global async event queues. Interpreters on
-    // different threads may share one prepared program, but Prepare must not run concurrently
-    // with Invoke. Requires Initialize(). Arguments are 64-bit words: a non-struct argument
-    // wider than 64 bits is rejected, an i128 result is truncated to 64 bits. An exception
-    // thrown by an extern function is not caught (the FFI thunks are noexcept and terminate).
-    // Externs of io, robot, painter and similar modules use unsynchronized globals.
+    // Calls a function accepted by TVMCompiler::Prepare; never compiles, never pumps async
+    // events. Needs Initialize(). Rejects non-struct arguments wider than 64 bits.
+    // One interpreter per thread; Prepare must not run concurrently with Invoke.
     std::expected<int64_t, TError> Invoke(TFunction& function, std::vector<int64_t> args);
-    // Run the module constructor/destructor once per instance; Finalize is idempotent and
-    // does nothing after a failed Initialize.
+    // Module constructor/destructor, once per instance; Finalize is idempotent.
     std::expected<void, TError> Initialize();
     std::expected<void, TError> Finalize();
 

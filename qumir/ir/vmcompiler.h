@@ -41,10 +41,11 @@ public:
 
     TExecFunc& Compile(TFunction& function, bool printByteCode = false);
 
-    // Compiles the roots, everything they call and the module constructor/destructor.
-    // After success TInterpreter::Invoke needs no compilation and writes no shared data.
+    // Compiles the roots, their callees and the module constructor/destructor, all or nothing.
     std::expected<void, TError> Prepare(const std::vector<TFunction*>& roots);
-    bool IsPrepared(const TExecFunc* exec) const { return Prepared.contains(exec); }
+    bool IsPrepared(const TExecFunc* exec) const {
+        return Prepared.contains(exec);
+    }
 
 private:
     void CompileUltraLow(const TFunction& function, TExecFunc& out);

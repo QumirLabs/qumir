@@ -309,13 +309,13 @@ std::expected<int64_t, TError> TInterpreter::InvokePrepared(TFunction& function,
         return std::unexpected(TError("function `" + name + "' expects "
             + std::to_string(function.ArgLocals.size()) + " arguments, got " + std::to_string(args.size())));
     }
-    // The argument words carry no high half, so wide scalars cannot be passed.
+    // Argument words have no high half.
     for (const int typeId : function.Exec->ArgTypeIds) {
         if (typeId >= 0 && Module.Types.GetKind(typeId) != EKind::Struct && Module.Types.SizeInBytes(typeId) > 8) {
             return std::unexpected(TError("function `" + name + "' has an argument wider than 64 bits"));
         }
     }
-    // A previous call that threw may have left partial external call arguments.
+    // A previous throw may have left partial extern call arguments.
     Runtime.Args.clear();
     Runtime.Args128.clear();
     try {
