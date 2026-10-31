@@ -242,6 +242,10 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
             if (instr.Operands[0].Type != TOperand::EType::Tmp) {
                 throw std::runtime_error("VM vector " + instr.Op.ToString() + " operand must be a temporary");
             }
+            if (function.IsCoroutine && instr.Op == "ret"_op) {
+                // The future result is a single word.
+                throw std::runtime_error("VM coroutines cannot return vectors");
+            }
             out.Op = instr.Op == "arg"_op ? EVMOp::ArgVec : EVMOp::RetVec;
             return true;
         }

@@ -309,6 +309,15 @@ std::expected<int64_t, TError> TInterpreter::InvokePrepared(TFunction& function,
         return std::unexpected(TError("function `" + name + "' expects "
             + std::to_string(function.ArgLocals.size()) + " arguments, got " + std::to_string(args.size())));
     }
+    // Entry arguments and results are single words; vectors only work between VM functions.
+    if (Module.Types.IsVector(function.ReturnTypeId)) {
+        return std::unexpected(TError("function `" + name + "' returns a vector; vector results are not supported by Invoke"));
+    }
+    for (const int typeId : function.Exec->ArgTypeIds) {
+        if (Module.Types.IsVector(typeId)) {
+            return std::unexpected(TError("function `" + name + "' has a vector argument; vector arguments are not supported by Invoke"));
+        }
+    }
     // Argument words have no high half.
     for (const int typeId : function.Exec->ArgTypeIds) {
         if (typeId >= 0 && Module.Types.GetKind(typeId) != EKind::Struct && Module.Types.SizeInBytes(typeId) > 8) {
