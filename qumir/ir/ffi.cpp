@@ -23,10 +23,19 @@ asm(
     ".globl " QFFI_ASM_NAME "\n"
     ".p2align 2\n"
     QFFI_ASM_NAME ":\n"
+    // CFI lets an exception thrown by the callee unwind through this frame.
+    "    .cfi_startproc\n"
     "    stp x29, x30, [sp, #-48]!\n"
+    "    .cfi_def_cfa_offset 48\n"
+    "    .cfi_offset 29, -48\n"
+    "    .cfi_offset 30, -40\n"
     "    mov x29, sp\n"
+    "    .cfi_def_cfa_register 29\n"
     "    stp x19, x20, [sp, #16]\n"
+    "    .cfi_offset 19, -32\n"
+    "    .cfi_offset 20, -24\n"
     "    str x21, [sp, #32]\n"
+    "    .cfi_offset 21, -16\n"
     "    mov x19, x0\n"
     "    mov x20, x1\n"
     "    mov x21, x2\n"
@@ -63,6 +72,7 @@ asm(
     "    ldr x21, [sp, #32]\n"
     "    ldp x29, x30, [sp], #48\n"
     "    ret\n"
+    "    .cfi_endproc\n"
 );
 #else
 asm(
@@ -70,12 +80,21 @@ asm(
     ".globl " QFFI_ASM_NAME "\n"
     ".p2align 4\n"
     QFFI_ASM_NAME ":\n"
+    // CFI lets an exception thrown by the callee unwind through this frame.
+    "    .cfi_startproc\n"
     "    pushq %rbp\n"
+    "    .cfi_def_cfa_offset 16\n"
+    "    .cfi_offset 6, -16\n"
     "    movq %rsp, %rbp\n"
+    "    .cfi_def_cfa_register 6\n"
     "    pushq %r12\n"
+    "    .cfi_offset 12, -24\n"
     "    pushq %r13\n"
+    "    .cfi_offset 13, -32\n"
     "    pushq %r14\n"
+    "    .cfi_offset 14, -40\n"
     "    pushq %rbx\n"
+    "    .cfi_offset 3, -48\n"
     "    movq %rdi, %r12\n"
     "    movq %rsi, %r14\n"
     "    movq %rdx, %r13\n"
@@ -124,6 +143,7 @@ asm(
     "    popq %r12\n"
     "    popq %rbp\n"
     "    ret\n"
+    "    .cfi_endproc\n"
 );
 #endif
 
