@@ -238,7 +238,8 @@ nothing, so the prepared program is read-only.
 Limits: `Prepare` must not run concurrently with `Invoke`; non-struct arguments
 wider than 64 bits are rejected and an `i128` result is truncated; io, robot and
 painter externs use unsynchronized globals. An exception from an extern makes
-`Invoke` return a `TError`.
+`Invoke` return a `TError`; refcounted values (strings, arrays) in the frames it
+abandons are not released, which leaks memory but does not affect correctness.
 
 ### 6.2 Calling convention for external (runtime) functions
 
