@@ -95,6 +95,7 @@ TEST(VMPrepared, PrepareAndInvokeManyTimes) {
     ASSERT_TRUE(program.Compiler.Prepare({&entry})) << "prepare failed";
     const auto before = ExecPointers(program.Module);
     TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
     for (int64_t i = 0; i < 1000; ++i) {
         TPair pair{i, 2 * i};
         auto res = instance.Interpreter.Invoke(entry, {reinterpret_cast<int64_t>(&pair), i});
@@ -143,6 +144,7 @@ TEST(VMPrepared, EvalRawCompilesLazilyAndInvokeDoesNot) {
     auto& entry = program.Get("entry");
     auto& helper = program.Get("helper");
     TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
     TPair pair{1, 2};
     const std::vector<int64_t> args{reinterpret_cast<int64_t>(&pair), 3};
     EXPECT_EQ(helper.Exec, nullptr);
@@ -163,6 +165,7 @@ TEST(VMPrepared, PrepareReportsUnresolvedExtern) {
     EXPECT_NE(res.error().ToString().find("qumir_prepared_no_such_symbol"), std::string::npos)
         << res.error().ToString();
     TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
     EXPECT_FALSE(instance.Interpreter.Invoke(entry, {1}));
 }
 
@@ -171,6 +174,7 @@ TEST(VMPrepared, InvokeRejectsWrongArgumentCount) {
     auto& entry = program.Get("entry");
     ASSERT_TRUE(program.Compiler.Prepare({&entry}));
     TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
     EXPECT_FALSE(instance.Interpreter.Invoke(entry, {1}));
 }
 
@@ -182,11 +186,50 @@ TEST(VMPrepared, InitializeOnceAndFinalizeIsIdempotent) {
     ASSERT_NE(program.Module.ModuleConstructorFunctionId, -1);
     ASSERT_TRUE(program.Compiler.Prepare({&bump}));
     TInstance instance(program);
+    EXPECT_FALSE(instance.Interpreter.Invoke(bump, {}));
     ASSERT_TRUE(instance.Interpreter.Initialize());
     ASSERT_TRUE(instance.Interpreter.Initialize());
     EXPECT_EQ(instance.Interpreter.Invoke(bump, {}), 6);
     EXPECT_EQ(instance.Interpreter.Invoke(bump, {}), 7);
     EXPECT_TRUE(instance.Interpreter.Finalize());
+    EXPECT_TRUE(instance.Interpreter.Finalize());
+}
+
+TEST(VMPrepared, FailedPrepareLeavesNothingPrepared) {
+    TProgram program(R"((block
+      (fun qumir_prepared_no_such_symbol ((var x i64)) -> i64 (attrs extern) (block))
+      (fun bad ((var x i64)) -> i64 (block (return (call qumir_prepared_no_such_symbol x))))
+      (fun entry ((var x i64)) -> i64 (block (return (call bad x))))))");
+    auto& entry = program.Get("entry");
+    ASSERT_FALSE(program.Compiler.Prepare({&entry}));
+    EXPECT_EQ(entry.Exec, nullptr);
+    EXPECT_EQ(program.Get("bad").Exec, nullptr);
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    for (int i = 0; i < 2; ++i) {
+        EXPECT_FALSE(instance.Interpreter.Invoke(entry, {1}));
+    }
+    EXPECT_EQ(entry.Exec, nullptr);
+}
+
+TEST(VMPrepared, InvokeRejectsWideArgument) {
+    TProgram program(R"((block
+      (fun entry ((var x i128)) -> i64 (block (return (cast (>> x 64) i64))))))");
+    auto& entry = program.Get("entry");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    EXPECT_FALSE(instance.Interpreter.Invoke(entry, {-1}));
+}
+
+TEST(VMPrepared, FailedConstructorIsNotFinalized) {
+    TProgram program(R"((block
+      (var counter = (: 5 i64))
+      (fun bump () -> i64 (block (= counter (+ counter 1)) (return counter)))))");
+    TInstance instance(program);
+    // Not prepared: the constructor cannot run.
+    EXPECT_FALSE(instance.Interpreter.Initialize());
+    EXPECT_FALSE(instance.Interpreter.Invoke(program.Get("bump"), {}));
     EXPECT_TRUE(instance.Interpreter.Finalize());
 }
 

@@ -233,7 +233,13 @@ so they are for one interpreter at a time. A host that calls the VM from several
 threads uses the second path: `TVMCompiler::Prepare(roots)` compiles every
 reachable function and resolves externs up front, then each thread owns a
 `TInterpreter` and calls `Initialize()`, `Invoke(function, args)` and
-`Finalize()`. `Invoke` never compiles, so the prepared program is read-only.
+`Finalize()`. `Prepare` is all or nothing: after success every callee of a
+prepared function is prepared, so `Invoke` compiles nothing and the program is
+read-only; after a failure nothing from that call stays prepared. Limits:
+`Prepare` must not run concurrently with `Invoke`; `Invoke` needs `Initialize()`,
+rejects non-struct arguments wider than 64 bits and truncates an `i128` result;
+an exception thrown by an extern function terminates the process; extern
+functions of io, robot, painter and similar modules use unsynchronized globals.
 
 ### 6.2 Calling convention for external (runtime) functions
 

@@ -467,16 +467,22 @@ std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& 
             pending.push_back(&Module.Functions[id]);
         }
     }
+    // Functions compiled by this call; they become prepared only if the whole closure compiles.
+    std::unordered_set<TFunction*> visited;
+    std::vector<TFunction*> added;
     TFunction* current = nullptr;
     try {
         while (!pending.empty()) {
             current = pending.back();
             pending.pop_back();
-            if (current->Exec && Prepared.contains(current->Exec)) {
+            if ((current->Exec && Prepared.contains(current->Exec)) || !visited.insert(current).second) {
                 continue;
             }
+            const bool hadExec = current->Exec != nullptr;
             current->Exec = &Compile(*current);
-            Prepared.insert(current->Exec);
+            if (!hadExec) {
+                added.push_back(current);
+            }
             // Await calls are compiled to Call too, so this covers every internal callee.
             for (const auto& instr : current->Exec->VMCode) {
                 if (instr.Op == EVMOp::Call) {
@@ -485,10 +491,19 @@ std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& 
             }
         }
     } catch (const std::exception& e) {
-        // A failed Compile leaves a half-built cache entry that must not be reused.
-        CodeCache.erase(current->SymId);
-        current->Exec = nullptr;
+        // Roll back so no function without all its callees looks prepared; a failed Compile
+        // also leaves a half-built cache entry that must not be reused.
+        if (!current->Exec) {
+            CodeCache.erase(current->SymId);
+        }
+        for (auto* function : added) {
+            CodeCache.erase(function->SymId);
+            function->Exec = nullptr;
+        }
         return std::unexpected(TError("cannot prepare `" + std::string(current->Name) + "': " + e.what()));
+    }
+    for (auto* function : visited) {
+        Prepared.insert(function->Exec);
     }
     return {};
 }
