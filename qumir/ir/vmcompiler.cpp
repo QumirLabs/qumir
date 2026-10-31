@@ -730,7 +730,13 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             }
             case "lde"_op: {
                 require(ins, 1, 1);
-                out.Op = is128(typeId(ins.Dest)) ? EVMOp::Lde128 : EVMOp::Lde;
+                const int destType = typeId(ins.Dest);
+                // A bool is 0 or 1 in a register, so only the integer kinds sign-extend.
+                const auto destKind = Module.Types.GetKind(destType);
+                const bool narrowSigned = destKind == EKind::I8 || destKind == EKind::I16 || destKind == EKind::I32;
+                out.Op = is128(destType)
+                    ? EVMOp::Lde128
+                    : (narrowSigned ? EVMOp::LdeS : EVMOp::Lde);
                 out.Operands[2] = TUntypedImm{Module.Types.SizeInBytes(typeId(ins.Dest))};
                 break;
             }
