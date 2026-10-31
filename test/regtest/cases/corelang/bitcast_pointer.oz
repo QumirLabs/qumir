@@ -4,4 +4,6 @@
       (var p = (cast (: 1234 i64) <ptr i8>))
       (var words = (bitcast p <ptr i64>))
       (output (bitcast p i64) " " (cast (bitcast words u64) i64) "\n")
-      (output (bitcast (bitcast 0 <ptr i8>) i64) " " (!= (bitcast "abc" i64) 0) "\n"))))
+      (output (bitcast (bitcast 0 <ptr i8>) i64) " " (!= (bitcast "abc" i64) 0) "\n")
+      (var text = (bitcast "abc" <ptr u8>))
+      (output (cast (index text 0) i64) " " (cast (index text 2) i64) "\n"))))

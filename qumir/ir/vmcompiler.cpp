@@ -690,6 +690,16 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 }
                 case TOperand::EType::Imm:
                     operand = ins.Operands[i].Imm;
+                    // A string literal immediate is its id; every instruction reads its address.
+                    if (ins.Operands[i].Imm.TypeId == lowStringTypeId) {
+                        const auto id = ins.Operands[i].Imm.Value;
+                        if (id < 0 || id >= static_cast<int64_t>(Module.StringLiterals.size())) {
+                            throw std::runtime_error("Invalid string literal id");
+                        }
+                        operand = TImm{
+                            reinterpret_cast<int64_t>(Module.StringLiterals[id].c_str()),
+                            lowStringTypeId};
+                    }
                     break;
                 case TOperand::EType::Label:
                     TVMInstr* pc = &code[labelToPC.at(ins.Operands[i].Label.Idx)];
@@ -1030,18 +1040,6 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     out.Op = EVMOp::ArgConst;
                 } else {
                     throw std::runtime_error("arg operand must be Imm or Tmp");
-                }
-                // convert id to pointer
-                if (ins.Operands[0].Type == TOperand::EType::Imm) {
-                    auto imm = ins.Operands[0].Imm;
-                    if (imm.TypeId == lowStringTypeId) { // string literal
-                        int id = (int)imm.Value;
-                        if (id < 0 || id >= Module.StringLiterals.size()) {
-                            throw std::runtime_error("Invalid string literal id in outs");
-                        }
-                        auto& str = Module.StringLiterals[id];
-                        out.Operands[0] = TImm{(int64_t)str.c_str(), lowStringTypeId};
-                    }
                 }
                 break;
             }
