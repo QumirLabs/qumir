@@ -36,6 +36,8 @@ struct TRuntime {
     std::vector<char> Stack;   // byte array; each variable slot is 8 bytes (64-bit aligned)
     std::vector<int64_t> Args; // call arguments, will be copied on stack on call, TODO: remove
     std::vector<__int128_t> Args128; // parallel to Args, filled for 128-bit arguments only
+    std::vector<char> ArgBytes; // vector argument bytes; Args holds their offsets
+    std::vector<char> RetBytes; // returned vector bytes
     __int128_t Ret128Value = 0;
     TRegisterFile Regs;
     std::vector<TFrame> CallStack;
