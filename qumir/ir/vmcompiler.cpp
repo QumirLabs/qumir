@@ -460,6 +460,39 @@ TExecFunc& TVMCompiler::Compile(TFunction& function, bool printByteCode) {
     return execFunc;
 }
 
+std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& roots) {
+    std::vector<TFunction*> pending = roots;
+    for (int id : {Module.ModuleConstructorFunctionId, Module.ModuleDestructorFunctionId}) {
+        if (id != -1) {
+            pending.push_back(&Module.Functions[id]);
+        }
+    }
+    TFunction* current = nullptr;
+    try {
+        while (!pending.empty()) {
+            current = pending.back();
+            pending.pop_back();
+            if (current->Exec && Prepared.contains(current->Exec)) {
+                continue;
+            }
+            current->Exec = &Compile(*current);
+            Prepared.insert(current->Exec);
+            // Await calls are compiled to Call too, so this covers every internal callee.
+            for (const auto& instr : current->Exec->VMCode) {
+                if (instr.Op == EVMOp::Call) {
+                    pending.push_back(&Module.Functions[instr.Operands[1].Imm.Value]);
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        // A failed Compile leaves a half-built cache entry that must not be reused.
+        CodeCache.erase(current->SymId);
+        current->Exec = nullptr;
+        return std::unexpected(TError("cannot prepare `" + std::string(current->Name) + "': " + e.what()));
+    }
+    return {};
+}
+
 void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
 {
     int lowStringTypeId = Module.Types.Ptr(Module.Types.I(EKind::I8));

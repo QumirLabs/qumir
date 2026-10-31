@@ -3,8 +3,12 @@
 #include <qumir/ir/builder.h>
 #include <qumir/ir/vminstr.h>
 #include <qumir/ir/ffi.h>
+#include <qumir/error.h>
 
+#include <expected>
 #include <memory>
+#include <unordered_set>
+#include <vector>
 
 namespace NQumir {
 namespace NIR {
@@ -37,6 +41,11 @@ public:
 
     TExecFunc& Compile(TFunction& function, bool printByteCode = false);
 
+    // Compiles the roots, everything they call and the module constructor/destructor.
+    // After success TInterpreter::Invoke needs no compilation and writes no shared data.
+    std::expected<void, TError> Prepare(const std::vector<TFunction*>& roots);
+    bool IsPrepared(const TExecFunc* exec) const { return Prepared.contains(exec); }
+
 private:
     void CompileUltraLow(const TFunction& function, TExecFunc& out);
     bool CompileVectorInstruction(const TFunction& function, const TInstr& instr, TVMInstr& out);
@@ -52,6 +61,7 @@ private:
     std::unordered_map<int, TExecFunc> CodeCache;
     std::vector<std::unique_ptr<NFFI::IFunction>> ExternalThunks;
     std::unordered_map<int, NFFI::IFunction*> ExternalThunkCache;
+    std::unordered_set<const TExecFunc*> Prepared;
 };
 
 } // namespace NIR

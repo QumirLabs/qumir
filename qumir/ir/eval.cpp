@@ -291,6 +291,58 @@ std::optional<int64_t> TInterpreter::EvalRaw(TFunction& function, std::vector<in
     return ans;
 }
 
+std::expected<int64_t, TError> TInterpreter::Invoke(TFunction& function, std::vector<int64_t> args)
+{
+    if (!function.Exec || !Compiler.IsPrepared(function.Exec)) {
+        return std::unexpected(TError("function `" + std::string(function.Name) + "' is not prepared"));
+    }
+    if (args.size() != function.ArgLocals.size()) {
+        return std::unexpected(TError("function `" + std::string(function.Name) + "' expects "
+            + std::to_string(function.ArgLocals.size()) + " arguments, got " + std::to_string(args.size())));
+    }
+    try {
+        auto future = DoEvalRawAsync<false>(function, std::move(args), {});
+        if (!future.done()) {
+            return std::unexpected(TError("function `" + std::string(function.Name) + "' suspended on await"));
+        }
+        return future.await_resume().value_or(0);
+    } catch (const std::exception& e) {
+        return std::unexpected(TError("function `" + std::string(function.Name) + "' failed: " + e.what()));
+    }
+}
+
+std::expected<void, TError> TInterpreter::Initialize()
+{
+    if (Initialized) {
+        return {};
+    }
+    Initialized = true;
+    if (Module.ModuleConstructorFunctionId == -1) {
+        return {};
+    }
+    auto res = Invoke(Module.Functions[Module.ModuleConstructorFunctionId], {});
+    if (!res) {
+        return std::unexpected(res.error());
+    }
+    return {};
+}
+
+std::expected<void, TError> TInterpreter::Finalize()
+{
+    if (!Initialized) {
+        return {};
+    }
+    Initialized = false;
+    if (Module.ModuleDestructorFunctionId == -1) {
+        return {};
+    }
+    auto res = Invoke(Module.Functions[Module.ModuleDestructorFunctionId], {});
+    if (!res) {
+        return std::unexpected(res.error());
+    }
+    return {};
+}
+
 size_t TInterpreter::ProcessAsyncRuntimeEvents() {
     size_t processed = 0;
     processed += NRuntime::robot_process_events();
