@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -19,6 +20,13 @@ using namespace NQumir::NIR;
 // Resolved by the VM through dlsym (ENABLE_EXPORTS).
 extern "C" int64_t qumir_prepared_twice(int64_t x) {
     return 2 * x;
+}
+
+extern "C" int64_t qumir_prepared_throw(int64_t x) {
+    if (x < 0) {
+        throw std::overflow_error("negative argument");
+    }
+    return x;
 }
 
 namespace {
@@ -255,6 +263,22 @@ TEST(VMPrepared, FailedConstructorIsNotFinalized) {
     EXPECT_FALSE(instance.Interpreter.Initialize());
     EXPECT_FALSE(instance.Interpreter.Invoke(program.Get("bump"), {}));
     EXPECT_TRUE(instance.Interpreter.Finalize());
+}
+
+TEST(VMPrepared, ExternExceptionBecomesError) {
+    TProgram program(R"((block
+      (fun qumir_prepared_throw ((var x i64)) -> i64 (attrs extern) (block))
+      (fun entry ((var x i64)) -> i64 (block (return (call qumir_prepared_throw x))))))");
+    auto& entry = program.Get("entry");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    auto failed = instance.Interpreter.Invoke(entry, {-1});
+    ASSERT_FALSE(failed);
+    EXPECT_NE(failed.error().ToString().find("negative argument"), std::string::npos)
+        << failed.error().ToString();
+    // The interpreter stays usable after the failure.
+    EXPECT_EQ(instance.Interpreter.Invoke(entry, {7}), 7);
 }
 
 int main(int argc, char** argv) {
