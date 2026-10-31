@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <set>
 #include <list>
+#include <deque>
 
 #include <qumir/location.h>
 #include <qumir/ir/debug_options.h>
@@ -314,7 +315,7 @@ struct TModule {
     // String literals started from 1, 0 is reserved for nullptr
     // This is termporary hacky solution until we have proper constant pool
     std::map<std::string, int> StringLiteralsSet = {{"", 0}};
-    std::vector<std::string> StringLiterals = { "" };
+    std::deque<std::string> StringLiterals = { "" };
     // shuffle's second operand selects an immutable compile-time mask.
     std::vector<std::vector<int>> VectorShuffleMasks;
     int ModuleConstructorFunctionId = -1;
