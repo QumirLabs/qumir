@@ -460,6 +460,53 @@ TExecFunc& TVMCompiler::Compile(TFunction& function, bool printByteCode) {
     return execFunc;
 }
 
+std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& roots) {
+    std::vector<TFunction*> pending = roots;
+    for (int id : {Module.ModuleConstructorFunctionId, Module.ModuleDestructorFunctionId}) {
+        if (id != -1) {
+            pending.push_back(&Module.Functions[id]);
+        }
+    }
+    // Marked prepared only if the whole closure compiles.
+    std::unordered_set<TFunction*> visited;
+    std::vector<TFunction*> added;
+    TFunction* current = nullptr;
+    try {
+        while (!pending.empty()) {
+            current = pending.back();
+            pending.pop_back();
+            if ((current->Exec && Prepared.contains(current->Exec)) || !visited.insert(current).second) {
+                continue;
+            }
+            const bool hadExec = current->Exec != nullptr;
+            current->Exec = &Compile(*current);
+            if (!hadExec) {
+                added.push_back(current);
+            }
+            // Await is compiled to Call too.
+            for (const auto& instr : current->Exec->VMCode) {
+                if (instr.Op == EVMOp::Call) {
+                    pending.push_back(&Module.Functions[instr.Operands[1].Imm.Value]);
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        // Roll back, including the half-built cache entry of the failed Compile.
+        if (!current->Exec) {
+            CodeCache.erase(current->SymId);
+        }
+        for (auto* function : added) {
+            CodeCache.erase(function->SymId);
+            function->Exec = nullptr;
+        }
+        return std::unexpected(TError("cannot prepare `" + std::string(current->Name) + "': " + e.what()));
+    }
+    for (auto* function : visited) {
+        Prepared.insert(function->Exec);
+    }
+    return {};
+}
+
 void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
 {
     int lowStringTypeId = Module.Types.Ptr(Module.Types.I(EKind::I8));

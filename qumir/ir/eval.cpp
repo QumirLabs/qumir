@@ -291,6 +291,75 @@ std::optional<int64_t> TInterpreter::EvalRaw(TFunction& function, std::vector<in
     return ans;
 }
 
+std::expected<int64_t, TError> TInterpreter::Invoke(TFunction& function, std::vector<int64_t> args)
+{
+    if (!Initialized) {
+        return std::unexpected(TError("Invoke before Initialize"));
+    }
+    return InvokePrepared(function, std::move(args));
+}
+
+std::expected<int64_t, TError> TInterpreter::InvokePrepared(TFunction& function, std::vector<int64_t> args)
+{
+    const std::string name(function.Name);
+    if (!function.Exec || !Compiler.IsPrepared(function.Exec)) {
+        return std::unexpected(TError("function `" + name + "' is not prepared"));
+    }
+    if (args.size() != function.ArgLocals.size()) {
+        return std::unexpected(TError("function `" + name + "' expects "
+            + std::to_string(function.ArgLocals.size()) + " arguments, got " + std::to_string(args.size())));
+    }
+    // Argument words have no high half.
+    for (const int typeId : function.Exec->ArgTypeIds) {
+        if (typeId >= 0 && Module.Types.GetKind(typeId) != EKind::Struct && Module.Types.SizeInBytes(typeId) > 8) {
+            return std::unexpected(TError("function `" + name + "' has an argument wider than 64 bits"));
+        }
+    }
+    // A previous throw may have left partial extern call arguments.
+    Runtime.Args.clear();
+    Runtime.Args128.clear();
+    try {
+        auto future = DoEvalRawAsync<false>(function, std::move(args), {});
+        if (!future.done()) {
+            return std::unexpected(TError("function `" + name + "' suspended on await"));
+        }
+        return future.await_resume().value_or(0);
+    } catch (const std::exception& e) {
+        return std::unexpected(TError("function `" + name + "' failed: " + e.what()));
+    }
+}
+
+std::expected<void, TError> TInterpreter::Initialize()
+{
+    if (Initialized) {
+        return {};
+    }
+    if (Module.ModuleConstructorFunctionId != -1) {
+        auto res = InvokePrepared(Module.Functions[Module.ModuleConstructorFunctionId], {});
+        if (!res) {
+            return std::unexpected(res.error());
+        }
+    }
+    Initialized = true;
+    return {};
+}
+
+std::expected<void, TError> TInterpreter::Finalize()
+{
+    if (!Initialized) {
+        return {};
+    }
+    Initialized = false;
+    if (Module.ModuleDestructorFunctionId == -1) {
+        return {};
+    }
+    auto res = InvokePrepared(Module.Functions[Module.ModuleDestructorFunctionId], {});
+    if (!res) {
+        return std::unexpected(res.error());
+    }
+    return {};
+}
+
 size_t TInterpreter::ProcessAsyncRuntimeEvents() {
     size_t processed = 0;
     processed += NRuntime::robot_process_events();

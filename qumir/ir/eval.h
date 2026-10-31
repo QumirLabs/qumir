@@ -6,9 +6,11 @@
 
 #include <coroutine>
 #include <cstdint>
+#include <expected>
 #include <ostream>
 #include <vector>
 
+#include <qumir/error.h>
 #include <qumir/future.h>
 
 namespace NQumir {
@@ -70,7 +72,16 @@ public:
     // results whose caller already knows the function's return type.
     std::optional<int64_t> EvalRaw(TFunction& function, std::vector<int64_t> args, TOptions options);
 
+    // Calls a function accepted by TVMCompiler::Prepare; never compiles, never pumps async
+    // events. Needs Initialize(). Rejects non-struct arguments wider than 64 bits.
+    // One interpreter per thread; Prepare must not run concurrently with Invoke.
+    std::expected<int64_t, TError> Invoke(TFunction& function, std::vector<int64_t> args);
+    // Module constructor/destructor, once per instance; Finalize is idempotent.
+    std::expected<void, TError> Initialize();
+    std::expected<void, TError> Finalize();
+
 private:
+    std::expected<int64_t, TError> InvokePrepared(TFunction& function, std::vector<int64_t> args);
     std::optional<int64_t> DoEvalRaw(TFunction& function, std::vector<int64_t> args, TOptions options);
 
     template<bool EnableDebug = false>
@@ -83,6 +94,7 @@ private:
     TRuntime Runtime;
     TVMCompiler& Compiler;
     IDebugger* Debugger{nullptr};
+    bool Initialized{false};
 };
 
 } // namespace NIR

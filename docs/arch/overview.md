@@ -226,6 +226,20 @@ Each function call creates a stack frame (a heap-allocated byte buffer).
 The interpreter loop dispatches on `EVMOp` enum values.  Frames are linked
 (parent frame pointer stored at offset 0).
 
+### 6.1.1 Prepared program and instances
+
+`Eval`/`EvalRaw` compile lazily and pump the global async event queues, so they
+suit one interpreter at a time. For multi-threaded hosts,
+`TVMCompiler::Prepare(roots)` compiles all reachable functions and resolves
+externs up front (all or nothing); each thread then owns a `TInterpreter` and
+calls `Initialize()`, `Invoke(function, args)`, `Finalize()`. `Invoke` compiles
+nothing, so the prepared program is read-only.
+
+Limits: `Prepare` must not run concurrently with `Invoke`; non-struct arguments
+wider than 64 bits are rejected and an `i128` result is truncated; an exception
+from an extern terminates the process; io, robot and painter externs use
+unsynchronized globals.
+
 ### 6.2 Calling convention for external (runtime) functions
 
 External functions — robot actions, math helpers, string operations — are
