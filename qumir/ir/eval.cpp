@@ -300,6 +300,9 @@ std::expected<int64_t, TError> TInterpreter::Invoke(TFunction& function, std::ve
         return std::unexpected(TError("function `" + std::string(function.Name) + "' expects "
             + std::to_string(function.ArgLocals.size()) + " arguments, got " + std::to_string(args.size())));
     }
+    // A previous call that threw may have left partial external call arguments.
+    Runtime.Args.clear();
+    Runtime.Args128.clear();
     try {
         auto future = DoEvalRawAsync<false>(function, std::move(args), {});
         if (!future.done()) {

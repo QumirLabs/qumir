@@ -104,14 +104,18 @@ TEST(VMPrepared, PrepareAndInvokeManyTimes) {
     EXPECT_EQ(ExecPointers(program.Module), before);
 }
 
-TEST(VMPrepared, TwoInterpretersOnTwoThreads) {
+TEST(VMPrepared, OneReusedInterpreterPerThread) {
     TProgram program(KernelSource);
     auto& entry = program.Get("entry");
     ASSERT_TRUE(program.Compiler.Prepare({&entry}));
     const auto before = ExecPointers(program.Module);
     std::atomic<int> failures{0};
+    // Each worker creates its interpreter once and reuses it for all calls.
     auto work = [&](int64_t seed) {
         TInstance instance(program);
+        if (!instance.Interpreter.Initialize()) {
+            ++failures;
+        }
         for (int64_t i = 0; i < 2000; ++i) {
             TPair pair{seed + i, seed - i};
             auto res = instance.Interpreter.Invoke(entry, {reinterpret_cast<int64_t>(&pair), i});
@@ -119,11 +123,17 @@ TEST(VMPrepared, TwoInterpretersOnTwoThreads) {
                 ++failures;
             }
         }
+        if (!instance.Interpreter.Finalize()) {
+            ++failures;
+        }
     };
-    std::thread first(work, 10);
-    std::thread second(work, 1000);
-    first.join();
-    second.join();
+    std::vector<std::thread> threads;
+    for (int64_t seed = 0; seed < 4; ++seed) {
+        threads.emplace_back(work, seed * 1000);
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
     EXPECT_EQ(failures.load(), 0);
     EXPECT_EQ(ExecPointers(program.Module), before);
 }
