@@ -3,6 +3,7 @@
 #include <qumir/ir/builder.h>
 #include <qumir/ir/vminstr.h>
 #include <qumir/ir/ffi.h>
+#include <qumir/ir/passes/transforms/allocate_registers.h>
 #include <qumir/error.h>
 
 #include <expected>
@@ -48,11 +49,12 @@ public:
     }
 
 private:
-    void CompileUltraLow(const TFunction& function, TExecFunc& out);
+    void CompileUltraLow(const TFunction& function, NPasses::TRegisterAllocation& allocation, TExecFunc& out);
     bool CompileVectorInstruction(const TFunction& function, const TInstr& instr, TVMInstr& out);
-    void AllocateRegisters(
+    void BindRegisters(
         const TFunction& function,
         const std::vector<int>& tmpFrameOffsets,
+        NPasses::TRegisterAllocation& allocation,
         TExecFunc& out);
 
     // nullptr if the symbol is missing or the signature is unsupported.

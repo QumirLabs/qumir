@@ -58,6 +58,26 @@ std::expected<TFunction*, TError> LowerCore(TVMTest& vm, const std::string& sour
     return vm.Module.GetFunctionByName("main");
 }
 
+int SnapshotLastVector(TFunction& function, const TTypeTable& types, size_t lanes) {
+    for (auto block = function.Blocks.rbegin(); block != function.Blocks.rend(); ++block) {
+        for (size_t i = block->Instrs.size(); i-- > 0;) {
+            const auto tmp = block->Instrs[i].Dest;
+            const int type = function.GetTmpType(tmp.Idx);
+            if (types.IsVector(type) && types.VectorSize(type) == lanes) {
+                const int local = function.LocalTypes.size();
+                function.LocalTypes.push_back(type);
+                block->Instrs.insert(block->Instrs.begin() + i + 1,
+                    TInstr{.Op = "stre"_op, .Operands = {TLocal{local}, tmp}, .OperandCount = 2});
+                if (!block->InstrDebugInfo.empty()) {
+                    block->InstrDebugInfo.insert(block->InstrDebugInfo.begin() + i + 1, TInstrDebugInfo{});
+                }
+                return local;
+            }
+        }
+    }
+    throw std::runtime_error("No vector result to snapshot");
+}
+
 template<typename T, size_t N>
 void CheckCoreVector(const std::string& body, const std::array<T, N>& expected, int64_t result = 0) {
     for (bool optimize : {false, true}) {
@@ -66,17 +86,9 @@ void CheckCoreVector(const std::string& body, const std::array<T, N>& expected, 
         ASSERT_TRUE(lowered) << lowered.error().ToString();
         auto* function = *lowered;
         ASSERT_NE(function, nullptr);
+        const int snapshot = SnapshotLastVector(*function, vm.Module.Types, N);
         ASSERT_EQ(vm.Interpreter.EvalRaw(*function, {}, {}), result);
-        int resultOffset = -1;
-        for (const auto& instr : function->Exec->VMCode) {
-            if (instr.LaneCount() == N && instr.Operands[0].Type == TVMOperand::EType::Tmp
-                && instr.Op != EVMOp::Store)
-            {
-                resultOffset = instr.Operands[0].Tmp.Idx;
-            }
-        }
-        ASSERT_GE(resultOffset, 0);
-        EXPECT_EQ(std::memcmp(vm.Interpreter.GetRuntime().Regs.Data() + resultOffset,
+        EXPECT_EQ(std::memcmp(vm.Interpreter.GetRuntime().Stack.data() + function->Exec->LocalByteOffsets[snapshot],
             expected.data(), sizeof(expected)), 0);
     }
 }
@@ -94,24 +106,32 @@ void CheckVectorArithmetic(EKind kind, int count = 4) {
         vm.Builder.SetType(TLocal{i}, vectorType, {});
     }
     vm.Builder.SetType(TLocal{3}, i64, {});
+    std::map<int, int> snapshots;
+    auto capture = [&](TTmp tmp) {
+        const int local = vm.Module.Functions[0].LocalTypes.size();
+        vm.Builder.SetType(TLocal{local}, vectorType, {});
+        vm.Builder.Emit0("stre"_op, {TLocal{local}, tmp});
+        snapshots[tmp.Idx] = local;
+        return tmp;
+    };
     const auto left = vm.Emit("load"_op, {TLocal{0}}, vectorType);
     const auto right = vm.Emit("load"_op, {TLocal{1}}, vectorType);
-    const auto sum = vm.Emit("+"_op, {left, right}, vectorType);
-    const auto difference = vm.Emit("-"_op, {left, right}, vectorType);
-    const auto product = vm.Emit("*"_op, {left, right}, vectorType);
+    const auto sum = capture(vm.Emit("+"_op, {left, right}, vectorType));
+    const auto difference = capture(vm.Emit("-"_op, {left, right}, vectorType));
+    const auto product = capture(vm.Emit("*"_op, {left, right}, vectorType));
     const int64_t five = std::is_floating_point_v<T>
         ? (sizeof(T) == 4 ? std::bit_cast<uint32_t>(5.0f) : std::bit_cast<int64_t>(5.0))
         : 5;
     const auto scalar = vm.Emit("mov"_op, {TImm{five, elementType}}, elementType);
-    const auto broadcastLeft = vm.Emit("-"_op, {scalar, right}, vectorType);
-    const auto broadcastRight = vm.Emit("+"_op, {left, TImm{five, elementType}}, vectorType);
-    const auto copied = vm.Emit("mov"_op, {product}, vectorType);
+    const auto broadcastLeft = capture(vm.Emit("-"_op, {scalar, right}, vectorType));
+    const auto broadcastRight = capture(vm.Emit("+"_op, {left, TImm{five, elementType}}, vectorType));
+    const auto copied = capture(vm.Emit("mov"_op, {product}, vectorType));
     vm.Builder.Emit0("stre"_op, {TLocal{2}, copied});
-    const auto reloaded = vm.Emit("load"_op, {TLocal{2}}, vectorType);
+    const auto reloaded = capture(vm.Emit("load"_op, {TLocal{2}}, vectorType));
     const auto address = vm.Emit("lea"_op, {TLocal{2}}, vm.Module.Types.Ptr(vectorType));
     vm.Builder.Emit0("ste"_op, {address, copied});
-    const auto indirect = vm.Emit("lde"_op, {address}, vectorType);
-    const auto zero = vm.Emit("mov"_op, {TImm{0, vectorType}}, vectorType);
+    const auto indirect = capture(vm.Emit("lde"_op, {address}, vectorType));
+    const auto zero = capture(vm.Emit("mov"_op, {TImm{0, vectorType}}, vectorType));
     const auto guard = vm.Emit("load"_op, {TLocal{3}}, i64);
     vm.Builder.Emit0("ret"_op, {guard});
     vm.Builder.SetReturnType(i64);
@@ -140,7 +160,9 @@ void CheckVectorArithmetic(EKind kind, int count = 4) {
     using TCalc = std::conditional_t<std::is_floating_point_v<T>, T, uint64_t>;
     for (int i = 0; i < count; ++i) {
         auto lane = [&](TTmp tmp) {
-            return runtime.Regs.Get<T>(exec.TmpByteOffsets.at(tmp.Idx) + i * sizeof(T));
+            T value;
+            std::memcpy(&value, runtime.Stack.data() + exec.LocalByteOffsets[snapshots.at(tmp.Idx)] + i * sizeof(T), sizeof(T));
+            return value;
         };
         const auto a = static_cast<TCalc>(leftValues[i]);
         const auto b = static_cast<TCalc>(rightValues[i]);
@@ -186,6 +208,7 @@ TEST(VMVector, ConstructorExpressionsAndSSAExecuteThroughTheSemanticPipeline) {
         ASSERT_TRUE(lowered) << lowered.error().ToString();
         auto* function = *lowered;
         ASSERT_NE(function, nullptr);
+        const int snapshot = SnapshotLastVector(*function, vm.Module.Types, 4);
         ASSERT_EQ(vm.Interpreter.EvalRaw(*function, {}, {}), 0);
         int productOffset = -1;
         for (const auto& instr : function->Exec->VMCode) {
@@ -195,7 +218,7 @@ TEST(VMVector, ConstructorExpressionsAndSSAExecuteThroughTheSemanticPipeline) {
         }
         ASSERT_GE(productOffset, 0);
         const std::array<int64_t, 4> expected = {0, 6, 16, 30};
-        EXPECT_EQ(std::memcmp(vm.Interpreter.GetRuntime().Regs.Data() + productOffset,
+        EXPECT_EQ(std::memcmp(vm.Interpreter.GetRuntime().Stack.data() + function->Exec->LocalByteOffsets[snapshot],
             expected.data(), sizeof(expected)), 0);
         EXPECT_EQ(function->Exec->InstrDebugInfo.size(), function->Exec->VMCode.size());
     }
@@ -306,14 +329,13 @@ TEST(VMRegisterFile, SparseIRIdsBecomeAlignedByteOffsets) {
     const auto originalTypes = function.TmpTypes;
     const auto originalNextTmp = function.NextTmpIdx;
     const auto& code = vm.Compiler.Compile(function);
-    EXPECT_EQ(code.RegisterFileSize, 48);
+    EXPECT_LT(code.RegisterFileSize, 48);
     EXPECT_EQ(code.RegisterFileAlignment, 16);
     EXPECT_EQ(code.NumLocals, 0);
     EXPECT_EQ(code.TmpByteOffsets.size(), 4);
-    EXPECT_EQ(code.TmpByteOffsets.at(narrow.Idx), 0);
-    EXPECT_EQ(code.TmpByteOffsets.at(wide.Idx), 16);
-    EXPECT_EQ(code.TmpByteOffsets.at(floating.Idx), 32);
-    EXPECT_EQ(code.TmpByteOffsets.at(sum.Idx), 40);
+    EXPECT_EQ(code.TmpByteOffsets.at(wide.Idx) % 16, 0);
+    EXPECT_NE(code.TmpByteOffsets.at(narrow.Idx), code.TmpByteOffsets.at(sum.Idx));
+    EXPECT_EQ(code.TmpByteOffsets.at(floating.Idx), code.TmpByteOffsets.at(sum.Idx));
     EXPECT_EQ(code.VMCode[3].Operands[1].Tmp.Idx, code.TmpByteOffsets.at(narrow.Idx));
     EXPECT_EQ(function.Blocks[0].Instrs[0].Dest.Idx, narrow.Idx);
     EXPECT_EQ(function.Blocks[0].Instrs[3].Operands[0].Tmp.Idx, narrow.Idx);
@@ -366,8 +388,12 @@ TEST(VMRegisterFile, CallsPreserveMixedRegistersAcrossBufferGrowth) {
     vm.Builder.SetType(TLocal{1}, f64, {});
     const auto arg = vm.Emit("load"_op, {TLocal{0}}, i128);
     auto floatingArg = vm.Emit("load"_op, {TLocal{1}}, f64);
+    std::vector<TTmp> liveValues;
     for (int i = 0; i < 64; ++i) {
-        floatingArg = vm.Emit('+'_op, {floatingArg, TImm{std::bit_cast<int64_t>(0.125), f64}}, f64);
+        liveValues.push_back(vm.Emit('+'_op, {floatingArg, TImm{std::bit_cast<int64_t>(0.125), f64}}, f64));
+    }
+    for (auto value : liveValues) {
+        floatingArg = vm.Emit('+'_op, {floatingArg, value}, f64);
     }
     const auto incremented = vm.Emit('+'_op, {arg, TImm{1, i128}}, i128);
     vm.Builder.Emit0("ret"_op, {incremented});
