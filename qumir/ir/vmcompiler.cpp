@@ -985,6 +985,14 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     if (is128(srcType) && !isImm) {
                         out.Op = EVMOp::Mov;
                         out.Format = TVMInstr::MakeFormat(4);
+                    } else if (Module.Types.GetKind(srcType) == EKind::I1) {
+                        // A bool widens to all ones, as on LLVM.
+                        if (isImm) {
+                            out.Op = EVMOp::CmovS128;
+                            out.Operands[1] = TImm{ins.Operands[0].Imm.Value ? -1 : 0};
+                        } else {
+                            out.Op = EVMOp::B2I128;
+                        }
                     } else if (isImm) {
                         out.Op = signExtend ? EVMOp::CmovS128 : EVMOp::CmovU128;
                     } else {
@@ -992,6 +1000,21 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     }
                 } else if (is128(srcType) && !isImm) {
                     out.Op = EVMOp::Trunc128;
+                } else if (Module.Types.GetKind(srcType) == EKind::I1 && Module.Types.IsInteger(dstType)
+                    && Module.Types.GetKind(dstType) != EKind::I1)
+                {
+                    // A bool widens to all ones, as on LLVM: -1, or 0xFF for u8.
+                    const int size = Module.Types.SizeInBytes(dstType);
+                    const int64_t ones = isSignedInteger(dstType) || size >= 8
+                        ? -1
+                        : (int64_t{1} << (8 * size)) - 1;
+                    if (isImm) {
+                        out.Op = EVMOp::Cmov;
+                        out.Operands[1] = TImm{ins.Operands[0].Imm.Value ? ones : 0};
+                    } else {
+                        out.Op = EVMOp::IMulS;
+                        out.Operands[2] = TUntypedImm{ones};
+                    }
                 } else {
                     out.Op = isImm ? EVMOp::Cmov : EVMOp::Mov;
                 }
@@ -1011,11 +1034,15 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                         // TODO: add I2F128 variants that produce f32
                         throw std::runtime_error("VM: 128-bit integer to f32 conversion is not supported");
                     }
-                    out.Op = EVMOp::I2F32;
+                    out.Op = Module.Types.GetKind(srcType) == EKind::I1
+                        ? EVMOp::B2F32
+                        : EVMOp::I2F32;
                 } else if (is128(srcType)) {
                     out.Op = isSignedInteger(srcType) ? EVMOp::I2F128S : EVMOp::I2F128U;
                 } else {
-                    out.Op = EVMOp::I2F;
+                    out.Op = Module.Types.GetKind(srcType) == EKind::I1
+                        ? EVMOp::B2F
+                        : EVMOp::I2F;
                 }
                 break;
             }

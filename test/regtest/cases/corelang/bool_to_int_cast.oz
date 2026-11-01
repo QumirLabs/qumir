@@ -1,0 +1,18 @@
+(block
+  (fun <main> ()
+    (block
+      (var x i64)
+      (var small u8)
+      (var wide i64)
+      (var real f64)
+      (var real32 f32)
+      (var wide128 i128)
+      (= x 3)
+      (= small (cast (> x 2) u8))
+      (= wide (cast (> x 2) i64))
+      (= real (cast (> x 2) f64))
+      (= real32 (cast (> x 2) f32))
+      (= wide128 (cast (> x 2) i128))
+      (output small " " wide " " real " " (cast (> x 5) u8) " " (cast (> x 2) u16) "\n")
+      (output (cast (< x 2) f64) " " (cast (< x 2) f32) " " (/ (: 1.0 f64) (cast (< x 2) f64)) " " real32 "\n")
+      (output (cast (>> wide128 (: 64 i128)) i64) " " (cast (>> (cast (> x 2) u128) (: 64 i128)) i64) "\n"))))
