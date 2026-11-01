@@ -7,6 +7,7 @@
 #include <cassert>
 #include <sstream>
 #include <cstring>
+#include <functional>
 #include <type_traits>
 
 #include <qumir/runtime/string.h> // for str_release
@@ -25,28 +26,32 @@ using namespace NLiterals;
 
 namespace {
 
+template<typename Dest>
+inline Dest ReadRegister(const TRegisterFile& regs, int32_t offset) {
+    if constexpr (sizeof(Dest) == sizeof(int64_t)) {
+        return std::bit_cast<Dest>(regs.Get<int64_t>(offset));
+    } else {
+        return regs.Get<Dest>(offset);
+    }
+}
+
+template<typename Dest>
+inline Dest ReadImmediate(int64_t value) {
+    if constexpr (sizeof(Dest) == sizeof(int64_t)) {
+        return std::bit_cast<Dest>(value);
+    } else if constexpr (std::is_same_v<Dest, float>) {
+        return std::bit_cast<float>(static_cast<uint32_t>(value));
+    } else {
+        return static_cast<Dest>(value);
+    }
+}
+
 template<typename Dest=int64_t>
 inline Dest ReadOperand(const TRegisterFile& regs, const TVMInstr& instr, size_t index) {
     const auto& op = instr.Operands[index];
     switch (instr.GetOperandType(index)) {
-        case TVMOperand::EType::Tmp: {
-            const auto& t = op.Tmp;
-            if constexpr (sizeof(Dest) == sizeof(int64_t)) {
-                return std::bit_cast<Dest>(regs.Get<int64_t>(t.Idx));
-            } else {
-                return regs.Get<Dest>(t.Idx);
-            }
-        }
-        case TVMOperand::EType::Imm: {
-            const auto& i = op.Imm;
-            if constexpr (sizeof(Dest) == sizeof(int64_t)) {
-                return std::bit_cast<Dest>(i.Value);
-            } else if constexpr (std::is_same_v<Dest, float>) {
-                return std::bit_cast<float>(static_cast<uint32_t>(i.Value));
-            } else {
-                return static_cast<Dest>(i.Value);
-            }
-        }
+        case TVMOperand::EType::Tmp: return ReadRegister<Dest>(regs, op.Tmp.Idx);
+        case TVMOperand::EType::Imm: return ReadImmediate<Dest>(op.Imm.Value);
         default: {
             assert(false && "Slot operand not supported in ALU operations");
             return 0;
@@ -58,10 +63,23 @@ inline int64_t FloatBits(float value) {
     return static_cast<int64_t>(std::bit_cast<uint32_t>(value));
 }
 
-template<typename Dest, typename T>
+enum class EAluInputs { Generic, RR, RI };
+
+template<typename Dest, EAluInputs Inputs = EAluInputs::Generic, typename T>
 inline int64_t EvalAlu(const TRegisterFile& regs, const TVMInstr& instr, T lambda) {
-    Dest lhs = ReadOperand<Dest>(regs, instr, 1);
-    Dest rhs = ReadOperand<Dest>(regs, instr, 2);
+    Dest lhs;
+    Dest rhs;
+    if constexpr (Inputs == EAluInputs::Generic) {
+        lhs = ReadOperand<Dest>(regs, instr, 1);
+        rhs = ReadOperand<Dest>(regs, instr, 2);
+    } else {
+        lhs = ReadRegister<Dest>(regs, instr.Operands[1].Tmp.Idx);
+        if constexpr (Inputs == EAluInputs::RR) {
+            rhs = ReadRegister<Dest>(regs, instr.Operands[2].Tmp.Idx);
+        } else {
+            rhs = ReadImmediate<Dest>(instr.Operands[2].Imm.Value);
+        }
+    }
     auto res = lambda(lhs, rhs);
     if constexpr (sizeof(res) == sizeof(int64_t)) {
         return std::bit_cast<int64_t>(res);
@@ -832,157 +850,19 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         }
 
-        case EVMOp::IAdd:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::plus<int64_t>{});
+#define QUMIR_VM_ALU_CASE(name, type, operation, inputs) \
+        case EVMOp::name: \
+            assert(instr.Operands[0].Tmp.Idx >= 0); \
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = \
+                EvalAlu<type, EAluInputs::inputs>(Runtime.Regs, instr, operation); \
             break;
-        case EVMOp::FAdd:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::plus<double>{});
-            break;
-
-        case EVMOp::ISub:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::minus<int64_t>{});
-            break;
-        case EVMOp::FSub:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::minus<double>{});
-            break;
-
-        case EVMOp::IMulS:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::multiplies<int64_t>{});
-            break;
-        case EVMOp::FMul:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::multiplies<double>{});
-            break;
-
-        case EVMOp::IDivS:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::divides<int64_t>{});
-            break;
-        case EVMOp::IDivU:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(Runtime.Regs, instr, std::divides<uint64_t>{});
-            break;
-        case EVMOp::IRemS:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::modulus<int64_t>{});
-            break;
-        case EVMOp::IRemU:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(Runtime.Regs, instr, std::modulus<uint64_t>{});
-            break;
-        case EVMOp::FDiv:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::divides<double>{});
-            break;
-
-        case EVMOp::IAnd:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::bit_and<int64_t>{});
-            break;
-        case EVMOp::IOr:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::bit_or<int64_t>{});
-            break;
-        case EVMOp::IXor:
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::bit_xor<int64_t>{});
-            break;
-        case EVMOp::IShl: {
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            auto lhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 1);
-            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 2) & 63;
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(lhs << rhs);
-            break;
-        }
-        case EVMOp::IShrS: {
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            auto lhs = ReadOperand<int64_t>(Runtime.Regs, instr, 1);
-            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 2) & 63;
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = lhs >> rhs;
-            break;
-        }
-        case EVMOp::IShrU: {
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            auto lhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 1);
-            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 2) & 63;
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(lhs >> rhs);
-            break;
-        }
-
-        case EVMOp::ICmpLTS: // <
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::less<int64_t>{});
-            break;
-        case EVMOp::ICmpLTU: // <
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(Runtime.Regs, instr, std::less<uint64_t>{});
-            break;
-        case EVMOp::FCmpLT: // <
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::less<double>{});
-            break;
-
-        case EVMOp::ICmpGTS: // >
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::greater<int64_t>{});
-            break;
-        case EVMOp::ICmpGTU: // >
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(Runtime.Regs, instr, std::greater<uint64_t>{});
-            break;
-        case EVMOp::FCmpGT: // >
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::greater<double>{});
-            break;
-
-        case EVMOp::ICmpLES: // <=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::less_equal<int64_t>{});
-            break;
-        case EVMOp::ICmpLEU: // <=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(Runtime.Regs, instr, std::less_equal<uint64_t>{});
-            break;
-        case EVMOp::FCmpLE: // <=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::less_equal<double>{});
-            break;
-
-        case EVMOp::ICmpGES: // >=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::greater_equal<int64_t>{});
-            break;
-        case EVMOp::ICmpGEU: // >=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(Runtime.Regs, instr, std::greater_equal<uint64_t>{});
-            break;
-        case EVMOp::FCmpGE: // >=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::greater_equal<double>{});
-            break;
-
-        case EVMOp::ICmpEQ: // ==
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::equal_to<int64_t>{});
-            break;
-        case EVMOp::FCmpEQ: // ==
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::equal_to<double>{});
-            break;
-
-        case EVMOp::ICmpNE: // !=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(Runtime.Regs, instr, std::not_equal_to<int64_t>{});
-            break;
-        case EVMOp::FCmpNE: // !=
-            assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<double>(Runtime.Regs, instr, std::not_equal_to<double>{});
-            break;
+#define QUMIR_VM_ALU(name, type, operation) \
+        QUMIR_VM_ALU_CASE(name, type, operation, Generic) \
+        QUMIR_VM_ALU_CASE(name##RR, type, operation, RR) \
+        QUMIR_VM_ALU_CASE(name##RI, type, operation, RI)
+#include <qumir/ir/scalar_alu.inc>
+#undef QUMIR_VM_ALU
+#undef QUMIR_VM_ALU_CASE
 
         case EVMOp::Cmov:
             // TODO: dont use ReadOperand
@@ -1009,36 +889,6 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
 
         case EVMOp::FNeg32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(-ReadOperand<float>(Runtime.Regs, instr, 1));
-            break;
-        case EVMOp::FAdd32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::plus<float>{});
-            break;
-        case EVMOp::FSub32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::minus<float>{});
-            break;
-        case EVMOp::FMul32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::multiplies<float>{});
-            break;
-        case EVMOp::FDiv32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::divides<float>{});
-            break;
-        case EVMOp::FCmpLT32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::less<float>{});
-            break;
-        case EVMOp::FCmpGT32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::greater<float>{});
-            break;
-        case EVMOp::FCmpLE32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::less_equal<float>{});
-            break;
-        case EVMOp::FCmpGE32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::greater_equal<float>{});
-            break;
-        case EVMOp::FCmpEQ32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::equal_to<float>{});
-            break;
-        case EVMOp::FCmpNE32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::not_equal_to<float>{});
             break;
         case EVMOp::I2F32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(

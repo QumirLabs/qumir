@@ -11,7 +11,7 @@ namespace NQumir {
 namespace NIR {
 
 enum class EVMOp : uint8_t {
-    // TODO: add variants imm op const for simpler decoding
+    // Generic scalar forms also accept immediate-left operands.
     // integer ALU ops
     INeg, // unary -
     INot, // unary !
@@ -195,6 +195,10 @@ enum class EVMOp : uint8_t {
     VMovemask,
     VSelect,
     VGather,
+
+#define QUMIR_VM_ALU(name, type, operation) name##RR, name##RI,
+#include <qumir/ir/scalar_alu.inc>
+#undef QUMIR_VM_ALU
 };
 
 std::ostream& operator<<(std::ostream& os, EVMOp op);

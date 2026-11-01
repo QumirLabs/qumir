@@ -2,12 +2,14 @@
 #include <qumir/ir/lowering/lower_ast.h>
 #include <qumir/ir/passes/transforms/const_fold.h>
 #include <qumir/ir/passes/transforms/pipeline.h>
+#include <qumir/ir/passes/transforms/specialize_alu.h>
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
 #include <qumir/semantics/transform/transform.h>
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstring>
@@ -35,6 +37,89 @@ struct TVMTest {
         return tmp;
     }
 };
+
+template<typename T>
+int64_t ScalarBits(T value) {
+    if constexpr (sizeof(T) == 8) {
+        return std::bit_cast<int64_t>(value);
+    } else {
+        return std::bit_cast<uint32_t>(value);
+    }
+}
+
+template<typename T>
+void CheckAluInputs(EVMOp generic, EVMOp rr, EVMOp ri, T left = T{13}, T right = T{3}) {
+    TVMTest vm;
+    vm.Builder.NewFunction("alu", {}, 0);
+    vm.Builder.SetReturnType(vm.Module.Types.I(EKind::I64));
+    TExecFunc exec{.UniqueId = 0, .RegisterFileSize = 24};
+    auto& function = vm.Module.Functions[0];
+    function.Exec = &exec;
+    for (bool leftImmediate : {false, true}) {
+        for (bool rightImmediate : {false, true}) {
+            const TVMOperand lhs = leftImmediate
+                ? TVMOperand{TImm{ScalarBits(left)}}
+                : TVMOperand{TTmp{0}};
+            const TVMOperand rhs = rightImmediate
+                ? TVMOperand{TImm{ScalarBits(right)}}
+                : TVMOperand{TTmp{8}};
+            exec.VMCode = {
+                {{TTmp{0}, TImm{ScalarBits(left)}}, EVMOp::Cmov},
+                {{TTmp{8}, TImm{ScalarBits(right)}}, EVMOp::Cmov},
+                {{TTmp{16}, lhs, rhs}, generic},
+                {{TTmp{16}}, EVMOp::Ret},
+            };
+            const auto expected = vm.Interpreter.EvalRaw(function, {}, {});
+            ASSERT_TRUE(expected);
+            NPasses::SpecializeAlu(exec.VMCode);
+            const auto selected = leftImmediate
+                ? generic
+                : (rightImmediate ? ri : rr);
+            EXPECT_EQ(exec.VMCode[2].Op, selected);
+            EXPECT_EQ(vm.Interpreter.EvalRaw(function, {}, {}), expected);
+            NPasses::SpecializeAlu(exec.VMCode);
+            EXPECT_EQ(exec.VMCode[2].Op, selected);
+        }
+    }
+}
+
+#define QUMIR_VM_ALU(name, type, operation) \
+TEST(VMScalarAlu, name) { \
+    CheckAluInputs<type>(EVMOp::name, EVMOp::name##RR, EVMOp::name##RI); \
+}
+#include <qumir/ir/scalar_alu.inc>
+#undef QUMIR_VM_ALU
+
+TEST(VMScalarAlu, FullWidthBitsNaNsAndMaskedShiftsMatchGenericForms) {
+    CheckAluInputs<uint64_t>(EVMOp::ICmpLTU, EVMOp::ICmpLTURR, EVMOp::ICmpLTURI,
+        std::numeric_limits<uint64_t>::max(), 1);
+    CheckAluInputs<uint64_t>(EVMOp::IShrU, EVMOp::IShrURR, EVMOp::IShrURI,
+        std::numeric_limits<uint64_t>::max(), 65);
+    CheckAluInputs<int64_t>(EVMOp::IShrS, EVMOp::IShrSRR, EVMOp::IShrSRI, -7, -1);
+    CheckAluInputs<double>(EVMOp::FCmpNE, EVMOp::FCmpNERR, EVMOp::FCmpNERI,
+        std::numeric_limits<double>::quiet_NaN(), 1.0);
+    CheckAluInputs<float>(EVMOp::FCmpLT32, EVMOp::FCmpLT32RR, EVMOp::FCmpLT32RI,
+        1.0f, std::numeric_limits<float>::quiet_NaN());
+}
+
+TEST(VMScalarAlu, CompilerSelectsVariantsWithoutChangingOperandOrder) {
+    TVMTest vm;
+    const int type = vm.Module.Types.I(EKind::I64);
+    vm.Builder.NewFunction("variants", {TLocal{0}}, 0);
+    vm.Builder.SetType(TLocal{0}, type, {});
+    const auto arg = vm.Emit("load"_op, {TLocal{0}}, type);
+    const auto added = vm.Emit("+"_op, {arg, TImm{7, type}}, type);
+    const auto product = vm.Emit("*"_op, {added, arg}, type);
+    const auto result = vm.Emit("-"_op, {TImm{3, type}, product}, type);
+    vm.Builder.Emit0("ret"_op, {result});
+    vm.Builder.SetReturnType(type);
+    auto& function = vm.Module.Functions[0];
+    EXPECT_EQ(vm.Interpreter.EvalRaw(function, {3}, {}), -27);
+    for (auto expected : {EVMOp::IAddRI, EVMOp::IMulSRR, EVMOp::ISub}) {
+        EXPECT_TRUE(std::any_of(function.Exec->VMCode.begin(), function.Exec->VMCode.end(),
+            [&](const TVMInstr& instr) { return instr.Op == expected; }));
+    }
+}
 
 TEST(VMBytecode, PackedTagsPreserveFullWidthValuesAndTheHeader) {
     TVMInstr instr{{TTmp{-1}, TLocal{17}, TImm{std::numeric_limits<int64_t>::min()}},

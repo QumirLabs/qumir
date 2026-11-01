@@ -3,6 +3,7 @@
 #include <qumir/ir/type.h>
 #include <qumir/ir/vminstr.h>
 #include <qumir/ir/passes/transforms/pipeline.h>
+#include <qumir/ir/passes/transforms/specialize_alu.h>
 
 #include <cassert>
 #include <algorithm>
@@ -462,6 +463,7 @@ TExecFunc& TVMCompiler::Compile(TFunction& function, bool printByteCode) {
     auto& execFunc = CodeCache[function.SymId];
     NPasses::BeforeCompile(function, Module);
     CompileUltraLow(function, execFunc);
+    NPasses::SpecializeAlu(execFunc.VMCode);
     if (printByteCode) {
         std::cerr << "Compiled function " << function.Name << " (symId=" << function.SymId << ", uniqueId=" << function.UniqueId << "):\n";
         std::cerr << "Start address: " << (uint64_t)execFunc.VMCode.data() << ", insrt size: " << sizeof(TVMInstr) << " bytes\n";

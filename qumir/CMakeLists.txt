@@ -78,6 +78,9 @@ add_library(qumir
     ir/vmcompiler.cpp
     ir/vminstr.h
     ir/vminstr.cpp
+    ir/scalar_alu.inc
+    ir/passes/transforms/specialize_alu.h
+    ir/passes/transforms/specialize_alu.cpp
     semantics/definite_assignment/definite_assignment.h
     semantics/definite_assignment/definite_assignment.cpp
     semantics/name_resolution/name_resolver.h

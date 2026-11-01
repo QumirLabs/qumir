@@ -217,6 +217,14 @@ per-operand padding without adding a constant-pool lookup or narrowing literal
 values and addresses. The compiler sets each value together with its kind;
 execution reads kinds from the header and accesses values in place.
 
+After bytecode generation and register binding, a preparation pass specializes
+machine-word integer and floating-point binary operations for register/register
+and register/immediate inputs. Those handlers read their known operand forms
+directly; immediate-left forms retain the generic handler. A shared operation
+table defines the same arithmetic for all forms. Specialization changes neither
+instruction count nor layout, at the cost of more interpreter handlers; wide
+integer and vector operations retain their existing handlers.
+
 Each invocation uses one aligned byte buffer for all registers, including
 128-bit integers. Existing scalar opcodes use eight-byte slots even for
 narrower types, while 128-bit slots use sixteen bytes with sixteen-byte

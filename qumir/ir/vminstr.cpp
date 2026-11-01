@@ -172,6 +172,11 @@ std::ostream& operator<<(std::ostream& os, EVMOp op) {
     case EVMOp::VMovemask: return os << "VMovemask";
     case EVMOp::VSelect: return os << "VSelect";
     case EVMOp::VGather: return os << "VGather";
+#define QUMIR_VM_ALU(name, type, operation) \
+    case EVMOp::name##RR: return os << #name "RR"; \
+    case EVMOp::name##RI: return os << #name "RI";
+#include <qumir/ir/scalar_alu.inc>
+#undef QUMIR_VM_ALU
     default: return os << "EVMOp(" << static_cast<int>(op) << ")";
     }
 }
