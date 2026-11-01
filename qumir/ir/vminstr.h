@@ -236,13 +236,52 @@ struct TVMOperand {
     }
 };
 
+union TVMValue {
+    TTmp Tmp;
+    TSlot Slot;
+    TLocal Local;
+    TUntypedImm Imm;
+
+    TVMValue() : Tmp{-1} {}
+};
+
 struct TVMInstr {
-    std::array<TVMOperand, 3> Operands;
-    EVMOp Op;
+    std::array<TVMValue, 3> Operands;
+    EVMOp Op{};
     // Bits 0..2: log2(element bytes), 3..5: log2(lanes), 6..7: opcode flags.
     uint8_t Format = 3;
-    // Select needs a fourth register; this occupies existing instruction padding.
+    // Keeping the three two-bit tags together avoids padding each operand to 16 bytes.
+    uint8_t OperandTypes = 0;
     TTmp Mask{-1};
+
+    TVMInstr() = default;
+
+    TVMInstr(std::array<TVMOperand, 3> operands, EVMOp op, uint8_t format = 3)
+        : Op(op)
+        , Format(format)
+    {
+        for (size_t i = 0; i < operands.size(); ++i) {
+            SetOperand(i, operands[i]);
+        }
+    }
+
+    TVMOperand::EType GetOperandType(size_t index) const {
+        assert(index < Operands.size());
+        return static_cast<TVMOperand::EType>((OperandTypes >> (2 * index)) & 3);
+    }
+
+    void SetOperand(size_t index, const TVMOperand& operand) {
+        assert(index < Operands.size());
+        switch (operand.Type) {
+            case TVMOperand::EType::Tmp: Operands[index].Tmp = operand.Tmp; break;
+            case TVMOperand::EType::Slot: Operands[index].Slot = operand.Slot; break;
+            case TVMOperand::EType::Local: Operands[index].Local = operand.Local; break;
+            case TVMOperand::EType::Imm: Operands[index].Imm = operand.Imm; break;
+        }
+        const auto shift = 2 * index;
+        OperandTypes = static_cast<uint8_t>((OperandTypes & ~(3u << shift))
+            | (static_cast<unsigned>(operand.Type) << shift));
+    }
 
     static constexpr uint8_t BroadcastLeft = 1 << 6;
     static constexpr uint8_t BroadcastRight = 1 << 7;
@@ -276,7 +315,8 @@ struct TVMInstr {
 
 std::ostream& operator<<(std::ostream& os, const TVMInstr& instr);
 
-static_assert(sizeof(TVMInstr) == 56, "TVMInstr must be 56 bytes");
+static_assert(sizeof(TVMValue) == 8, "VM operand values must be eight bytes");
+static_assert(sizeof(TVMInstr) == 32, "TVMInstr must be 32 bytes");
 
 } // namespace NIR
 } // namespace NQumir

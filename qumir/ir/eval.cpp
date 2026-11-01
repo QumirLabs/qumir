@@ -26,8 +26,9 @@ using namespace NLiterals;
 namespace {
 
 template<typename Dest=int64_t>
-inline Dest ReadOperand(const TRegisterFile& regs, const TVMOperand& op) {
-    switch (op.Type) {
+inline Dest ReadOperand(const TRegisterFile& regs, const TVMInstr& instr, size_t index) {
+    const auto& op = instr.Operands[index];
+    switch (instr.GetOperandType(index)) {
         case TVMOperand::EType::Tmp: {
             const auto& t = op.Tmp;
             if constexpr (sizeof(Dest) == sizeof(int64_t)) {
@@ -59,8 +60,8 @@ inline int64_t FloatBits(float value) {
 
 template<typename Dest, typename T>
 inline int64_t EvalAlu(const TRegisterFile& regs, const TVMInstr& instr, T lambda) {
-    Dest lhs = ReadOperand<Dest>(regs, instr.Operands[1]);
-    Dest rhs = ReadOperand<Dest>(regs, instr.Operands[2]);
+    Dest lhs = ReadOperand<Dest>(regs, instr, 1);
+    Dest rhs = ReadOperand<Dest>(regs, instr, 2);
     auto res = lambda(lhs, rhs);
     if constexpr (sizeof(res) == sizeof(int64_t)) {
         return std::bit_cast<int64_t>(res);
@@ -73,24 +74,25 @@ inline int64_t EvalAlu(const TRegisterFile& regs, const TVMInstr& instr, T lambd
 
 template<typename T>
 inline auto Alu128(const TRegisterFile& regs, const TVMInstr& instr, T lambda) {
-    return lambda(ReadOperand<__int128_t>(regs, instr.Operands[1]),
-                  ReadOperand<__int128_t>(regs, instr.Operands[2]));
+    return lambda(ReadOperand<__int128_t>(regs, instr, 1),
+                  ReadOperand<__int128_t>(regs, instr, 2));
 }
 
 template<typename T>
 inline auto AluU128(const TRegisterFile& regs, const TVMInstr& instr, T lambda) {
-    return lambda(std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(regs, instr.Operands[1])),
-                  std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(regs, instr.Operands[2])));
+    return lambda(std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(regs, instr, 1)),
+                  std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(regs, instr, 2)));
 }
 
-void CopyOperand(void* destination, size_t size, const TVMOperand& source, const TRegisterFile& regs) {
+void CopyOperand(void* destination, size_t size, const TVMInstr& instr, size_t index, const TRegisterFile& regs) {
+    const auto& source = instr.Operands[index];
     size_t effectiveSize = size;
     const void* value;
-    if (source.Type == TVMOperand::EType::Tmp) {
+    if (instr.GetOperandType(index) == TVMOperand::EType::Tmp) {
         assert(source.Tmp.Idx >= 0 && static_cast<size_t>(source.Tmp.Idx) + size <= regs.Size());
         value = regs.Data() + source.Tmp.Idx;
     } else {
-        assert(source.Type == TVMOperand::EType::Imm);
+        assert(instr.GetOperandType(index) == TVMOperand::EType::Imm);
         effectiveSize = std::min(size, sizeof(source.Imm.Value));
         value = &source.Imm.Value;
     }
@@ -103,15 +105,16 @@ void CopyOperand(void* destination, size_t size, const TVMOperand& source, const
 }
 
 template<typename T>
-T ReadVectorOperand(const TRegisterFile& regs, const TVMOperand& operand, int offset) {
-    if (operand.Type == TVMOperand::EType::Tmp) {
+T ReadVectorOperand(const TRegisterFile& regs, const TVMInstr& instr, size_t index, int offset) {
+    const auto& operand = instr.Operands[index];
+    if (instr.GetOperandType(index) == TVMOperand::EType::Tmp) {
         return regs.Get<T>(operand.Tmp.Idx + offset);
     }
-    assert(operand.Type == TVMOperand::EType::Imm);
+    assert(instr.GetOperandType(index) == TVMOperand::EType::Imm);
     if constexpr (std::is_same_v<T, float>) {
         return std::bit_cast<float>(static_cast<uint32_t>(operand.Imm.Value));
     } else {
-        return ReadOperand<T>(regs, operand);
+        return ReadOperand<T>(regs, instr, index);
     }
 }
 
@@ -128,10 +131,10 @@ void EvalVectorLanes(TRegisterFile& regs, const TVMInstr& instr, TOp op) {
         ? 0
         : sizeof(T);
     for (size_t i = 0; i < instr.LaneCount(); ++i) {
-        const auto left = ReadVectorOperand<T>(regs, instr.Operands[1], static_cast<int>(i) * leftStride);
+        const auto left = ReadVectorOperand<T>(regs, instr, 1, static_cast<int>(i) * leftStride);
         T right = 0;
         if constexpr (!Unary) {
-            right = ReadVectorOperand<T>(regs, instr.Operands[2], static_cast<int>(i) * rightStride);
+            right = ReadVectorOperand<T>(regs, instr, 2, static_cast<int>(i) * rightStride);
         }
         regs.Get<TResult>(instr.Operands[0].Tmp.Idx + static_cast<int>(i * sizeof(TResult))) =
             static_cast<TResult>(op(static_cast<TCalc>(left), static_cast<TCalc>(right)));
@@ -194,7 +197,7 @@ void EvalVectorCast(TRegisterFile& regs, const TVMInstr& instr) {
             VisitVectorCastElement(instr.Operands[2].Imm.Value, resultFloat, instr.Format & TVMInstr::SignedResult,
                 [&]<typename TResult>() {
                     for (size_t i = 0; i < instr.LaneCount(); ++i) {
-                        const auto value = ReadVectorOperand<TSource>(regs, instr.Operands[1], static_cast<int>(i * sizeof(TSource)));
+                        const auto value = ReadVectorOperand<TSource>(regs, instr, 1, static_cast<int>(i * sizeof(TSource)));
                         regs.Get<TResult>(instr.Operands[0].Tmp.Idx + static_cast<int>(i * sizeof(TResult))) = static_cast<TResult>(value);
                     }
                 });
@@ -202,7 +205,7 @@ void EvalVectorCast(TRegisterFile& regs, const TVMInstr& instr) {
 }
 
 uint64_t EvalVectorIndex(const TRegisterFile& regs, const TVMInstr& instr) {
-    const int64_t index = ReadOperand(regs, instr.Operands[2]);
+    const int64_t index = ReadOperand(regs, instr, 2);
     if (index < 0 || static_cast<uint64_t>(index) >= instr.LaneCount()) {
         throw std::runtime_error("Vector index out of bounds");
     }
@@ -210,7 +213,7 @@ uint64_t EvalVectorIndex(const TRegisterFile& regs, const TVMInstr& instr) {
     const int offset = static_cast<int>(index * size);
     uint64_t value;
     VisitVectorElement<false>(size, [&]<typename T>() {
-        value = ReadVectorOperand<T>(regs, instr.Operands[1], offset);
+        value = ReadVectorOperand<T>(regs, instr, 1, offset);
     });
     if ((instr.Format & TVMInstr::SignedElement) && size < 8) {
         value = std::bit_cast<uint64_t>(SignedVectorLane(value, size));
@@ -488,14 +491,14 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         case EVMOp::StructStore: { // dst=Local (byte offset in frame), src=Tmp (pointer), size=Imm
             const size_t byteOffset = frame.StackBase + instr.Operands[0].Local.Idx;
             void* dst = Runtime.Stack.data() + byteOffset;
-            void* src = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]));
+            void* src = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr, 1));
             int64_t size = instr.Operands[2].Imm.Value;
             std::memcpy(dst, src, static_cast<size_t>(size));
             break;
         }
         case EVMOp::Copy: { // dst/src are Tmp (pointers), size is Imm
-            void* dst = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[0]));
-            void* src = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]));
+            void* dst = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr, 0));
+            void* src = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr, 1));
             int64_t size = instr.Operands[2].Imm.Value;
             std::memcpy(dst, src, static_cast<size_t>(size));
             break;
@@ -512,9 +515,9 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         }
         case EVMOp::Ste: {
-            int64_t intAddr = ReadOperand<int64_t>(Runtime.Regs, instr.Operands[0]);
+            int64_t intAddr = ReadOperand<int64_t>(Runtime.Regs, instr, 0);
             void* addr = reinterpret_cast<void*>(intAddr);
-            int64_t value = ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]);
+            int64_t value = ReadOperand<int64_t>(Runtime.Regs, instr, 1);
             size_t size = static_cast<size_t>(instr.Operands[2].Imm.Value);
             if (size == 0 || size > sizeof(int64_t)) {
                 size = sizeof(int64_t);
@@ -525,7 +528,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         }
         case EVMOp::Lde:
         case EVMOp::LdeS: {
-            int64_t intAddr = ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]);
+            int64_t intAddr = ReadOperand<int64_t>(Runtime.Regs, instr, 1);
             void* addr = reinterpret_cast<void*>(intAddr);
             int64_t value = 0;
             size_t size = static_cast<size_t>(instr.Operands[2].Imm.Value);
@@ -544,13 +547,13 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         case EVMOp::Lea: {
             // load addr of local or slot operand
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            if (instr.Operands[1].Type == TVMOperand::EType::Slot) {
+            if (instr.GetOperandType(1) == TVMOperand::EType::Slot) {
                 const auto& s = instr.Operands[1].Slot;
                 const size_t byteOffset = s.Idx * 8;
                 assert(s.Idx >= 0 && byteOffset < Runtime.Globals.size());
                 int64_t addr = reinterpret_cast<int64_t>(Runtime.Globals.data() + byteOffset);
                 Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = addr;
-            } else if (instr.Operands[1].Type == TVMOperand::EType::Local) {
+            } else if (instr.GetOperandType(1) == TVMOperand::EType::Local) {
                 const auto& l = instr.Operands[1].Local;
                 const size_t byteOffset = frame.StackBase + l.Idx; // l.Idx is byte offset from vmcompiler
                 assert(l.Idx >= 0 && byteOffset < Runtime.Stack.size());
@@ -564,21 +567,21 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         case EVMOp::Load: {
             const size_t size = instr.SizeInBytes();
             const auto& dest = instr.Operands[0];
-            assert(dest.Type == TVMOperand::EType::Tmp && dest.Tmp.Idx >= 0);
+            assert(instr.GetOperandType(0) == TVMOperand::EType::Tmp && dest.Tmp.Idx >= 0);
             assert(static_cast<size_t>(dest.Tmp.Idx) + size <= Runtime.Regs.Size());
             auto* value = Runtime.Regs.Data() + dest.Tmp.Idx;
-            if (instr.Operands[1].Type == TVMOperand::EType::Slot) {
+            if (instr.GetOperandType(1) == TVMOperand::EType::Slot) {
                 const auto& s = instr.Operands[1].Slot;
                 const size_t byteOffset = static_cast<size_t>(s.Idx) * 8;
                 assert(s.Idx >= 0 && byteOffset + size <= Runtime.Globals.size());
                 std::memcpy(value, Runtime.Globals.data() + byteOffset, size);
-            } else if (instr.Operands[1].Type == TVMOperand::EType::Local) {
+            } else if (instr.GetOperandType(1) == TVMOperand::EType::Local) {
                 const auto& l = instr.Operands[1].Local;
                 const size_t byteOffset = frame.StackBase + l.Idx; // l.Idx is byte offset
                 assert(l.Idx >= 0 && byteOffset + size <= Runtime.Stack.size());
                 std::memcpy(value, Runtime.Stack.data() + byteOffset, size);
-            } else if (instr.Operands[1].Type == TVMOperand::EType::Tmp) {
-                const auto* address = reinterpret_cast<const void*>(ReadOperand(Runtime.Regs, instr.Operands[1]));
+            } else if (instr.GetOperandType(1) == TVMOperand::EType::Tmp) {
+                const auto* address = reinterpret_cast<const void*>(ReadOperand(Runtime.Regs, instr, 1));
                 std::memcpy(value, address, size);
             } else {
                 assert(false && "Invalid operand for load");
@@ -587,9 +590,8 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         }
         case EVMOp::Store: {
             const size_t size = instr.SizeInBytes();
-            const auto& source = instr.Operands[1];
             char* destination;
-            if (instr.Operands[0].Type == TVMOperand::EType::Slot) {
+            if (instr.GetOperandType(0) == TVMOperand::EType::Slot) {
                 const auto& s = instr.Operands[0].Slot;
                 assert(s.Idx >= 0);
                 const size_t byteOffset = static_cast<size_t>(s.Idx) * 8;
@@ -597,18 +599,18 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                     Runtime.Globals.resize(byteOffset + size, 0);
                 }
                 destination = Runtime.Globals.data() + byteOffset;
-            } else if (instr.Operands[0].Type == TVMOperand::EType::Local) {
+            } else if (instr.GetOperandType(0) == TVMOperand::EType::Local) {
                 const auto& l = instr.Operands[0].Local;
                 const size_t byteOffset = frame.StackBase + l.Idx; // l.Idx is byte offset
                 assert(l.Idx >= 0 && byteOffset + size <= Runtime.Stack.size());
                 destination = Runtime.Stack.data() + byteOffset;
-            } else if (instr.Operands[0].Type == TVMOperand::EType::Tmp) {
-                destination = reinterpret_cast<char*>(ReadOperand(Runtime.Regs, instr.Operands[0]));
+            } else if (instr.GetOperandType(0) == TVMOperand::EType::Tmp) {
+                destination = reinterpret_cast<char*>(ReadOperand(Runtime.Regs, instr, 0));
             } else {
                 assert(false && "Invalid operand for store");
                 break;
             }
-            CopyOperand(destination, size, source, Runtime.Regs);
+            CopyOperand(destination, size, instr, 1, Runtime.Regs);
             break;
         }
 
@@ -618,7 +620,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         case EVMOp::VMovemask: {
             uint32_t result = 0;
             for (size_t i = 0; i < instr.LaneCount(); ++i) {
-                if (ReadVectorOperand<uint8_t>(Runtime.Regs, instr.Operands[1], static_cast<int>(i)) != 0) {
+                if (ReadVectorOperand<uint8_t>(Runtime.Regs, instr, 1, static_cast<int>(i)) != 0) {
                     result |= uint32_t{1} << i;
                 }
             }
@@ -630,19 +632,19 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 for (size_t i = 0; i < instr.LaneCount(); ++i) {
                     const bool select = instr.Mask.Idx >= 0
                         && Runtime.Regs.Get<uint8_t>(instr.Mask.Idx + static_cast<int>(i)) != 0;
-                    const auto& source = instr.Operands[select ? 1 : 2];
+                    const size_t source = select ? 1 : 2;
                     const int offset = static_cast<int>(i * sizeof(T));
                     Runtime.Regs.Get<T>(instr.Operands[0].Tmp.Idx + offset) =
-                        ReadVectorOperand<T>(Runtime.Regs, source, offset);
+                        ReadVectorOperand<T>(Runtime.Regs, instr, source, offset);
                 }
             });
             break;
         case EVMOp::VGather: {
             std::array<uint8_t, 256> result;
-            const auto base = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[1]);
+            const auto base = ReadOperand<uint64_t>(Runtime.Regs, instr, 1);
             const auto size = instr.ElementSizeInBytes();
             for (size_t i = 0; i < instr.LaneCount(); ++i) {
-                const auto index = ReadVectorOperand<uint64_t>(Runtime.Regs, instr.Operands[2], static_cast<int>(i * 8));
+                const auto index = ReadVectorOperand<uint64_t>(Runtime.Regs, instr, 2, static_cast<int>(i * 8));
                 const auto* source = reinterpret_cast<const void*>(base + index * size);
                 std::memcpy(result.data() + i * size, source, size);
             }
@@ -654,7 +656,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             const bool all = instr.Op == EVMOp::VAll;
             bool result = all;
             for (size_t i = 0; i < instr.LaneCount(); ++i) {
-                const bool lane = ReadVectorOperand<uint8_t>(Runtime.Regs, instr.Operands[1], static_cast<int>(i)) != 0;
+                const bool lane = ReadVectorOperand<uint8_t>(Runtime.Regs, instr, 1, static_cast<int>(i)) != 0;
                 if (lane != all) {
                     result = lane;
                     break;
@@ -673,7 +675,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                     if (index >= instr.LaneCount()) {
                         throw std::runtime_error("Vector index out of bounds");
                     }
-                    if (instr.Operands[1].Type == TVMOperand::EType::Imm) {
+                    if (instr.GetOperandType(1) == TVMOperand::EType::Imm) {
                         assert(instr.Operands[1].Imm.Value == 0);
                         std::memset(result.data() + i * size, 0, size);
                     } else {
@@ -688,7 +690,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             } else {
                 VisitVectorElement<false>(instr.IndexElementSizeInBytes(), [&]<typename T>() {
                     shuffle([&](size_t i) {
-                        return ReadVectorOperand<T>(Runtime.Regs, instr.Operands[2], static_cast<int>(i * sizeof(T)));
+                        return ReadVectorOperand<T>(Runtime.Regs, instr, 2, static_cast<int>(i * sizeof(T)));
                     });
                 });
             }
@@ -810,22 +812,22 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
 
         case EVMOp::INeg:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = -ReadOperand(Runtime.Regs, instr.Operands[1]);
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = -ReadOperand(Runtime.Regs, instr, 1);
             break;
         case EVMOp::FNeg: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            double tmp = ReadOperand<double>(Runtime.Regs, instr.Operands[1]);
+            double tmp = ReadOperand<double>(Runtime.Regs, instr, 1);
             tmp = -tmp;
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(tmp);
             break;
         }
         case EVMOp::INot:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = !ReadOperand(Runtime.Regs, instr.Operands[1]);
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = !ReadOperand(Runtime.Regs, instr, 1);
             break;
         case EVMOp::IBitNot: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            auto value = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[1]);
+            auto value = ReadOperand<uint64_t>(Runtime.Regs, instr, 1);
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(~value);
             break;
         }
@@ -892,22 +894,22 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         case EVMOp::IShl: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            auto lhs = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[1]);
-            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[2]) & 63;
+            auto lhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 1);
+            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 2) & 63;
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(lhs << rhs);
             break;
         }
         case EVMOp::IShrS: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            auto lhs = ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]);
-            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[2]) & 63;
+            auto lhs = ReadOperand<int64_t>(Runtime.Regs, instr, 1);
+            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 2) & 63;
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = lhs >> rhs;
             break;
         }
         case EVMOp::IShrU: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            auto lhs = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[1]);
-            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[2]) & 63;
+            auto lhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 1);
+            auto rhs = ReadOperand<uint64_t>(Runtime.Regs, instr, 2) & 63;
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(lhs >> rhs);
             break;
         }
@@ -989,10 +991,10 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             if (instr.Format != 3) {
                 const size_t size = instr.SizeInBytes();
                 assert(static_cast<size_t>(instr.Operands[0].Tmp.Idx) + size <= Runtime.Regs.Size());
-                CopyOperand(Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx, size, instr.Operands[1], Runtime.Regs);
+                CopyOperand(Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx, size, instr, 1, Runtime.Regs);
                 break;
             }
-            int64_t val = ReadOperand(Runtime.Regs, instr.Operands[1]);
+            int64_t val = ReadOperand(Runtime.Regs, instr, 1);
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = val;
             break;
         }
@@ -1000,12 +1002,13 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             assert(instr.Operands[0].Tmp.Idx >= 0);
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = ReadOperand(
                 Runtime.Regs,
-                instr.Operands[1]);
+                instr,
+                1);
             break;
         }
 
         case EVMOp::FNeg32:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(-ReadOperand<float>(Runtime.Regs, instr.Operands[1]));
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(-ReadOperand<float>(Runtime.Regs, instr, 1));
             break;
         case EVMOp::FAdd32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<float>(Runtime.Regs, instr, std::plus<float>{});
@@ -1039,54 +1042,54 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         case EVMOp::I2F32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(
-                static_cast<float>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1])));
+                static_cast<float>(ReadOperand<int64_t>(Runtime.Regs, instr, 1)));
             break;
         case EVMOp::B2F32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(
-                ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]) ? -1.0f : 0.0f);
+                ReadOperand<int64_t>(Runtime.Regs, instr, 1) ? -1.0f : 0.0f);
             break;
         case EVMOp::F2I32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = static_cast<int64_t>(
-                ReadOperand<float>(Runtime.Regs, instr.Operands[1]));
+                ReadOperand<float>(Runtime.Regs, instr, 1));
             break;
         case EVMOp::FExt32:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(
-                static_cast<double>(ReadOperand<float>(Runtime.Regs, instr.Operands[1])));
+                static_cast<double>(ReadOperand<float>(Runtime.Regs, instr, 1)));
             break;
         case EVMOp::FTrunc64:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = FloatBits(
-                static_cast<float>(ReadOperand<double>(Runtime.Regs, instr.Operands[1])));
+                static_cast<float>(ReadOperand<double>(Runtime.Regs, instr, 1)));
             break;
         case EVMOp::I2F: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            int64_t ival = ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]);
+            int64_t ival = ReadOperand<int64_t>(Runtime.Regs, instr, 1);
             double fval = static_cast<double>(ival);
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(fval);
             break;
         }
         case EVMOp::B2F:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(
-                ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]) ? -1.0 : 0.0);
+                ReadOperand<int64_t>(Runtime.Regs, instr, 1) ? -1.0 : 0.0);
             break;
         case EVMOp::F2I: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            double fval = ReadOperand<double>(Runtime.Regs, instr.Operands[1]);
+            double fval = ReadOperand<double>(Runtime.Regs, instr, 1);
             int64_t ival = static_cast<int64_t>(fval);
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = ival;
             break;
         }
 
         case EVMOp::INeg128:
-            Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = -ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]);
+            Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = -ReadOperand<__int128_t>(Runtime.Regs, instr, 1);
             break;
         case EVMOp::IBitNot128:
-            Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = ~ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]);
+            Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = ~ReadOperand<__int128_t>(Runtime.Regs, instr, 1);
             break;
         case EVMOp::INot128:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = !ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]);
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = !ReadOperand<__int128_t>(Runtime.Regs, instr, 1);
             break;
         case EVMOp::I2B128:
-            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]) != 0;
+            Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = ReadOperand<__int128_t>(Runtime.Regs, instr, 1) != 0;
             break;
         case EVMOp::IAdd128:
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(Runtime.Regs, instr, std::plus<__int128_t>{});
@@ -1121,20 +1124,20 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(Runtime.Regs, instr, std::bit_xor<__int128_t>{});
             break;
         case EVMOp::IShl128: {
-            auto lhs = std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]));
-            auto rhs = static_cast<unsigned>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[2])) & 127u;
+            auto lhs = std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(Runtime.Regs, instr, 1));
+            auto rhs = static_cast<unsigned>(ReadOperand<__int128_t>(Runtime.Regs, instr, 2)) & 127u;
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<__int128_t>(lhs << rhs);
             break;
         }
         case EVMOp::IShrS128: {
-            auto lhs = ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]);
-            auto rhs = static_cast<unsigned>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[2])) & 127u;
+            auto lhs = ReadOperand<__int128_t>(Runtime.Regs, instr, 1);
+            auto rhs = static_cast<unsigned>(ReadOperand<__int128_t>(Runtime.Regs, instr, 2)) & 127u;
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = lhs >> rhs;
             break;
         }
         case EVMOp::IShrU128: {
-            auto lhs = std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]));
-            auto rhs = static_cast<unsigned>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[2])) & 127u;
+            auto lhs = std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(Runtime.Regs, instr, 1));
+            auto rhs = static_cast<unsigned>(ReadOperand<__int128_t>(Runtime.Regs, instr, 2)) & 127u;
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<__int128_t>(lhs >> rhs);
             break;
         }
@@ -1172,55 +1175,55 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         case EVMOp::CmovS128:
         case EVMOp::SExt128:
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) =
-                static_cast<__int128_t>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]));
+                static_cast<__int128_t>(ReadOperand<int64_t>(Runtime.Regs, instr, 1));
             break;
         case EVMOp::B2I128:
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) =
-                ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1])
+                ReadOperand<int64_t>(Runtime.Regs, instr, 1)
                     ? -1
                     : 0;
             break;
         case EVMOp::CmovU128:
         case EVMOp::ZExt128:
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<__int128_t>(
-                static_cast<__uint128_t>(ReadOperand<uint64_t>(Runtime.Regs, instr.Operands[1])));
+                static_cast<__uint128_t>(ReadOperand<uint64_t>(Runtime.Regs, instr, 1)));
             break;
         case EVMOp::Trunc128:
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) =
-                static_cast<int64_t>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]));
+                static_cast<int64_t>(ReadOperand<__int128_t>(Runtime.Regs, instr, 1));
             break;
         case EVMOp::I2F128S: {
-            double fval = static_cast<double>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]));
+            double fval = static_cast<double>(ReadOperand<__int128_t>(Runtime.Regs, instr, 1));
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(fval);
             break;
         }
         case EVMOp::I2F128U: {
             double fval = static_cast<double>(
-                std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1])));
+                std::bit_cast<__uint128_t>(ReadOperand<__int128_t>(Runtime.Regs, instr, 1)));
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<int64_t>(fval);
             break;
         }
         case EVMOp::F2I128: {
-            double fval = ReadOperand<double>(Runtime.Regs, instr.Operands[1]);
+            double fval = ReadOperand<double>(Runtime.Regs, instr, 1);
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = static_cast<__int128_t>(fval);
             break;
         }
         case EVMOp::Lde128: {
-            void* addr = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[1]));
+            void* addr = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr, 1));
             __int128_t value = 0;
             std::memcpy(&value, addr, 16);
             Runtime.Regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = value;
             break;
         }
         case EVMOp::Ste128: {
-            void* addr = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr.Operands[0]));
-            __int128_t value = ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[1]);
+            void* addr = reinterpret_cast<void*>(ReadOperand<int64_t>(Runtime.Regs, instr, 0));
+            __int128_t value = ReadOperand<__int128_t>(Runtime.Regs, instr, 1);
             std::memcpy(addr, &value, 16);
             break;
         }
         case EVMOp::ArgTmp128: {
             Runtime.Args.push_back(0);
-            Runtime.Args128.push_back(ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[0]));
+            Runtime.Args128.push_back(ReadOperand<__int128_t>(Runtime.Regs, instr, 0));
             break;
         }
 
@@ -1235,14 +1238,14 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         }
 
         case EVMOp::Jmp: {
-            assert(instr.Operands[0].Type == TVMOperand::EType::Imm);
+            assert(instr.GetOperandType(0) == TVMOperand::EType::Imm);
             frame.PC = reinterpret_cast<TVMInstr*>(instr.Operands[0].Imm.Value);
             break;
         }
         case EVMOp::Cmp: {
-            int64_t cmp = ReadOperand(Runtime.Regs, instr.Operands[0]);
-            assert(instr.Operands[1].Type == TVMOperand::EType::Imm);
-            assert(instr.Operands[2].Type == TVMOperand::EType::Imm);
+            int64_t cmp = ReadOperand(Runtime.Regs, instr, 0);
+            assert(instr.GetOperandType(1) == TVMOperand::EType::Imm);
+            assert(instr.GetOperandType(2) == TVMOperand::EType::Imm);
             int64_t trueLabel = instr.Operands[1].Imm.Value;
             int64_t falseLabel = instr.Operands[2].Imm.Value;
             if (cmp) {
@@ -1254,7 +1257,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         }
         case EVMOp::ArgTmp: // TODO: optimize
         case EVMOp::ArgConst: {
-            auto value = ReadOperand(Runtime.Regs, instr.Operands[0]);
+            auto value = ReadOperand(Runtime.Regs, instr, 0);
             Runtime.Args.push_back(value);
             Runtime.Args128.push_back(static_cast<__int128_t>(value));
             break;
@@ -1280,7 +1283,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         }
         case EVMOp::Call: {
-            assert(instr.Operands[1].Type == TVMOperand::EType::Imm && "callee must be Imm(id)");
+            assert(instr.GetOperandType(1) == TVMOperand::EType::Imm && "callee must be Imm(id)");
             const int64_t calleeId = instr.Operands[1].Imm.Value;
 
             assert(calleeId >=0 && calleeId < Module.Functions.size() && "Invalid callee id");
@@ -1332,18 +1335,18 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             break;
         }
         case EVMOp::Await: {
-            ITypeErasedFuture* future = reinterpret_cast<ITypeErasedFuture*>(ReadOperand(Runtime.Regs, instr.Operands[1]));
+            ITypeErasedFuture* future = reinterpret_cast<ITypeErasedFuture*>(ReadOperand(Runtime.Regs, instr, 1));
             auto value = co_await AwaitTypeErasedFuture<uint64_t>(future);
             Runtime.Regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = static_cast<int64_t>(value);
             break;
         }
         case EVMOp::AwaitVoid: {
-            ITypeErasedFuture* future = reinterpret_cast<ITypeErasedFuture*>(ReadOperand(Runtime.Regs, instr.Operands[0]));
+            ITypeErasedFuture* future = reinterpret_cast<ITypeErasedFuture*>(ReadOperand(Runtime.Regs, instr, 0));
             co_await AwaitTypeErasedFuture<void>(future);
             break;
         }
         case EVMOp::Ret128:
-            Runtime.Ret128Value = ReadOperand<__int128_t>(Runtime.Regs, instr.Operands[0]);
+            Runtime.Ret128Value = ReadOperand<__int128_t>(Runtime.Regs, instr, 0);
             retVal = static_cast<int64_t>(Runtime.Ret128Value);
             retIs128 = true;
             [[fallthrough]];
@@ -1355,7 +1358,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                                         Runtime.Regs.Data() + instr.Operands[0].Tmp.Idx + retVecSize);
                 retVal = 0;
             } else if (!retIs128) {
-                retVal = ReadOperand(Runtime.Regs, instr.Operands[0]);
+                retVal = ReadOperand(Runtime.Regs, instr, 0);
             }
         case EVMOp::RetVoid: {
             auto base = frame.StackBase;

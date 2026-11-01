@@ -11,6 +11,7 @@
 #include <array>
 #include <bit>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <type_traits>
 
@@ -34,6 +35,42 @@ struct TVMTest {
         return tmp;
     }
 };
+
+TEST(VMBytecode, PackedTagsPreserveFullWidthValuesAndTheHeader) {
+    TVMInstr instr{{TTmp{-1}, TLocal{17}, TImm{std::numeric_limits<int64_t>::min()}},
+        EVMOp::VSelect, TVMInstr::MakeFormat(3, 2)};
+    instr.Mask = {std::numeric_limits<int32_t>::max()};
+    EXPECT_EQ(sizeof(instr), 32);
+    EXPECT_EQ(instr.GetOperandType(0), TVMOperand::EType::Tmp);
+    EXPECT_EQ(instr.GetOperandType(1), TVMOperand::EType::Local);
+    EXPECT_EQ(instr.GetOperandType(2), TVMOperand::EType::Imm);
+    EXPECT_EQ(instr.Operands[0].Tmp.Idx, -1);
+    EXPECT_EQ(instr.Operands[1].Local.Idx, 17);
+    EXPECT_EQ(instr.Operands[2].Imm.Value, std::numeric_limits<int64_t>::min());
+    for (size_t i = 0; i < 3; ++i) {
+        instr.SetOperand(i, TSlot{std::numeric_limits<int32_t>::max()});
+        EXPECT_EQ(instr.GetOperandType(i), TVMOperand::EType::Slot);
+        EXPECT_EQ(instr.Operands[i].Slot.Idx, std::numeric_limits<int32_t>::max());
+        instr.SetOperand(i, TImm{std::numeric_limits<int64_t>::max()});
+        EXPECT_EQ(instr.GetOperandType(i), TVMOperand::EType::Imm);
+        EXPECT_EQ(instr.Operands[i].Imm.Value, std::numeric_limits<int64_t>::max());
+        EXPECT_EQ(instr.Op, EVMOp::VSelect);
+        EXPECT_EQ(instr.Format, TVMInstr::MakeFormat(3, 2));
+        EXPECT_EQ(instr.Mask.Idx, std::numeric_limits<int32_t>::max());
+    }
+}
+
+TEST(VMBytecode, ScalarImmediatesKeepAllSixtyFourBits) {
+    for (const auto value : {std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max(), int64_t{-1}}) {
+        TVMTest vm;
+        const int type = vm.Module.Types.I(EKind::I64);
+        vm.Builder.NewFunction("constant", {}, 0);
+        const auto tmp = vm.Emit("mov"_op, {TImm{value, type}}, type);
+        vm.Builder.Emit0("ret"_op, {tmp});
+        vm.Builder.SetReturnType(type);
+        EXPECT_EQ(vm.Interpreter.EvalRaw(vm.Module.Functions[0], {}, {}), value);
+    }
+}
 
 std::expected<TFunction*, TError> LowerCore(TVMTest& vm, const std::string& source, bool optimize) {
     std::istringstream input(source);
@@ -69,7 +106,7 @@ void CheckCoreVector(const std::string& body, const std::array<T, N>& expected, 
         ASSERT_EQ(vm.Interpreter.EvalRaw(*function, {}, {}), result);
         int resultOffset = -1;
         for (const auto& instr : function->Exec->VMCode) {
-            if (instr.LaneCount() == N && instr.Operands[0].Type == TVMOperand::EType::Tmp
+            if (instr.LaneCount() == N && instr.GetOperandType(0) == TVMOperand::EType::Tmp
                 && instr.Op != EVMOp::Store)
             {
                 resultOffset = instr.Operands[0].Tmp.Idx;
@@ -524,9 +561,9 @@ TEST(VMMemory, ImmediateStoreOverwritesTheWholeDestination) {
         TExecFunc exec{
             .UniqueId = 0,
             .VMCode = {
-                {.Operands = {TLocal{8}, TImm{value}}, .Op = EVMOp::Store, .Format = TVMInstr::MakeFormat(4)},
-                {.Operands = {TSlot{1}, TImm{value}}, .Op = EVMOp::Store, .Format = TVMInstr::MakeFormat(4)},
-                {.Operands = {TImm{0}}, .Op = EVMOp::Ret},
+                {{TLocal{8}, TImm{value}}, EVMOp::Store, TVMInstr::MakeFormat(4)},
+                {{TSlot{1}, TImm{value}}, EVMOp::Store, TVMInstr::MakeFormat(4)},
+                {{TImm{0}}, EVMOp::Ret},
             },
             .NumLocals = 32,
         };
@@ -563,10 +600,10 @@ TEST(VMMemory, PackedFormatsCopyTheCompletePayload) {
         TExecFunc exec{
             .UniqueId = 0,
             .VMCode = {
-                {.Operands = {TTmp{test.Size}, TImm{73}}, .Op = EVMOp::Mov},
-                {.Operands = {TTmp{0}, TSlot{0}}, .Op = EVMOp::Load, .Format = test.Format},
-                {.Operands = {TSlot{destSlot}, TTmp{0}}, .Op = EVMOp::Store, .Format = test.Format},
-                {.Operands = {TTmp{test.Size}}, .Op = EVMOp::Ret},
+                {{TTmp{test.Size}, TImm{73}}, EVMOp::Mov},
+                {{TTmp{0}, TSlot{0}}, EVMOp::Load, test.Format},
+                {{TSlot{destSlot}, TTmp{0}}, EVMOp::Store, test.Format},
+                {{TTmp{test.Size}}, EVMOp::Ret},
             },
             .RegisterFileSize = test.Size + 8,
             .RegisterFileAlignment = 16,

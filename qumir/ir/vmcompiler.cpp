@@ -220,7 +220,7 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
                 throw std::runtime_error("Invalid VM vector shuffle shape");
             }
             out.Op = EVMOp::VShuffle;
-            out.Operands[2] = TUntypedImm{reinterpret_cast<int64_t>(mask.data())};
+            out.SetOperand(2, TUntypedImm{reinterpret_cast<int64_t>(mask.data())});
             return true;
         }
         case "index"_op: {
@@ -284,7 +284,7 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
                 if (types.IsSigned(destElement)) {
                     out.Format |= TVMInstr::SignedResult;
                 }
-                out.Operands[2] = TUntypedImm{types.SizeInBytes(destElement)};
+                out.SetOperand(2, TUntypedImm{types.SizeInBytes(destElement)});
                 return true;
             }
             const bool isBitcast = instr.Op == "bitcast"_op;
@@ -304,7 +304,7 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
                 if (types.IsSigned(destType)) {
                     out.Format |= TVMInstr::SignedElement;
                 }
-                out.Operands[2] = TUntypedImm{0};
+                out.SetOperand(2, TUntypedImm{0});
                 return true;
             }
             out.Op = EVMOp::Mov;
@@ -399,7 +399,7 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
                 if (types.IsSigned(destElement)) {
                     out.Format |= TVMInstr::SignedResult;
                 }
-                out.Operands[2] = TUntypedImm{types.SizeInBytes(destElement)};
+                out.SetOperand(2, TUntypedImm{types.SizeInBytes(destElement)});
             }
             return true;
         }
@@ -672,7 +672,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
         auto& out = *ptr++;
         int offset = 0;
         if (ins.Dest.Idx >= 0) {
-            out.Operands[0] = ins.Dest;
+            out.SetOperand(0, ins.Dest);
             offset = 1;
         }
         // Select stores its first argument in Mask; the two values use regular operands.
@@ -680,13 +680,13 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             ? 1
             : 0;
         for (size_t i = first; i < ins.OperandCount && i - first + offset < out.Operands.size(); ++i) {
-            auto& operand = out.Operands[i - first + offset];
+            const auto operandIndex = i - first + offset;
             switch (ins.Operands[i].Type) {
                 case TOperand::EType::Tmp:
-                    operand = ins.Operands[i].Tmp;
+                    out.SetOperand(operandIndex, ins.Operands[i].Tmp);
                     break;
                 case TOperand::EType::Slot:
-                    operand = ins.Operands[i].Slot;
+                    out.SetOperand(operandIndex, ins.Operands[i].Slot);
                     break;
                 case TOperand::EType::Local: {
                     // Translate var index -> byte offset in frame
@@ -695,25 +695,25 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                         throw std::runtime_error("Local variable index out of bounds");
                     }
                     int byteOffset = funcOut.LocalByteOffsets[varIdx];
-                    operand = TLocal{byteOffset};
+                    out.SetOperand(operandIndex, TLocal{byteOffset});
                     break;
                 }
                 case TOperand::EType::Imm:
-                    operand = ins.Operands[i].Imm;
+                    out.SetOperand(operandIndex, ins.Operands[i].Imm);
                     // A string literal immediate is its id; every instruction reads its address.
                     if (ins.Operands[i].Imm.TypeId == lowStringTypeId) {
                         const auto id = ins.Operands[i].Imm.Value;
                         if (id < 0 || id >= static_cast<int64_t>(Module.StringLiterals.size())) {
                             throw std::runtime_error("Invalid string literal id");
                         }
-                        operand = TImm{
+                        out.SetOperand(operandIndex, TImm{
                             reinterpret_cast<int64_t>(Module.StringLiterals[id].c_str()),
-                            lowStringTypeId};
+                            lowStringTypeId});
                     }
                     break;
                 case TOperand::EType::Label:
                     TVMInstr* pc = &code[labelToPC.at(ins.Operands[i].Label.Idx)];
-                    operand = TImm{reinterpret_cast<int64_t>(pc)};
+                    out.SetOperand(operandIndex, TImm{reinterpret_cast<int64_t>(pc)});
                     break;
             };
         }
@@ -733,8 +733,8 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 {
                     throw std::runtime_error("salloc temporary has no frame storage");
                 }
-                out.Operands[1] = TUntypedImm{tmpFrameOffsets[tmpIdx]};
-                out.Operands[2] = TUntypedImm{ins.Operands[0].Imm.Value};
+                out.SetOperand(1, TUntypedImm{tmpFrameOffsets[tmpIdx]});
+                out.SetOperand(2, TUntypedImm{ins.Operands[0].Imm.Value});
                 break;
             }
             case "ste"_op: {
@@ -745,7 +745,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     storeTypeId = Module.Types.UnderlyingType(ptrTypeId);
                 }
                 out.Op = is128(storeTypeId) ? EVMOp::Ste128 : EVMOp::Ste;
-                out.Operands[2] = TUntypedImm{Module.Types.SizeInBytes(storeTypeId)};
+                out.SetOperand(2, TUntypedImm{Module.Types.SizeInBytes(storeTypeId)});
                 break;
             }
             case "lde"_op: {
@@ -757,7 +757,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 out.Op = is128(destType)
                     ? EVMOp::Lde128
                     : (narrowSigned ? EVMOp::LdeS : EVMOp::Lde);
-                out.Operands[2] = TUntypedImm{Module.Types.SizeInBytes(typeId(ins.Dest))};
+                out.SetOperand(2, TUntypedImm{Module.Types.SizeInBytes(typeId(ins.Dest))});
                 break;
             }
             case "lea"_op: {
@@ -947,7 +947,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 require(ins, 1, 1);
                 if (Module.Types.IsFloat(typeIdOp(ins.Operands[0]))) {
                     out.Op = isF32(typeIdOp(ins.Operands[0])) ? EVMOp::FCmpEQ32 : EVMOp::FCmpEQ;
-                    out.Operands[2] = TUntypedImm{0};
+                    out.SetOperand(2, TUntypedImm{0});
                 } else {
                     out.Op = is128(typeIdOp(ins.Operands[0])) ? EVMOp::INot128 : EVMOp::INot;
                 }
@@ -989,7 +989,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                         // A bool widens to all ones, as on LLVM.
                         if (isImm) {
                             out.Op = EVMOp::CmovS128;
-                            out.Operands[1] = TImm{ins.Operands[0].Imm.Value ? -1 : 0};
+                            out.SetOperand(1, TImm{ins.Operands[0].Imm.Value ? -1 : 0});
                         } else {
                             out.Op = EVMOp::B2I128;
                         }
@@ -1010,10 +1010,10 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                         : (int64_t{1} << (8 * size)) - 1;
                     if (isImm) {
                         out.Op = EVMOp::Cmov;
-                        out.Operands[1] = TImm{ins.Operands[0].Imm.Value ? ones : 0};
+                        out.SetOperand(1, TImm{ins.Operands[0].Imm.Value ? ones : 0});
                     } else {
                         out.Op = EVMOp::IMulS;
-                        out.Operands[2] = TUntypedImm{ones};
+                        out.SetOperand(2, TUntypedImm{ones});
                     }
                 } else {
                     out.Op = isImm ? EVMOp::Cmov : EVMOp::Mov;
@@ -1023,7 +1023,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             case "i2b"_op: {
                 require(ins, 1, 1);
                 out.Op = is128(typeIdOp(ins.Operands[0])) ? EVMOp::I2B128 : EVMOp::ICmpNE;
-                out.Operands[2] = TUntypedImm{0};
+                out.SetOperand(2, TUntypedImm{0});
                 break;
             }
             case "i2f"_op: {
@@ -1049,7 +1049,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             case "f2b"_op: {
                 require(ins, 1, 1);
                 out.Op = isF32(typeIdOp(ins.Operands[0])) ? EVMOp::FCmpNE32 : EVMOp::FCmpNE;
-                out.Operands[2] = TUntypedImm{0};
+                out.SetOperand(2, TUntypedImm{0});
                 break;
             }
             case "f2i"_op: {
@@ -1100,13 +1100,13 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 const int64_t calleeId = ins.Operands[0].Imm.Value;
 
                 if (ins.Dest.Idx < 0) {
-                    out.Operands[0] = TTmp{-1}; // no dest
+                    out.SetOperand(0, TTmp{-1}); // no dest
                 }
 
                 if (Module.SymIdToFuncIdx.contains(calleeId)) {
                     const int64_t calleeIdx = Module.SymIdToFuncIdx.at(calleeId);
                     assert(calleeIdx >=0 && calleeIdx < Module.Functions.size() && "Invalid callee idx");
-                    out.Operands[1] = TImm{calleeIdx};
+                    out.SetOperand(1, TImm{calleeIdx});
                     out.Op = EVMOp::Call;
                 } else if (Module.SymIdToExtFuncIdx.contains(calleeId)) {
                     const int64_t calleeIdx = Module.SymIdToExtFuncIdx.at(calleeId);
@@ -1124,22 +1124,22 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                             "cannot resolve external function `"
                             + Module.ExternalFunctions[calleeIdx].MangledName + "'");
                     }
-                    out.Operands[1] = TImm{reinterpret_cast<int64_t>(thunk)};
+                    out.SetOperand(1, TImm{reinterpret_cast<int64_t>(thunk)});
                     out.Op = EVMOp::ECall;
                 } else {
                     throw std::runtime_error("Unknown callee id in call: " + std::to_string(calleeId));
                 }
 
                 if (awaitCall) {
-                    out.Operands[0] = future;
+                    out.SetOperand(0, future);
                     auto& resume = *ptr++;
                     if (ins.Dest.Idx < 0) {
                         resume.Op = EVMOp::AwaitVoid;
-                        resume.Operands[0] = future;
+                        resume.SetOperand(0, future);
                     } else {
                         resume.Op = EVMOp::Await;
-                        resume.Operands[0] = ins.Dest;
-                        resume.Operands[1] = future;
+                        resume.SetOperand(0, ins.Dest);
+                        resume.SetOperand(1, future);
                     }
                 }
                 break;
@@ -1175,7 +1175,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                         ? function.LocalTypes[varIdx] : -1;
                     if (dstTypeId >= 0 && Module.Types.GetKind(dstTypeId) == EKind::Struct) {
                         out.Op = EVMOp::StructStore;
-                        out.Operands[2] = TUntypedImm{Module.Types.SizeInBytes(dstTypeId)};
+                        out.SetOperand(2, TUntypedImm{Module.Types.SizeInBytes(dstTypeId)});
                         break;
                     }
                 }
@@ -1255,9 +1255,9 @@ void TVMCompiler::AllocateRegisters(
         out.RegisterFileAlignment = std::max(out.RegisterFileAlignment, alignment);
     };
     for (auto& instr : out.VMCode) {
-        for (auto& operand : instr.Operands) {
-            if (operand.Type == TVMOperand::EType::Tmp) {
-                allocate(operand.Tmp);
+        for (size_t i = 0; i < instr.Operands.size(); ++i) {
+            if (instr.GetOperandType(i) == TVMOperand::EType::Tmp) {
+                allocate(instr.Operands[i].Tmp);
             }
         }
         allocate(instr.Mask);

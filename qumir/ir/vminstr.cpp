@@ -199,11 +199,11 @@ std::ostream& operator<<(std::ostream& os, const TVMInstr& instr) {
     }
     os << ' ';
     for (size_t i = 0; i < instr.Operands.size(); ++i) {
-        if (instr.Operands[i].Type == TVMOperand::EType::Tmp && instr.Operands[i].Tmp.Idx >= 0) {
+        if (instr.GetOperandType(i) == TVMOperand::EType::Tmp && instr.Operands[i].Tmp.Idx >= 0) {
             os << "reg(" << instr.Operands[i].Tmp.Idx << ") ";
-        } else if (instr.Operands[i].Type == TVMOperand::EType::Slot && instr.Operands[i].Slot.Idx >= 0) {
+        } else if (instr.GetOperandType(i) == TVMOperand::EType::Slot && instr.Operands[i].Slot.Idx >= 0) {
             os << "slot(" << instr.Operands[i].Slot.Idx << ") ";
-        } else if (instr.Operands[i].Type == TVMOperand::EType::Imm) {
+        } else if (instr.GetOperandType(i) == TVMOperand::EType::Imm) {
             os << "imm(" << instr.Operands[i].Imm.Value << ") ";
         }
     }

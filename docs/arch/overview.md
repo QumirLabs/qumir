@@ -211,6 +211,12 @@ The VM is a register-based bytecode interpreter. The IR is compiled to
 to locals and aligned register-file byte offsets to temporaries. IR temporary
 ids remain unchanged; only VM operands contain the assigned byte offsets.
 
+The instruction stream uses fixed 32-byte records. Operand kinds share a
+packed header while their values retain full 64-bit storage. This removes
+per-operand padding without adding a constant-pool lookup or narrowing literal
+values and addresses. The compiler sets each value together with its kind;
+execution reads kinds from the header and accesses values in place.
+
 Each invocation uses one aligned byte buffer for all registers, including
 128-bit integers. Existing scalar opcodes use eight-byte slots even for
 narrower types, while 128-bit slots use sixteen bytes with sixteen-byte
