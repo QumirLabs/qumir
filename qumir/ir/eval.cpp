@@ -1295,19 +1295,15 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             const int argCount = (int)Runtime.Args.size();
             assert(argCount <= (int)localArgs.size() && "too many arguments for callee");
 
-            const size_t savedRegsBytes = frame.Exec->RegisterFileSize;
-            const size_t oldSize = Runtime.Stack.size();
-            Runtime.Stack.resize(oldSize + savedRegsBytes);
-            if (savedRegsBytes != 0) {
-                std::memcpy(Runtime.Stack.data() + oldSize, Runtime.Regs.Data(), savedRegsBytes);
-            }
-            auto base = Runtime.Stack.size();
-
-            Runtime.Regs.Reset(calleeExec->RegisterFileSize, calleeExec->RegisterFileAlignment);
-            Runtime.Stack.resize(Runtime.Stack.size() + calleeExec->NumLocals, 0); // NumLocals is bytes
-            if (Runtime.Stack.size() > MaxStackSize) {
+            const auto base = Runtime.Stack.size();
+            const auto frameEnd = base + calleeExec->NumLocals;
+            // Caller registers remain in their own buffers, but still count
+            // toward the same stack limit as when they were saved on Stack.
+            if (frameEnd > MaxStackSize || Runtime.Regs.StackSize() > MaxStackSize - frameEnd) {
                 throw std::runtime_error("Stack overflow in interpreter");
             }
+            Runtime.Regs.PushFrame(calleeExec->RegisterFileSize, calleeExec->RegisterFileAlignment);
+            Runtime.Stack.resize(frameEnd, 0);
 
             copyArgsToFrame(Runtime.Stack.data() + base, calleeExec,
                             Runtime.Args.data(), argCount);
@@ -1375,13 +1371,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 }
 
                 Runtime.Stack.resize(base);
-                // restore saved caller regs
-                Runtime.Regs.Reset(callerFrame.Exec->RegisterFileSize, callerFrame.Exec->RegisterFileAlignment);
-                const size_t savedRegsBytes = callerFrame.Exec->RegisterFileSize;
-                const size_t savedRegsStart = base - savedRegsBytes;
-                if (savedRegsBytes != 0) {
-                    std::memcpy(Runtime.Regs.Data(), Runtime.Stack.data() + savedRegsStart, savedRegsBytes);
-                }
+                Runtime.Regs.PopFrame();
                 if (link.CallerDst >= 0 && link.CalleeIsCoroutine) {
                     ITypeErasedFuture* completed = nullptr;
                     if (link.CalleeReturnsVoid) {
@@ -1397,7 +1387,6 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 } else if (retVal.has_value() && link.CallerDst >= 0) {
                     Runtime.Regs.Get<int64_t>(link.CallerDst) = materializedRet.value_or(*retVal);
                 }
-                Runtime.Stack.resize(savedRegsStart);
                 retVal = std::nullopt;
                 retIs128 = false;
                 retVecSize = 0;

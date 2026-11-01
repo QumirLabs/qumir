@@ -281,6 +281,25 @@ TEST(VMPrepared, ExternExceptionBecomesError) {
     EXPECT_EQ(instance.Interpreter.Invoke(entry, {7}), 7);
 }
 
+TEST(VMPrepared, RecursiveFramesSurviveExceptionsAndRepeatedInvocations) {
+    TProgram program(R"((block
+      (fun qumir_prepared_throw ((var x i64)) -> i64 (attrs extern) (block))
+      (fun recurse ((var n i64) (var leaf i64)) -> i64
+        (block
+          (var saved = (+ (* n 3) 1))
+          (if (== n 0)
+            (return (call qumir_prepared_throw leaf))
+            (return (+ saved (call recurse (- n 1) leaf))))))))");
+    auto& entry = program.Get("recurse");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    for (int64_t depth : {40, 2, 48, 0}) {
+        EXPECT_FALSE(instance.Interpreter.Invoke(entry, {depth, -1}));
+        EXPECT_EQ(instance.Interpreter.Invoke(entry, {depth, 7}), 3 * depth * (depth + 1) / 2 + depth + 7);
+    }
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

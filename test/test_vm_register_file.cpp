@@ -286,6 +286,43 @@ TEST(VMRegisterFile, AlignedTypedAccessAndBufferGrowth) {
     EXPECT_EQ(values.Get<int64_t>(0), 0);
 }
 
+TEST(VMRegisterFile, NestedFramesKeepAddressesAndReuseClearedStorage) {
+    TRegisterFile registers;
+    registers.Reset(16, 16);
+    auto* root = registers.Data();
+    registers.Get<__int128_t>(0) = static_cast<__int128_t>(1) << 100;
+    std::vector<uint8_t*> addresses{root};
+    for (int depth = 1; depth <= 40; ++depth) {
+        registers.PushFrame(64, 64);
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(registers.Data()) % 64, 0);
+        EXPECT_EQ(registers.Get<int64_t>(0), 0);
+        registers.Get<int64_t>(0) = depth;
+        addresses.push_back(registers.Data());
+    }
+    EXPECT_EQ(registers.StackSize(), 16 + 40 * 64);
+    for (int depth = 40; depth > 0; --depth) {
+        EXPECT_EQ(registers.Data(), addresses[depth]);
+        EXPECT_EQ(registers.Get<int64_t>(0), depth);
+        registers.PopFrame();
+    }
+    EXPECT_EQ(registers.Data(), root);
+    EXPECT_EQ(registers.Get<__int128_t>(0), static_cast<__int128_t>(1) << 100);
+    EXPECT_EQ(registers.StackSize(), 16);
+
+    registers.PushFrame(64, 64);
+    EXPECT_EQ(registers.Data(), addresses[1]);
+    EXPECT_EQ(registers.Get<int64_t>(0), 0);
+    registers.PushFrame(0, 8);
+    EXPECT_EQ(registers.Size(), 0);
+    registers.PopFrame();
+    EXPECT_EQ(registers.Size(), 64);
+    // Reset also abandons frames left active by an exception or a suspended Invoke.
+    registers.Reset(16, 16);
+    EXPECT_EQ(registers.Data(), root);
+    EXPECT_EQ(registers.StackSize(), 16);
+    EXPECT_EQ(registers.Get<__int128_t>(0), 0);
+}
+
 TEST(VMRegisterFile, SparseIRIdsBecomeAlignedByteOffsets) {
     TVMTest vm;
     const int i64 = vm.Module.Types.I(EKind::I64);

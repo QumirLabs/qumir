@@ -218,13 +218,20 @@ alignment. An `f32` value occupies the low four bytes of its slot and has
 its own scalar opcodes (`FAdd32`, `FCmpLT32`, `FExt32`, ...); an `f32`
 immediate carries the float bits in the low four bytes of `Imm.Value`.
 Struct registers hold addresses of storage in the call frame.
-Function calls save and restore the complete register file as one byte range.
+Each active call keeps its registers in a separate aligned buffer. A call
+selects a zeroed callee buffer; returning selects the caller's existing buffer
+without copying or clearing its registers. Buffers are reused by call depth,
+and growing the buffer descriptors does not move register storage. This makes
+call/return independent of the caller's register-file size, at the cost of
+retaining each depth's peak buffer capacity until the interpreter is destroyed.
+Registers of suspended callers still count toward the VM stack limit.
 
 ### 6.1 Execution model
 
-Each function call creates a stack frame (a heap-allocated byte buffer).
-The interpreter loop dispatches on `EVMOp` enum values.  Frames are linked
-(parent frame pointer stored at offset 0).
+Function locals live in a byte stack separate from registers. An explicit
+call stack retains each caller's continuation; returning releases the callee's
+local range and reactivates the caller's registers. The interpreter loop
+dispatches on `EVMOp` enum values.
 
 ### 6.1.1 Prepared program and instances
 
