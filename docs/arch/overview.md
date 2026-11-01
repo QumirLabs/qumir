@@ -211,6 +211,23 @@ The VM is a register-based bytecode interpreter. The IR is compiled to
 to locals and aligned register-file byte offsets to temporaries. IR temporary
 ids remain unchanged; only VM operands contain the assigned byte offsets.
 
+Before eliminating SSA, the VM computes liveness to a fixed point over the
+control-flow graph. Phi inputs are live on their incoming edges rather than
+in every predecessor. A conflict graph then assigns non-overlapping lifetimes
+to reusable slots of the same size, respecting alignment. This is deterministic
+greedy placement, not a minimum-size guarantee. Ordinary instruction results
+do not share slots with their inputs: vector handlers can write early lanes
+before reading later lanes or a broadcast input. Struct addresses retain unique
+slots because return materialization associates each with a specific frame
+object.
+
+Phi elimination uses that placement to omit copies between identical slots,
+order the remaining parallel copies, and break cycles with a scratch slot per
+size/alignment class. Conditional edges carrying copies are split so another
+successor cannot observe those writes. Compilation lowers a private copy of
+the function: removing a copy because two values share a slot must not erase
+SSA semantics needed by a later compilation with another placement.
+
 Each invocation uses one aligned byte buffer for all registers, including
 128-bit integers. Existing scalar opcodes use eight-byte slots even for
 narrower types, while 128-bit slots use sixteen bytes with sixteen-byte
