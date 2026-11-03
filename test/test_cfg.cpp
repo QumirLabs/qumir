@@ -10,11 +10,13 @@
 #include <qumir/ir/passes/transforms/de_ssa.h>
 
 #include <memory>
+#include <set>
 #include <sstream>
 
 using namespace NQumir;
 using namespace NQumir::NIR;
 using namespace NQumir::NIR::NPasses;
+using namespace NQumir::NIR::NLiterals;
 
 namespace {
 
@@ -395,6 +397,62 @@ std::string s = R"(
     PromoteLocalsToSSA(function, module);
 
     function.Print(std::cout, module);
+}
+
+TEST(CfgTest, PromoteLocalsToSSASelfReferencingPhiInUnreachableLoop) {
+    // A loop that cannot be entered from the entry gives a phi made only of its own value.
+    NIR::TModule module;
+    NIR::TBuilder builder(module);
+    const int i64 = module.Types.I(EKind::I64);
+    const int i1 = module.Types.I(EKind::I1);
+    builder.NewFunction("f", {}, 0);
+    builder.SetReturnType(i64);
+    builder.SetType(TLocal{0}, i64, {});
+    const TLabel join = builder.NewLabel(), exit = builder.NewLabel(), loop = builder.NewLabel();
+    builder.Emit0("jmp"_op, {join});
+    builder.NewBlock(join);
+    auto value = builder.Emit1("load"_op, {TLocal{0}});
+    builder.SetType(value, i64);
+    builder.Emit0("ret"_op, {value});
+    builder.NewBlock(exit);
+    auto exitCond = builder.Emit1("=="_op, {TImm{0, i64}, TImm{0, i64}});
+    builder.SetType(exitCond, i1);
+    builder.Emit0("cmp"_op, {exitCond, join, loop});
+    builder.NewBlock(loop);
+    auto loopCond = builder.Emit1("=="_op, {TImm{0, i64}, TImm{0, i64}});
+    builder.SetType(loopCond, i1);
+    builder.Emit0("cmp"_op, {loopCond, exit, loop});
+
+    auto& function = module.Functions.front();
+    BuildCfg(function);
+    PromoteLocalsToSSA(function, module);
+
+    // Every used temporary must be defined.
+    std::set<int> defined;
+    for (const auto& block : function.Blocks) {
+        for (const auto& phi : block.Phis) {
+            defined.insert(phi.Dest.Idx);
+        }
+        for (const auto& instr : block.Instrs) {
+            defined.insert(instr.Dest.Idx);
+        }
+    }
+    auto check = [&](const TOperand& operand) {
+        EXPECT_TRUE(operand.Type != TOperand::EType::Tmp || defined.contains(operand.Tmp.Idx))
+            << "tmp " << operand.Tmp.Idx;
+    };
+    for (const auto& block : function.Blocks) {
+        for (const auto& phi : block.Phis) {
+            for (const auto& operand : phi.Operands) {
+                check(operand);
+            }
+        }
+        for (const auto& instr : block.Instrs) {
+            for (int i = 0; i < instr.OperandCount; ++i) {
+                check(instr.Operands[i]);
+            }
+        }
+    }
 }
 
 int main(int argc, char** argv) {

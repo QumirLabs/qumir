@@ -236,9 +236,11 @@ struct TSSABuilder {
             if (op.Type == TOperand::EType::Label) {
                 continue;
             }
+            if (op == TOperand{phi.Dest}) {
+                continue;
+            }
             if (same.has_value()) {
-                if (op == *same || op == TOperand{phi.Dest}) {
-                    // ok
+                if (op == *same) {
                     continue;
                 } else {
                     // not trivial
