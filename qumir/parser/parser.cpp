@@ -557,6 +557,13 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
             next = stream.Next();
         }
         // else: no signature (empty parameter list)
+
+        // "алг снаружи от линейно": the name ended at a keyword.
+        bool headerKeyword = isKeyword(next, EKeyword::Begin) ||
+            isKeyword(next, EKeyword::AssertBefore) || isKeyword(next, EKeyword::AssertAfter);
+        if (next.Type == TToken::Keyword && !headerKeyword) {
+            co_return TError(next.Location, "`" + next.RawValue + "' - ключевое слово, его нельзя использовать в имени алгоритма");
+        }
     }
 
     // 1. optional дано EKeyword::AssertBefore
