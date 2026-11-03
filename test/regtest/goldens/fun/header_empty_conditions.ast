@@ -1,0 +1,10 @@
+(block
+  (fun <main> ()
+    (block
+      (call ф 1)
+      (cleanup-exit (return))))
+  (fun ф ((var x <i64 (readonly)>))
+    (block
+      (block
+        (call output_string "ok"))
+      (cleanup-exit (return)))))

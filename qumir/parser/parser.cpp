@@ -569,7 +569,13 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         next = stream.Next();
     }
     if (isKeyword(next, EKeyword::AssertBefore)) {
-        assertBefore = std::make_shared<TAssertStmt>(next.Location, co_await expr(context));
+        const auto keywordLocation = next.Location;
+        next = stream.Next();
+        stream.Unget(next);
+        // Only a comment after the keyword: empty condition, nothing to assert.
+        if (!isOp(next, EOperator::Eol) && !isEof(next)) {
+            assertBefore = std::make_shared<TAssertStmt>(keywordLocation, co_await expr(context));
+        }
         next = stream.Next();
     }
     if (isOp(next, EOperator::Eol)) {
@@ -577,7 +583,13 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         next = stream.Next();
     }
     if (isKeyword(next, EKeyword::AssertAfter)) {
-        assertAfter = std::make_shared<TAssertStmt>(next.Location, co_await expr(context));
+        const auto keywordLocation = next.Location;
+        next = stream.Next();
+        stream.Unget(next);
+        // Only a comment after the keyword: empty condition, nothing to assert.
+        if (!isOp(next, EOperator::Eol) && !isEof(next)) {
+            assertAfter = std::make_shared<TAssertStmt>(keywordLocation, co_await expr(context));
+        }
         next = stream.Next();
     }
     if (isOp(next, EOperator::Eol)) {
