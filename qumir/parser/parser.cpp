@@ -1421,6 +1421,8 @@ TError unexpected(TWrappedTokenStream& stream) {
             hint = "'иначе' без соответствующего 'если' или 'выбор'";
         } else if (kw == EKeyword::Then) {
             hint = "'то' без соответствующего 'если'";
+        } else if (kw == EKeyword::While) {
+            hint = "цикл записывается как `нц пока ... кц'";
         }
     }
 
