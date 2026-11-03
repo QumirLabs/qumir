@@ -40,7 +40,8 @@ TRegisterSlot TRegisterAllocation::Reserve(int tmp, int size, int alignment) {
 TRegisterAllocation AllocateRegisters(
     const TFunction& function,
     const TTypeTable& types,
-    const std::vector<TLiveSet>& liveOut)
+    const std::vector<TLiveSet>& liveOut,
+    TRegisterAllocation allocation)
 {
     std::map<int, TLiveSet> conflicts, preferences;
     auto touch = [&](int tmp) {
@@ -104,8 +105,10 @@ TRegisterAllocation AllocateRegisters(
     std::sort(order.begin(), order.end(), [&](int a, int b) { return priority(a) < priority(b); });
 
     std::vector<TRegisterSlot> colors;
-    TRegisterAllocation allocation;
     for (int tmp : order) {
+        if (allocation.Slots.contains(tmp)) {
+            continue;
+        }
         const int typeId = function.GetTmpType(tmp);
         const auto shape = Shape(typeId, types);
         // Struct return metadata binds an offset to one specific frame object.

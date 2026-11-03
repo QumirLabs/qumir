@@ -67,7 +67,7 @@ public:
     }
 
 private:
-    void CompileUltraLow(const TFunction& function, NPasses::TRegisterAllocation& allocation, TExecFunc& out);
+    void CompileUltraLow(TFunction& function, TExecFunc& out);
     bool CompileVectorInstruction(const TFunction& function, const TInstr& instr, TVMInstr& out);
     void BindRegisters(
         const TFunction& function,

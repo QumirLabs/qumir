@@ -215,7 +215,9 @@ Before eliminating SSA, the VM computes liveness to a fixed point over the
 control-flow graph. Phi inputs are live on their incoming edges rather than
 in every predecessor. A conflict graph then assigns non-overlapping lifetimes
 to reusable slots of the same size, respecting alignment. This is deterministic
-greedy placement, not a minimum-size guarantee. Ordinary instruction results
+greedy placement, not a minimum-size guarantee. Parameter registers keep their
+`TExecFunc::Params` offsets and are not shared; the other slots follow them,
+and the window of a callee starts after all of them. Ordinary instruction results
 do not share slots with their inputs: vector handlers can write early lanes
 before reading later lanes or a broadcast input. Struct addresses retain unique
 slots because return materialization associates each with a specific frame

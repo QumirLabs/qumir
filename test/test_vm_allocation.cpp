@@ -146,6 +146,45 @@ TEST(VMAllocation, LongChainsReuseSlotsWithoutChangingVirtualIds) {
     EXPECT_EQ(function.Blocks[0].Instrs[1000].Dest.Idx, tmp.Idx);
 }
 
+TEST(VMAllocation, ParameterLoadsKeepTheirRegistersInPhiCopies) {
+    TModule module;
+    TBuilder builder(module);
+    const int type = module.Types.I(EKind::I64);
+    builder.NewFunction("pick", {TLocal{0}}, 0);
+    builder.SetType(TLocal{0}, type, {});
+    const TLabel add = builder.NewLabel();
+    const TLabel keep = builder.NewLabel();
+    const TLabel join = builder.NewLabel();
+    const auto param = builder.Emit1("load"_op, {TLocal{0}});
+    builder.SetType(param, type);
+    const auto small = builder.Emit1("<"_op, {param, TImm{10, type}});
+    builder.SetType(small, module.Types.I(EKind::I1));
+    builder.Emit0("cmp"_op, {small, add, keep});
+    builder.NewBlock(add);
+    const auto sum = builder.Emit1("+"_op, {param, TImm{100, type}});
+    builder.SetType(sum, type);
+    builder.Emit0("jmp"_op, {join});
+    builder.NewBlock(keep);
+    builder.Emit0("jmp"_op, {join});
+    builder.NewBlock(join);
+    const auto result = builder.Emit1("phi"_op, {sum, add, param, keep});
+    builder.SetType(result, type);
+    builder.Emit0("ret"_op, {result});
+    builder.SetReturnType(type);
+    TVMCompiler compiler(module);
+    std::ostringstream out;
+    std::istringstream in;
+    TInterpreter interpreter(module, compiler, out, in);
+    auto& function = module.Functions[0];
+    EXPECT_EQ(interpreter.EvalRaw(function, {3}, {}), 103);
+    EXPECT_EQ(interpreter.EvalRaw(function, {41}, {}), 41);
+    // The load is the parameter register; nothing else may share it.
+    const auto& exec = *function.Exec;
+    EXPECT_EQ(exec.TmpByteOffsets.at(param.Idx), exec.Params.Offsets[0]);
+    EXPECT_GE(exec.TmpByteOffsets.at(sum.Idx), exec.Params.Bytes);
+    EXPECT_GE(exec.TmpByteOffsets.at(result.Idx), exec.Params.Bytes);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
