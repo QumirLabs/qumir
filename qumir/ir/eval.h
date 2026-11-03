@@ -89,6 +89,9 @@ private:
 
     template<bool EnableDebug = false>
     TFuture<std::optional<int64_t>> DoEvalRawAsync(TFunction& function, std::vector<int64_t> args, TOptions options);
+    template<bool EnableDebug>
+    bool RunLoop(std::optional<int64_t>& retVal);
+    void CopyArgsToFrame(char* frameBase, const TExecFunc* exec, const int64_t* srcArgs, int srcCount);
     size_t ProcessAsyncRuntimeEvents();
 
     std::ostream& Out;

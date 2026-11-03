@@ -1,0 +1,30 @@
+(block
+  (fun entry () -> <future i64>
+    (block
+      (var знач i64)
+      (var a i64)
+      (= a 1)
+      (= знач (+ (* (await (call level1 a)) 10) a))
+      (cleanup-exit (return знач))))
+  (fun level1 ((var x <i64 (readonly)>)) -> <future i64>
+    (block
+      (var знач i64)
+      (var b i64)
+      (= b (+ x 1))
+      (= знач (+ (* (await (call level2 b)) 10) b))
+      (cleanup-exit (return знач))))
+  (fun level2 ((var y <i64 (readonly)>)) -> <future i64>
+    (block
+      (var знач i64)
+      (var c i64)
+      (= c (+ y 1))
+      (= знач (+ (* (await (call level3 c)) 10) c))
+      (cleanup-exit (return знач))))
+  (fun level3 ((var z <i64 (readonly)>)) -> <future i64>
+    (block
+      (var знач i64)
+      (var d i64)
+      (= d (+ z 1))
+      (await (call ждать 0))
+      (= знач d)
+      (cleanup-exit (return знач)))))
