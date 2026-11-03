@@ -1,0 +1,24 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    arg imm(1,i64) 
+    call ф 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function ф (local(0)) { ; void
+  block {
+    label: label(0)
+    arg imm(1,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
