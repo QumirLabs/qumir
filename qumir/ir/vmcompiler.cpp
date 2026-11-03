@@ -144,9 +144,11 @@ TParamLayout LayoutParams(const TTypeTable& types, const TFunction& function) {
         layout.Kinds.push_back(kind);
         layout.Offsets.push_back(offset);
         // The register of a struct parameter holds the address of the caller's struct.
-        layout.Bytes = offset + ((kind == EArgKind::Struct)
-            ? 8
-            : std::max(8, size));
+        int registerBytes = std::max(8, size);
+        if (kind == EArgKind::Struct) {
+            registerBytes = 8;
+        }
+        layout.Bytes = offset + registerBytes;
         layout.Alignment = std::max(layout.Alignment, alignment);
     }
     return layout;
@@ -780,8 +782,13 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
     auto outgoingParam = [&](const TBlock& block, size_t index, size_t position) -> std::optional<std::pair<int, int>> {
         for (size_t i = index + 1; i < block.Instrs.size(); ++i) {
             const auto& next = block.Instrs[i];
-            if ((next.Op != "call"_op && next.Op != "await"_op) || next.Operands[0].Type != TOperand::EType::Imm) {
+            if (next.Op == "arg"_op) {
                 continue;
+            }
+            // Lowering emits the args right before their call; anything else would misattribute them.
+            assert((next.Op == "call"_op || next.Op == "await"_op) && "arg must be followed by args and a call");
+            if (next.Operands[0].Type != TOperand::EType::Imm) {
+                return std::nullopt;
             }
             auto callee = Module.SymIdToFuncIdx.find(next.Operands[0].Imm.Value);
             if (callee == Module.SymIdToFuncIdx.end()) {

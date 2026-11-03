@@ -524,6 +524,33 @@ TEST(VMRegisterFile, ParametersAreRegistersAndArgumentsAreWrittenInPlace) {
     EXPECT_EQ(callerExec.RegisterFileSize, callWindow + 40);
 }
 
+TEST(VMRegisterFile, ParametersStayInTheFrameWithDebugInfo) {
+    TVMTest vm;
+    const int i64 = vm.Module.Types.I(EKind::I64);
+    const int callee = vm.Builder.NewFunction("callee", {TLocal{0}, TLocal{1}}, 1);
+    vm.Builder.SetType(TLocal{0}, i64, {});
+    vm.Builder.SetType(TLocal{1}, i64, {});
+    vm.Module.Functions[callee].LocalDebugInfo.resize(2);
+    vm.Module.Functions[callee].LocalDebugInfo[0].Name = "a";
+    vm.Module.Functions[callee].LocalDebugInfo[1].Name = "b";
+    const auto a = vm.Emit("load"_op, {TLocal{0}}, i64);
+    const auto b = vm.Emit("load"_op, {TLocal{1}}, i64);
+    vm.Builder.Emit0("ret"_op, {vm.Emit('-'_op, {a, b}, i64)});
+    vm.Builder.SetReturnType(i64);
+    const int caller = vm.Builder.NewFunction("caller", {}, 2);
+    vm.Builder.Emit0("arg"_op, {TImm{9, i64}});
+    vm.Builder.Emit0("arg"_op, {TImm{4, i64}});
+    vm.Builder.Emit0("ret"_op, {vm.Emit("call"_op, {TImm{1}}, i64)});
+    vm.Builder.SetReturnType(i64);
+
+    EXPECT_EQ(vm.Interpreter.EvalRaw(vm.Module.Functions[caller], {}, {}), 5);
+    bool loadsFromFrame = false;
+    for (const auto& instr : vm.Module.Functions[callee].Exec->VMCode) {
+        loadsFromFrame = loadsFromFrame || instr.Op == EVMOp::Load;
+    }
+    EXPECT_TRUE(loadsFromFrame);
+}
+
 TEST(VMRegisterFile, CallWithWrongArgumentCountIsRejectedAtCompile) {
     TVMTest vm;
     const int i64 = vm.Module.Types.I(EKind::I64);
