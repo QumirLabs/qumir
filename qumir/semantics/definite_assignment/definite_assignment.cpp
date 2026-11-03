@@ -152,13 +152,22 @@ TDefiniteAssignmentChecker::CheckExpr(
         return CheckExpr(maybeFieldAccess.Cast()->Object, scopeId, inAssigned);
     }
 
+    // The array itself is always assigned, but its indices still read variables.
     if (auto maybeIndex = TMaybeNode<TIndexExpr>(expr)) {
         if (auto maybeArrayType = TMaybeType<TArrayType>(maybeIndex.Cast()->Collection->Type)) {
-            return inAssigned;
+            return CheckExpr(maybeIndex.Cast()->Index, scopeId, inAssigned);
         }
     }
     if (auto multiIndex = TMaybeNode<TMultiIndexExpr>(expr)) {
-        return inAssigned;
+        TAssignedSet state = inAssigned;
+        for (auto& index : multiIndex.Cast()->Indices) {
+            auto indexRes = CheckExpr(index, scopeId, state);
+            if (!indexRes) {
+                return indexRes;
+            }
+            state = std::move(*indexRes);
+        }
+        return state;
     }
     if (auto maybeCall = TMaybeNode<TCallExpr>(expr)) {
         return CheckCall(maybeCall.Cast(), scopeId, inAssigned);
