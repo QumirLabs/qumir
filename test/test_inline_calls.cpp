@@ -336,11 +336,21 @@ TEST(InlineCalls, LargeBodyStaysCall) {
     EXPECT_EQ(result.value_or(-1), 1 + 399 * 400 / 2);
 }
 
+TEST(InlineCalls, NoLocalsLoop) {
+    const std::string source = R"((block
+      (fun main () -> i64 (block (call spin) (return 7)))
+      (fun spin () (attrs inline) (block (while (call cond) (call tick))))
+      (fun cond () -> bool (block (return #f)))
+      (fun tick () (block))))";
+    EXPECT_EQ(RunVm(source, true), 7);
+}
+
 TEST(InlineCalls, KeepsCalleeLocations) {
     TProgram program;
     Lower(program, Calls, false, {.EmitDebugInfo = true});
     std::set<int> clampLines;
-    for (const auto& block : program.Module.GetFunctionByName("clamp")->Blocks) {
+    const auto* clamp = program.Module.GetFunctionByName("clamp");
+    for (const auto& block : clamp->Blocks) {
         for (const auto& info : block.InstrDebugInfo) {
             clampLines.insert(info.Location.Line);
         }
@@ -355,6 +365,26 @@ TEST(InlineCalls, KeepsCalleeLocations) {
         }
     }
     EXPECT_GT(inlined, 0);
+
+    // The scope chain of every callee instruction is the same chain in the caller.
+    auto chain = [](const TFunction& function, int scope) {
+        std::vector<int> result;
+        while (scope >= 0 && scope < (int)function.ScopeParents.size() && result.size() < 100) {
+            result.push_back(scope);
+            scope = function.ScopeParents[scope];
+        }
+        return result;
+    };
+    const auto& caller = *program.Module.GetFunctionByName("main");
+    size_t longest = 0;
+    for (const auto& block : clamp->Blocks) {
+        for (const auto& info : block.InstrDebugInfo) {
+            const auto expected = chain(*clamp, info.ScopeId);
+            EXPECT_EQ(chain(caller, info.ScopeId), expected);
+            longest = std::max(longest, expected.size());
+        }
+    }
+    EXPECT_GT(longest, 1);
 }
 
 int main(int argc, char** argv) {

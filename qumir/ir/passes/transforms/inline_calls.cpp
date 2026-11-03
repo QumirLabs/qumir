@@ -1,7 +1,6 @@
 #include "inline_calls.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <vector>
@@ -87,14 +86,16 @@ std::vector<bool> LocalsReadBeforeStore(const TFunction& function) {
         return instr.Op == "stre"_op && instr.Operands[0].Type == TOperand::EType::Local;
     };
 
-    // Locals stored on every path to the start of a block; empty if unreached.
+    // Locals stored on every path to the start of a block, if the block is reached.
     std::vector<std::vector<bool>> storedAtStart(function.Blocks.size());
+    std::vector<bool> reached(function.Blocks.size(), false);
     std::vector<bool> entry(localCount, false);
     for (const auto& arg : function.ArgLocals) {
         entry[arg.Idx] = true;
     }
     const size_t entryBlock = blockByLabel[0];
     storedAtStart[entryBlock] = std::move(entry);
+    reached[entryBlock] = true;
     std::vector<size_t> pending{entryBlock};
     while (!pending.empty()) {
         const size_t blockIndex = pending.back();
@@ -107,7 +108,8 @@ std::vector<bool> LocalsReadBeforeStore(const TFunction& function) {
         }
         for (auto label : Successors(function.Blocks[blockIndex])) {
             auto& next = storedAtStart[blockByLabel[label.Idx]];
-            if (next.empty()) {
+            if (!reached[blockByLabel[label.Idx]]) {
+                reached[blockByLabel[label.Idx]] = true;
                 next = stored;
                 pending.push_back(blockByLabel[label.Idx]);
                 continue;
@@ -128,7 +130,7 @@ std::vector<bool> LocalsReadBeforeStore(const TFunction& function) {
     std::vector<bool> result(localCount, false);
     for (size_t blockIndex = 0; blockIndex < function.Blocks.size(); ++blockIndex) {
         auto stored = storedAtStart[blockIndex];
-        if (stored.empty()) {
+        if (!reached[blockIndex]) {
             continue;
         }
         for (const auto& instr : function.Blocks[blockIndex].Instrs) {
@@ -285,11 +287,8 @@ private:
         }
     }
 
-    // Splits the block at the call: the head stores the arguments into copies of
-    // the callee's parameters and jumps to its copied entry, every copied `ret`
-    // stores the result and jumps to the tail. The copies and the tail follow the
-    // head, since LLVM codegen needs definitions before uses in block order.
-    // Returns the tail's block index.
+    // Splits the block at the call: the head stores the arguments and jumps to the copied
+    // callee, every copied `ret` jumps to the tail. Returns the tail's block index.
     size_t InlineCall(TFunction& caller, size_t blockIndex, size_t callIndex, int calleeIndex) {
         const auto& callee = Module_.Functions[calleeIndex];
         TBlock block = std::move(caller.Blocks[blockIndex]);
@@ -305,6 +304,16 @@ private:
                 caller.LocalDebugInfo.end(),
                 callee.LocalDebugInfo.begin(),
                 callee.LocalDebugInfo.end());
+        }
+        // Scope ids are module-wide, so the callee's scope chain joins the caller's as is.
+        // Debug points keep the callee's function: its enter/leave points make a frame.
+        if (caller.ScopeParents.size() < callee.ScopeParents.size()) {
+            caller.ScopeParents.resize(callee.ScopeParents.size(), -1);
+        }
+        for (size_t i = 0; i < callee.ScopeParents.size(); ++i) {
+            if (caller.ScopeParents[i] < 0) {
+                caller.ScopeParents[i] = callee.ScopeParents[i];
+            }
         }
         const TLocal result{(int)caller.LocalTypes.size()};
         if (call.Dest.Idx >= 0) {
