@@ -226,7 +226,9 @@ so a register keeps its address while its call is active, and call/return
 cost does not depend on the caller's register-file size. The windows of active
 calls count toward the VM stack limit together with their locals; exceeding it
 is a `Stack overflow in interpreter` error, after which the next invocation
-starts from an empty stack. A call copies each argument into the callee's
+starts from an empty stack. Each interpreter reserves a second 128 MiB virtual
+area next to `Stack.reserve`, so virtual size per instance doubles under strict
+overcommit or `RLIMIT_AS`. A call copies each argument into the callee's
 frame by a layout the compiler computes once per function (`TExecFunc::ArgKinds`),
 so calls do no type-table lookups.
 

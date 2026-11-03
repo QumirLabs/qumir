@@ -416,8 +416,8 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         .Name = function.Name,
     });
 
-    static constexpr size_t MaxStackSize = 128 * 1024 * 1024; // 128M
-    static_assert(MaxStackSize <= TRegisterFile::ReservedBytes);
+    // The register windows share this limit, so their reservation is the same size.
+    static constexpr size_t MaxStackSize = TRegisterFile::ReservedBytes;
 
     Runtime.Regs.Reset(execFunc->RegisterFileSize, execFunc->RegisterFileAlignment);
     Runtime.Stack.reserve(MaxStackSize);

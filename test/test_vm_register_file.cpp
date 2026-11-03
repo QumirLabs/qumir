@@ -337,6 +337,17 @@ TEST(VMRegisterFile, WindowBeyondTheReservationThrows) {
     EXPECT_EQ(registers.Size(), 8);
 }
 
+TEST(VMRegisterFile, WideRegisterOverCallerWindowOfEightByteMultiple) {
+    TRegisterFile registers;
+    registers.Reset(24, 8);
+    const size_t base = registers.Push(32, 16);
+    EXPECT_EQ(base, 32);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(registers.Data()) % 16, 0);
+    const __int128_t value = (static_cast<__int128_t>(0x1234) << 100) | 0x5678;
+    registers.Get<__int128_t>(16) = value;
+    EXPECT_EQ(registers.Get<__int128_t>(16), value);
+}
+
 TEST(VMRegisterFile, SparseIRIdsBecomeAlignedByteOffsets) {
     TVMTest vm;
     const int i64 = vm.Module.Types.I(EKind::I64);
