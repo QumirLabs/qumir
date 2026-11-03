@@ -51,6 +51,88 @@ std::string BuildIR(NAst::TTokenStream& ts, NIR::TModule& module, bool emitDebug
     return out.str();
 }
 
+// PromoteLocalsToSSA must not leave a use of a phi it removed as trivial.
+void ExpectDefinedTmps(const NIR::TFunction& function) {
+    std::set<int> defined;
+    for (const auto& block : function.Blocks) {
+        for (const auto& phi : block.Phis) {
+            defined.insert(phi.Dest.Idx);
+        }
+        for (const auto& instr : block.Instrs) {
+            defined.insert(instr.Dest.Idx);
+        }
+    }
+    auto check = [&](const NIR::TOperand& operand) {
+        EXPECT_TRUE(operand.Type != NIR::TOperand::EType::Tmp || defined.contains(operand.Tmp.Idx))
+            << function.Name << ": tmp " << operand.Tmp.Idx;
+    };
+    for (const auto& block : function.Blocks) {
+        for (const auto& phi : block.Phis) {
+            for (const auto& operand : phi.Operands) {
+                check(operand);
+            }
+        }
+        for (const auto& instr : block.Instrs) {
+            for (int i = 0; i < instr.OperandCount; ++i) {
+                check(instr.Operands[i]);
+            }
+        }
+    }
+}
+
+// Emits straight-line IR over i64 locals into the current block of `Builder`.
+struct TLocalsFunction {
+    TLocalsFunction(int localCount, int argCount = 0) {
+        std::vector<TLocal> args;
+        for (int i = 0; i < argCount; ++i) {
+            args.push_back(TLocal{i});
+        }
+        Builder.NewFunction("f", args, 0);
+        Builder.SetReturnType(I64);
+        for (int i = 0; i < localCount; ++i) {
+            Builder.SetType(TLocal{i}, I64, {});
+        }
+    }
+
+    TTmp Load(int local) {
+        auto tmp = Builder.Emit1("load"_op, {TLocal{local}});
+        Builder.SetType(tmp, I64);
+        return tmp;
+    }
+
+    TTmp Op(TOp op, TOperand left, TOperand right, bool isCompare = false) {
+        auto tmp = Builder.Emit1(op, {left, right});
+        Builder.SetType(tmp, isCompare ? I1 : I64);
+        return tmp;
+    }
+
+    void Store(int local, TOperand value) {
+        Builder.Emit0("stre"_op, {TLocal{local}, value});
+    }
+
+    TImm Imm(int64_t value) const {
+        return TImm{value, I64};
+    }
+
+    // Starts a block with a preallocated label.
+    void Begin(TLabel label) {
+        Builder.NewBlock(label);
+    }
+
+    void Jmp(TLabel label) {
+        Builder.Emit0("jmp"_op, {label});
+    }
+
+    void Cmp(TOperand cond, TLabel ifTrue, TLabel ifFalse) {
+        Builder.Emit0("cmp"_op, {cond, ifTrue, ifFalse});
+    }
+
+    NIR::TModule Module;
+    NIR::TBuilder Builder{Module};
+    const int I64 = Module.Types.I(EKind::I64);
+    const int I1 = Module.Types.I(EKind::I1);
+};
+
 } // namespace
 
 TEST(IRType, VectorInterningPreservesElementTypeAndCount) {
@@ -426,33 +508,134 @@ TEST(CfgTest, PromoteLocalsToSSASelfReferencingPhiInUnreachableLoop) {
     auto& function = module.Functions.front();
     BuildCfg(function);
     PromoteLocalsToSSA(function, module);
+    ExpectDefinedTmps(function);
+}
 
-    // Every used temporary must be defined.
-    std::set<int> defined;
-    for (const auto& block : function.Blocks) {
-        for (const auto& phi : block.Phis) {
-            defined.insert(phi.Dest.Idx);
-        }
-        for (const auto& instr : block.Instrs) {
-            defined.insert(instr.Dest.Idx);
-        }
-    }
-    auto check = [&](const TOperand& operand) {
-        EXPECT_TRUE(operand.Type != TOperand::EType::Tmp || defined.contains(operand.Tmp.Idx))
-            << "tmp " << operand.Tmp.Idx;
-    };
-    for (const auto& block : function.Blocks) {
-        for (const auto& phi : block.Phis) {
-            for (const auto& operand : phi.Operands) {
-                check(operand);
-            }
-        }
-        for (const auto& instr : block.Instrs) {
-            for (int i = 0; i < instr.OperandCount; ++i) {
-                check(instr.Operands[i]);
-            }
-        }
-    }
+TEST(CfgTest, PromoteLocalsToSSAExitFromNestedLoopsInsideLoop) {
+    // A search loop nested in an outer loop leaves both loops for the code after the search.
+    // Locals: 0 total, 1 row, 2 g, 3 probes, 4 m, 5 found.
+    TLocalsFunction f(6);
+    auto& b = f.Builder;
+    const TLabel outerCond = b.NewLabel(), outerBody = b.NewLabel(), probeCond = b.NewLabel();
+    const TLabel probeBody = b.NewLabel(), mCond = b.NewLabel(), mBody = b.NewLabel();
+    const TLabel mStep = b.NewLabel(), mEnd = b.NewLabel(), probeEnd = b.NewLabel();
+    const TLabel found = b.NewLabel(), after = b.NewLabel(), end = b.NewLabel();
+
+    f.Store(0, f.Imm(0));
+    f.Store(1, f.Imm(0));
+    f.Jmp(outerCond);
+
+    f.Begin(outerCond);
+    f.Cmp(f.Op("<"_op, f.Load(1), f.Imm(6), true), outerBody, end);
+
+    f.Begin(outerBody);
+    f.Store(2, f.Op("&"_op, f.Load(1), f.Imm(3)));
+    f.Store(3, f.Imm(0));
+    f.Jmp(probeCond);
+
+    f.Begin(probeCond);
+    f.Cmp(f.Op("<"_op, f.Load(3), f.Imm(4), true), probeBody, probeEnd);
+
+    f.Begin(probeBody);
+    f.Store(4, f.Op("+"_op, f.Load(2), f.Imm(1)));
+    f.Jmp(mCond);
+
+    f.Begin(mCond);
+    f.Cmp(f.Op("!="_op, f.Load(4), f.Imm(0), true), mBody, mEnd);
+
+    f.Begin(mBody);
+    f.Cmp(f.Op("=="_op, f.Op("+"_op, f.Load(2), f.Load(4)), f.Imm(3), true), found, mStep);
+
+    f.Begin(mStep);
+    f.Store(4, f.Op("-"_op, f.Load(4), f.Imm(1)));
+    f.Jmp(mCond);
+
+    f.Begin(mEnd);
+    f.Store(2, f.Op("&"_op, f.Op("+"_op, f.Load(2), f.Imm(1)), f.Imm(3)));
+    f.Store(3, f.Op("+"_op, f.Load(3), f.Imm(1)));
+    f.Jmp(probeCond);
+
+    f.Begin(found);
+    f.Store(5, f.Op("+"_op, f.Load(2), f.Load(4)));
+    f.Jmp(after);
+
+    f.Begin(probeEnd);
+    f.Store(5, f.Imm(-1));
+    f.Jmp(after);
+
+    f.Begin(after);
+    f.Store(0, f.Op("+"_op, f.Op("*"_op, f.Load(0), f.Imm(10)), f.Load(5)));
+    f.Store(1, f.Op("+"_op, f.Load(1), f.Imm(1)));
+    f.Jmp(outerCond);
+
+    f.Begin(end);
+    b.Emit0("ret"_op, {f.Load(0)});
+
+    auto& function = f.Module.Functions.front();
+    BuildCfg(function);
+    PromoteLocalsToSSA(function, f.Module);
+    ExpectDefinedTmps(function);
+}
+
+TEST(CfgTest, PromoteLocalsToSSATrivialPhisInsideLoop) {
+    // Two diamonds join a value in front of and inside a loop; some of their phis are trivial,
+    // and removing one leads to the phi that is being removed.
+    // Locals: 0 flag (argument), 1 shift, 2 capacity, 3 g, 4 probes, 5 step, 6 found.
+    TLocalsFunction f(7, 1);
+    auto& b = f.Builder;
+    const TLabel shiftA = b.NewLabel(), shiftB = b.NewLabel(), shiftJoin = b.NewLabel();
+    const TLabel cond = b.NewLabel(), body = b.NewLabel(), stepA = b.NewLabel(), stepB = b.NewLabel();
+    const TLabel stepJoin = b.NewLabel(), hit = b.NewLabel(), next = b.NewLabel(), end = b.NewLabel();
+
+    f.Cmp(f.Op("=="_op, f.Load(0), f.Imm(2), true), shiftA, shiftB);
+
+    f.Begin(shiftA);
+    f.Store(1, f.Imm(4));
+    f.Jmp(shiftJoin);
+
+    f.Begin(shiftB);
+    f.Store(1, f.Imm(3));
+    f.Jmp(shiftJoin);
+
+    f.Begin(shiftJoin);
+    f.Store(2, f.Imm(64));
+    f.Store(3, f.Op("&"_op, f.Op(">>"_op, f.Load(2), f.Load(1)), f.Imm(7)));
+    f.Store(4, f.Imm(0));
+    f.Jmp(cond);
+
+    f.Begin(cond);
+    f.Cmp(f.Op("<"_op, f.Load(4), f.Load(2), true), body, end);
+
+    f.Begin(body);
+    f.Cmp(f.Op("=="_op, f.Load(0), f.Imm(2), true), stepA, stepB);
+
+    f.Begin(stepA);
+    f.Store(5, f.Imm(4));
+    f.Jmp(stepJoin);
+
+    f.Begin(stepB);
+    f.Store(5, f.Imm(3));
+    f.Jmp(stepJoin);
+
+    f.Begin(stepJoin);
+    f.Store(6, f.Op("<<"_op, f.Load(3), f.Load(5)));
+    f.Cmp(f.Op("!="_op, f.Op("&"_op, f.Load(6), f.Imm(64)), f.Imm(0), true), hit, next);
+
+    f.Begin(hit);
+    b.Emit0("ret"_op, {f.Op("+"_op, f.Load(6), f.Load(1))});
+
+    f.Begin(next);
+    f.Store(3, f.Op("&"_op, f.Op("+"_op, f.Load(3), f.Imm(1)), f.Imm(7)));
+    f.Store(4, f.Op("+"_op, f.Load(4), f.Imm(1)));
+    f.Jmp(cond);
+
+    f.Begin(end);
+    b.Emit0("ret"_op, {f.Imm(-1)});
+
+    auto& function = f.Module.Functions.front();
+    BuildCfg(function);
+    PromoteLocalsToSSA(function, f.Module);
+    ExpectDefinedTmps(function);
 }
 
 TEST(CfgTest, PromoteLocalsToSSAUnreachableSinglePredecessorCycles) {

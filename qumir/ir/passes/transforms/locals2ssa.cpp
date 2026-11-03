@@ -161,6 +161,18 @@ struct TSSABuilder {
         return &block.Phis.emplace_back(instr);
     }
 
+    // Follows removed trivial phis to the value that replaced them.
+    TOperand Resolve(TOperand value) const {
+        while (value.Type == TOperand::EType::Tmp) {
+            auto it = RemovedPhis.find(value.Tmp.Idx);
+            if (it == RemovedPhis.end()) {
+                break;
+            }
+            value = it->second;
+        }
+        return value;
+    }
+
     std::optional<TOperand> MaybeCurrent(int localIdx, TLabel blockLabel) {
         auto it = CurrentDef.find(localIdx);
         if (it != CurrentDef.end()) {
@@ -283,6 +295,11 @@ struct TSSABuilder {
             }
         }
 
+        // Removed before its users: a user that becomes trivial can lead back
+        // here, and `same` itself can be removed on the way.
+        RemovedPhis[phi.Dest.Idx] = *same;
+        phi.Clear();
+
         // Try to recursively remove all phi users, which might have become trivial
         for (auto* use : phiUsers) {
             if (use == &phi) {
@@ -292,8 +309,7 @@ struct TSSABuilder {
                 tryRemoveTrivialPhi(*use);
             }
         }
-        phi.Clear();
-        return *same;
+        return Resolve(*same);
     }
 
     // TODO: optimize by caching users per tmp
@@ -438,6 +454,8 @@ struct TSSABuilder {
     std::vector<std::pair<TOperand, TOperand>> GlobalPendingReplacements;
     // Locals that are safe to promote (no address taken)
     std::vector<char> LocalPromotable;
+    // Removed trivial phi -> the operand that replaced it
+    std::unordered_map<int, TOperand> RemovedPhis;
 };
 
 } // anonymous namespace
