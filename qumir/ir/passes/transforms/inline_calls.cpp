@@ -18,19 +18,6 @@ namespace {
 // Nested inline functions multiply their size; a larger body stays a call.
 constexpr size_t MaxInlineInstructions = 1000;
 
-// Passes index blocks by label, so a copied block must take the next free label.
-bool HasDenseLabels(const TFunction& function) {
-    std::vector<bool> seen(function.Blocks.size(), false);
-    for (const auto& block : function.Blocks) {
-        const int label = block.Label.Idx;
-        if (label < 0 || label >= (int)seen.size() || seen[label]) {
-            return false;
-        }
-        seen[label] = true;
-    }
-    return true;
-}
-
 TInstrDebugInfo DebugInfoAt(const TBlock& block, size_t index) {
     if (index < block.InstrDebugInfo.size()) {
         return block.InstrDebugInfo[index];
@@ -177,7 +164,7 @@ private:
         }
         // The head becomes a new predecessor of the copied entry, which its phis would not name.
         const auto& entry = function.Blocks[0];
-        if (!HasDenseLabels(function) || entry.Label.Idx != 0 || !entry.Phis.empty()) {
+        if (entry.Label.Idx != 0 || !entry.Phis.empty()) {
             return false;
         }
         size_t size = 0;
@@ -220,7 +207,7 @@ private:
     }
 
     void InlineInto(TFunction& caller) {
-        if (caller.IsCoroutine || !HasDenseLabels(caller)) {
+        if (caller.IsCoroutine) {
             return;
         }
         for (size_t blockIndex = 0; blockIndex < caller.Blocks.size(); ++blockIndex) {

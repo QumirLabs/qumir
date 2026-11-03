@@ -1,6 +1,7 @@
 #include "cfg.h"
 #include <qumir/ir/builder.h>
 
+#include <cassert>
 #include <set>
 #include <stack>
 #include <algorithm>
@@ -18,12 +19,15 @@ void BuildCfg(TFunction& function)
         return;
     }
     function.CfgBuilt = true;
-    function.Label2Idx.resize(function.Blocks.size());
+    function.Label2Idx.assign(function.Blocks.size(), -1);
 
     int idx = 0;
     for (auto& block : function.Blocks) {
         block.Succ.clear();
         block.Pred.clear();
+        // Passes index blocks by label, so labels must be a permutation of 0..N-1.
+        assert(block.Label.Idx >= 0 && block.Label.Idx < (int)function.Label2Idx.size()
+            && function.Label2Idx[block.Label.Idx] == -1);
         function.Label2Idx[block.Label.Idx] = idx++;
     }
 
