@@ -193,8 +193,10 @@ opcodes can be added without touching an enum.
 |----------------|-------------------------------------------|
 | `locals2ssa`   | stack locals → SSA temporaries            |
 | `const_fold`   | constant folding                          |
-| `de_ssa`       | insert copies at φ-joins before codegen   |
 | CFG analysis   | predecessor / successor computation       |
+| liveness       | live-out temporaries of each block        |
+| `allocate_registers` | VM register slots of temporaries    |
+| `lower_allocated_phis` | φ copies between allocated VM slots |
 
 ### 5.4 IR type table
 
