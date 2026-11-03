@@ -13,6 +13,36 @@
 namespace NQumir {
 namespace NIR {
 
+// The active window by value: the interpreter loop keeps it in machine registers.
+// It stays valid until the next call or return.
+class TRegisterView {
+public:
+    TRegisterView(uint8_t* data, size_t size)
+        : Data_(data)
+        , Size_(size)
+    {}
+
+    template<typename T>
+    T& Get(int32_t byteOffset) const {
+        static_assert(std::is_trivially_copyable_v<T>);
+        assert(byteOffset >= 0 && static_cast<size_t>(byteOffset) + sizeof(T) <= Size_);
+        assert(reinterpret_cast<uintptr_t>(Data_ + byteOffset) % alignof(T) == 0);
+        return *reinterpret_cast<T*>(Data_ + byteOffset);
+    }
+
+    uint8_t* Data() const {
+        return Data_;
+    }
+
+    size_t Size() const {
+        return Size_;
+    }
+
+private:
+    uint8_t* Data_;
+    size_t Size_;
+};
+
 // Registers of every active call, as a stack of windows in one reservation.
 // A call opens a window right above its caller's; the caller's registers are
 // neither copied nor cleared, and the reservation never moves.
@@ -56,6 +86,10 @@ public:
     const T& Get(int32_t byteOffset) const {
         CheckAccess<T>(byteOffset);
         return *reinterpret_cast<const T*>(Active_ + byteOffset);
+    }
+
+    TRegisterView View() const {
+        return TRegisterView(Active_, Size_);
     }
 
     uint8_t* Data() {
