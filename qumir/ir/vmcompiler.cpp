@@ -110,6 +110,22 @@ int RegisterAlignment(const TTypeTable& types, int typeId) {
         : 8;
 }
 
+EArgKind ArgKind(const TTypeTable& types, int typeId, int size) {
+    if (typeId < 0) {
+        return EArgKind::Word;
+    }
+    if (types.GetKind(typeId) == EKind::Struct) {
+        return EArgKind::Struct;
+    }
+    if (types.IsVector(typeId)) {
+        return EArgKind::Vector;
+    }
+    if (size == 16) {
+        return EArgKind::Int128;
+    }
+    return EArgKind::Word;
+}
+
 EKind ClassifyKind(int typeId, const TTypeTable& tt, NFFI::EStructKind& structKind) {
     EKind kind = tt.GetKind(typeId);
     structKind = (kind == EKind::Struct)
@@ -595,6 +611,11 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             int typeId = (argLocal.Idx < (int)function.LocalTypes.size())
                 ? function.LocalTypes[argLocal.Idx] : -1;
             funcOut.ArgTypeIds.push_back(typeId);
+            const int size = (typeId >= 0)
+                ? Module.Types.SizeInBytes(typeId)
+                : 8;
+            funcOut.ArgSizes.push_back(size);
+            funcOut.ArgKinds.push_back(ArgKind(Module.Types, typeId, size));
         }
     }
 

@@ -218,13 +218,26 @@ alignment. An `f32` value occupies the low four bytes of its slot and has
 its own scalar opcodes (`FAdd32`, `FCmpLT32`, `FExt32`, ...); an `f32`
 immediate carries the float bits in the low four bytes of `Imm.Value`.
 Struct registers hold addresses of storage in the call frame.
-Function calls save and restore the complete register file as one byte range.
+The registers of all active calls form one stack of windows inside a single
+reservation made up front. A call opens a zeroed window right above its
+caller's, aligned for the callee's registers; returning reactivates the
+caller's window without copying or clearing it. The reservation never moves,
+so a register keeps its address while its call is active, and call/return
+cost does not depend on the caller's register-file size. The windows of active
+calls count toward the VM stack limit together with their locals; exceeding it
+is a `Stack overflow in interpreter` error, after which the next invocation
+starts from an empty stack. Each interpreter reserves a second 128 MiB virtual
+area next to `Stack.reserve`, so virtual size per instance doubles under strict
+overcommit or `RLIMIT_AS`. A call copies each argument into the callee's
+frame by a layout the compiler computes once per function (`TExecFunc::ArgKinds`),
+so calls do no type-table lookups.
 
 ### 6.1 Execution model
 
-Each function call creates a stack frame (a heap-allocated byte buffer).
-The interpreter loop dispatches on `EVMOp` enum values.  Frames are linked
-(parent frame pointer stored at offset 0).
+Function locals live in a byte stack separate from registers. An explicit
+call stack keeps each caller's continuation and register window; returning
+releases the callee's local range and reactivates the caller's window. The
+interpreter loop dispatches on `EVMOp` enum values.
 
 ### 6.1.1 Prepared program and instances
 

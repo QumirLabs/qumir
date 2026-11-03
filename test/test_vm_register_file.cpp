@@ -12,7 +12,9 @@
 #include <bit>
 #include <cstring>
 #include <sstream>
+#include <stdexcept>
 #include <type_traits>
+#include <vector>
 
 using namespace NQumir;
 using namespace NQumir::NIR;
@@ -284,6 +286,66 @@ TEST(VMRegisterFile, AlignedTypedAccessAndBufferGrowth) {
     EXPECT_EQ(values.Get<TWideValue>(64).Lanes.back(), 8);
     registers.Reset(8, 8);
     EXPECT_EQ(values.Get<int64_t>(0), 0);
+}
+
+TEST(VMRegisterFile, NestedWindowsKeepAddressesAndReuseClearedStorage) {
+    TRegisterFile registers;
+    registers.Reset(16, 16);
+    auto* root = registers.Data();
+    registers.Get<__int128_t>(0) = static_cast<__int128_t>(1) << 100;
+    std::vector<uint8_t*> addresses{root};
+    std::vector<size_t> bases{0};
+    for (int depth = 1; depth <= 40; ++depth) {
+        bases.push_back(registers.Push(64, 64));
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(registers.Data()) % 64, 0);
+        EXPECT_EQ(registers.Get<int64_t>(0), 0);
+        registers.Get<int64_t>(0) = depth;
+        addresses.push_back(registers.Data());
+    }
+    // A window starts right above its caller's, aligned for its own registers.
+    EXPECT_EQ(bases[1], 64);
+    EXPECT_EQ(registers.StackSize(), 41 * 64);
+    for (int depth = 40; depth > 0; --depth) {
+        EXPECT_EQ(registers.Data(), addresses[depth]);
+        EXPECT_EQ(registers.Get<int64_t>(0), depth);
+        registers.Pop(bases[depth - 1], depth == 1 ? 16 : 64);
+    }
+    EXPECT_EQ(registers.Data(), root);
+    EXPECT_EQ(registers.Get<__int128_t>(0), static_cast<__int128_t>(1) << 100);
+    EXPECT_EQ(registers.StackSize(), 16);
+
+    EXPECT_EQ(registers.Push(64, 64), bases[1]);
+    EXPECT_EQ(registers.Data(), addresses[1]);
+    EXPECT_EQ(registers.Get<int64_t>(0), 0);
+    registers.Push(0, 8);
+    EXPECT_EQ(registers.Size(), 0);
+    registers.Pop(bases[1], 64);
+    EXPECT_EQ(registers.Size(), 64);
+    // Reset also abandons windows left active by an exception or a suspended Invoke.
+    registers.Reset(16, 16);
+    EXPECT_EQ(registers.Data(), root);
+    EXPECT_EQ(registers.StackSize(), 16);
+    EXPECT_EQ(registers.Get<__int128_t>(0), 0);
+}
+
+TEST(VMRegisterFile, WindowBeyondTheReservationThrows) {
+    TRegisterFile registers;
+    registers.Reset(8, 8);
+    EXPECT_EQ(registers.WindowEnd(64, 16), 16 + 64);
+    EXPECT_THROW(registers.Push(TRegisterFile::ReservedBytes, 8), std::runtime_error);
+    EXPECT_EQ(registers.StackSize(), 8);
+    EXPECT_EQ(registers.Size(), 8);
+}
+
+TEST(VMRegisterFile, WideRegisterOverCallerWindowOfEightByteMultiple) {
+    TRegisterFile registers;
+    registers.Reset(24, 8);
+    const size_t base = registers.Push(32, 16);
+    EXPECT_EQ(base, 32);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(registers.Data()) % 16, 0);
+    const __int128_t value = (static_cast<__int128_t>(0x1234) << 100) | 0x5678;
+    registers.Get<__int128_t>(16) = value;
+    EXPECT_EQ(registers.Get<__int128_t>(16), value);
 }
 
 TEST(VMRegisterFile, SparseIRIdsBecomeAlignedByteOffsets) {

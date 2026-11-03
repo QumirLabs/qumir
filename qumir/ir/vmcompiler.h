@@ -13,6 +13,14 @@
 namespace NQumir {
 namespace NIR {
 
+// How a call stores an argument word into the callee's frame.
+enum class EArgKind : uint8_t {
+    Word, // the word itself, 8 bytes
+    Struct, // the word points to the struct, which is copied
+    Vector, // the word is the offset of the vector's bytes in TRuntime::ArgBytes
+    Int128, // the 16 bytes are in TRuntime::Args128
+};
+
 struct TExecFunc {
     int UniqueId;
     std::vector<TVMInstr> VMCode;
@@ -20,7 +28,10 @@ struct TExecFunc {
     int32_t RegisterFileAlignment = 8;
     int32_t NumLocals{0};        // frame size in bytes (not variable count)
     std::vector<int> ArgByteOffsets; // byte offset of each argument local in the frame (for func args only!)
-    std::vector<int> ArgTypeIds;     // IR typeId of each argument (eval uses SizeInBytes to handle struct)
+    std::vector<int> ArgTypeIds;     // IR typeId of each argument (Invoke checks entry arguments)
+    // Per argument, so a call copies arguments without type table lookups.
+    std::vector<int> ArgSizes;
+    std::vector<EArgKind> ArgKinds;
     std::unordered_map<int, int> TmpByteOffsets; // IR tmp id -> register file byte offset
     struct TStructRegister {
         int FrameOffset;

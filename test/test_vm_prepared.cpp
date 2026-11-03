@@ -11,6 +11,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -279,6 +280,43 @@ TEST(VMPrepared, ExternExceptionBecomesError) {
         << failed.error().ToString();
     // The interpreter stays usable after the failure.
     EXPECT_EQ(instance.Interpreter.Invoke(entry, {7}), 7);
+}
+
+TEST(VMPrepared, RecursiveFramesSurviveExceptionsAndRepeatedInvocations) {
+    TProgram program(R"((block
+      (fun qumir_prepared_throw ((var x i64)) -> i64 (attrs extern) (block))
+      (fun recurse ((var n i64) (var leaf i64)) -> i64
+        (block
+          (var saved = (+ (* n 3) 1))
+          (if (== n 0)
+            (return (call qumir_prepared_throw leaf))
+            (return (+ saved (call recurse (- n 1) leaf))))))))");
+    auto& entry = program.Get("recurse");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    for (int64_t depth : {40, 2, 48, 0}) {
+        EXPECT_FALSE(instance.Interpreter.Invoke(entry, {depth, -1}));
+        EXPECT_EQ(instance.Interpreter.Invoke(entry, {depth, 7}), 3 * depth * (depth + 1) / 2 + depth + 7);
+    }
+}
+
+TEST(VMPrepared, StackOverflowIsAnErrorAndTheInstanceStaysUsable) {
+    TProgram program(R"((block
+      (fun recurse ((var n i64)) -> i64
+        (block
+          (if (== n 0)
+            (return 0)
+            (return (+ 1 (call recurse (- n 1)))))))))");
+    auto& entry = program.Get("recurse");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    auto overflow = instance.Interpreter.Invoke(entry, {int64_t{1} << 40});
+    ASSERT_FALSE(overflow);
+    EXPECT_NE(overflow.error().ToString().find("Stack overflow"), std::string::npos);
+    EXPECT_EQ(instance.Interpreter.Invoke(entry, {1000}), 1000);
+    EXPECT_EQ(instance.Interpreter.GetRuntime().Regs.StackSize(), entry.Exec->RegisterFileSize);
 }
 
 int main(int argc, char** argv) {
