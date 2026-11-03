@@ -1,0 +1,14 @@
+(block
+  (use "Робот")
+  (fun caller () -> <future i64>
+    (block
+      (var знач i64)
+      (= знач (+ (await (call value 3 4)) (await (call value 5 6))))
+      (cleanup-exit (return знач))))
+  (fun value ((var a <i64 (readonly)>)
+      (var b <i64 (readonly)>)) -> <future i64>
+    (block
+      (var знач i64)
+      (await (call вверх))
+      (= знач (+ (* a 10) b))
+      (cleanup-exit (return знач)))))

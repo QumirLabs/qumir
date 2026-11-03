@@ -881,9 +881,10 @@ TEST(LLVMVector, VMCompilerOmitsPrefetchAndKeepsBranchTargets) {
     builder.Emit0("ret"_op, {TImm{42, i64}});
     TVMCompiler compiler(module);
     const auto& function = compiler.Compile(module.Functions[0]);
-    ASSERT_EQ(function.VMCode.size(), 3);
-    EXPECT_EQ(function.VMCode[1].Op, EVMOp::Jmp);
-    EXPECT_EQ(function.VMCode[1].Operands[0].Imm.Value, reinterpret_cast<int64_t>(&function.VMCode[2]));
+    // The load of the parameter is its register, not an instruction.
+    ASSERT_EQ(function.VMCode.size(), 2);
+    EXPECT_EQ(function.VMCode[0].Op, EVMOp::Jmp);
+    EXPECT_EQ(function.VMCode[0].Operands[0].Imm.Value, reinterpret_cast<int64_t>(&function.VMCode[1]));
     std::ostringstream out;
     std::istringstream in;
     TInterpreter interpreter(module, compiler, out, in);

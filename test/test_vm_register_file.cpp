@@ -296,13 +296,13 @@ TEST(VMRegisterFile, NestedWindowsKeepAddressesAndReuseClearedStorage) {
     std::vector<uint8_t*> addresses{root};
     std::vector<size_t> bases{0};
     for (int depth = 1; depth <= 40; ++depth) {
-        bases.push_back(registers.Push(64, 64));
+        bases.push_back(registers.Push(64, 64, 64, 0));
         EXPECT_EQ(reinterpret_cast<uintptr_t>(registers.Data()) % 64, 0);
         EXPECT_EQ(registers.Get<int64_t>(0), 0);
         registers.Get<int64_t>(0) = depth;
         addresses.push_back(registers.Data());
     }
-    // A window starts right above its caller's, aligned for its own registers.
+    // A window starts at the offset the caller chose, here right above its own.
     EXPECT_EQ(bases[1], 64);
     EXPECT_EQ(registers.StackSize(), 41 * 64);
     for (int depth = 40; depth > 0; --depth) {
@@ -314,10 +314,10 @@ TEST(VMRegisterFile, NestedWindowsKeepAddressesAndReuseClearedStorage) {
     EXPECT_EQ(registers.Get<__int128_t>(0), static_cast<__int128_t>(1) << 100);
     EXPECT_EQ(registers.StackSize(), 16);
 
-    EXPECT_EQ(registers.Push(64, 64), bases[1]);
+    EXPECT_EQ(registers.Push(64, 64, 64, 0), bases[1]);
     EXPECT_EQ(registers.Data(), addresses[1]);
     EXPECT_EQ(registers.Get<int64_t>(0), 0);
-    registers.Push(0, 8);
+    registers.Push(0, 0, 8, 0);
     EXPECT_EQ(registers.Size(), 0);
     registers.Pop(bases[1], 64);
     EXPECT_EQ(registers.Size(), 64);
@@ -331,8 +331,8 @@ TEST(VMRegisterFile, NestedWindowsKeepAddressesAndReuseClearedStorage) {
 TEST(VMRegisterFile, WindowBeyondTheReservationThrows) {
     TRegisterFile registers;
     registers.Reset(8, 8);
-    EXPECT_EQ(registers.WindowEnd(64, 16), 16 + 64);
-    EXPECT_THROW(registers.Push(TRegisterFile::ReservedBytes, 8), std::runtime_error);
+    EXPECT_EQ(registers.WindowEnd(16, 64), 16 + 64);
+    EXPECT_THROW(registers.Push(TRegisterFile::ReservedBytes, 8, 8, 0), std::runtime_error);
     EXPECT_EQ(registers.StackSize(), 8);
     EXPECT_EQ(registers.Size(), 8);
 }
@@ -340,7 +340,7 @@ TEST(VMRegisterFile, WindowBeyondTheReservationThrows) {
 TEST(VMRegisterFile, WideRegisterOverCallerWindowOfEightByteMultiple) {
     TRegisterFile registers;
     registers.Reset(24, 8);
-    const size_t base = registers.Push(32, 16);
+    const size_t base = registers.Push(32, 32, 16, 0);
     EXPECT_EQ(base, 32);
     EXPECT_EQ(reinterpret_cast<uintptr_t>(registers.Data()) % 16, 0);
     const __int128_t value = (static_cast<__int128_t>(0x1234) << 100) | 0x5678;
@@ -474,6 +474,96 @@ TEST(VMRegisterFile, CallsWithoutRegistersCanDiscardAValue) {
     vm.Builder.SetReturnType(i64);
     EXPECT_EQ(vm.Interpreter.EvalRaw(vm.Module.Functions[caller], {}, {}), 7);
     EXPECT_EQ(vm.Interpreter.GetRuntime().Regs.Size(), 0);
+}
+
+TEST(VMRegisterFile, ParametersAreRegistersAndArgumentsAreWrittenInPlace) {
+    TVMTest vm;
+    const int i64 = vm.Module.Types.I(EKind::I64);
+    const int i128 = vm.Module.Types.I(EKind::I128);
+    const int callee = vm.Builder.NewFunction("callee", {TLocal{0}, TLocal{1}, TLocal{2}}, 1);
+    vm.Builder.SetType(TLocal{0}, i64, {});
+    vm.Builder.SetType(TLocal{1}, i128, {});
+    vm.Builder.SetType(TLocal{2}, i64, {});
+    const auto first = vm.Emit("load"_op, {TLocal{0}}, i64);
+    const auto wide = vm.Emit("load"_op, {TLocal{1}}, i128);
+    const auto last = vm.Emit("load"_op, {TLocal{2}}, i64);
+    const auto low = vm.Emit("mov"_op, {wide}, i64);
+    const auto sum = vm.Emit('+'_op, {first, last}, i64);
+    vm.Builder.Emit0("ret"_op, {vm.Emit('+'_op, {sum, low}, i64)});
+    vm.Builder.SetReturnType(i64);
+
+    const int caller = vm.Builder.NewFunction("caller", {}, 2);
+    vm.Builder.Emit0("arg"_op, {TImm{1, i64}});
+    vm.Builder.Emit0("arg"_op, {TImm{-5, i128}});
+    vm.Builder.Emit0("arg"_op, {TImm{3, i64}});
+    vm.Builder.Emit0("ret"_op, {vm.Emit("call"_op, {TImm{1}}, i64)});
+    vm.Builder.SetReturnType(i64);
+
+    EXPECT_EQ(vm.Interpreter.EvalRaw(vm.Module.Functions[caller], {}, {}), -1);
+    const auto& calleeExec = *vm.Module.Functions[callee].Exec;
+    EXPECT_EQ(calleeExec.Params.Offsets, (std::vector<int>{0, 16, 32}));
+    EXPECT_EQ(calleeExec.Params.Bytes, 40);
+    EXPECT_EQ(calleeExec.RegisterFileAlignment, 16);
+    for (const auto& instr : calleeExec.VMCode) {
+        EXPECT_NE(instr.Op, EVMOp::Load);
+    }
+    // The arguments are written after the caller's own registers.
+    const auto& callerExec = *vm.Module.Functions[caller].Exec;
+    int callWindow = -1;
+    for (const auto& instr : callerExec.VMCode) {
+        EXPECT_NE(instr.Op, EVMOp::ArgTmp);
+        EXPECT_NE(instr.Op, EVMOp::ArgConst);
+        if (instr.Op == EVMOp::Call) {
+            callWindow = instr.Operands[2].Imm.Value;
+        }
+    }
+    EXPECT_EQ(callWindow % 16, 0);
+    EXPECT_EQ(callerExec.VMCode[0].Operands[0].Tmp.Idx, callWindow);
+    EXPECT_EQ(callerExec.VMCode[1].Operands[0].Tmp.Idx, callWindow + 16);
+    EXPECT_EQ(callerExec.VMCode[2].Operands[0].Tmp.Idx, callWindow + 32);
+    EXPECT_EQ(callerExec.RegisterFileSize, callWindow + 40);
+}
+
+TEST(VMRegisterFile, ParametersStayInTheFrameWithDebugInfo) {
+    TVMTest vm;
+    const int i64 = vm.Module.Types.I(EKind::I64);
+    const int callee = vm.Builder.NewFunction("callee", {TLocal{0}, TLocal{1}}, 1);
+    vm.Builder.SetType(TLocal{0}, i64, {});
+    vm.Builder.SetType(TLocal{1}, i64, {});
+    vm.Module.Functions[callee].LocalDebugInfo.resize(2);
+    vm.Module.Functions[callee].LocalDebugInfo[0].Name = "a";
+    vm.Module.Functions[callee].LocalDebugInfo[1].Name = "b";
+    const auto a = vm.Emit("load"_op, {TLocal{0}}, i64);
+    const auto b = vm.Emit("load"_op, {TLocal{1}}, i64);
+    vm.Builder.Emit0("ret"_op, {vm.Emit('-'_op, {a, b}, i64)});
+    vm.Builder.SetReturnType(i64);
+    const int caller = vm.Builder.NewFunction("caller", {}, 2);
+    vm.Builder.Emit0("arg"_op, {TImm{9, i64}});
+    vm.Builder.Emit0("arg"_op, {TImm{4, i64}});
+    vm.Builder.Emit0("ret"_op, {vm.Emit("call"_op, {TImm{1}}, i64)});
+    vm.Builder.SetReturnType(i64);
+
+    EXPECT_EQ(vm.Interpreter.EvalRaw(vm.Module.Functions[caller], {}, {}), 5);
+    bool loadsFromFrame = false;
+    for (const auto& instr : vm.Module.Functions[callee].Exec->VMCode) {
+        loadsFromFrame = loadsFromFrame || instr.Op == EVMOp::Load;
+    }
+    EXPECT_TRUE(loadsFromFrame);
+}
+
+TEST(VMRegisterFile, CallWithWrongArgumentCountIsRejectedAtCompile) {
+    TVMTest vm;
+    const int i64 = vm.Module.Types.I(EKind::I64);
+    vm.Builder.NewFunction("callee", {TLocal{0}, TLocal{1}}, 1);
+    vm.Builder.SetType(TLocal{0}, i64, {});
+    vm.Builder.SetType(TLocal{1}, i64, {});
+    vm.Builder.Emit0("ret"_op, {TImm{0, i64}});
+    vm.Builder.SetReturnType(i64);
+    const int caller = vm.Builder.NewFunction("caller", {}, 2);
+    vm.Builder.Emit0("arg"_op, {TImm{1, i64}});
+    vm.Builder.Emit0("ret"_op, {vm.Emit("call"_op, {TImm{1}}, i64)});
+    vm.Builder.SetReturnType(i64);
+    EXPECT_THROW(vm.Interpreter.EvalRaw(vm.Module.Functions[caller], {}, {}), std::runtime_error);
 }
 
 TEST(VMRegisterFile, StructReturnUsesMetadataAtRegisterByteOffset) {

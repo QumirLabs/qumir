@@ -35,9 +35,7 @@ struct TFrame {
 struct TRuntime {
     std::vector<char> Globals; // byte array; each variable slot is 8 bytes (64-bit aligned)
     std::vector<char> Stack;   // byte array; each variable slot is 8 bytes (64-bit aligned)
-    std::vector<int64_t> Args; // call arguments, will be copied on stack on call, TODO: remove
-    std::vector<__int128_t> Args128; // parallel to Args, filled for 128-bit arguments only
-    std::vector<char> ArgBytes; // vector argument bytes; Args holds their offsets
+    std::vector<int64_t> Args; // arguments of the extern call being prepared
     std::vector<char> RetBytes; // returned vector bytes
     __int128_t Ret128Value = 0;
     TRegisterFile Regs;
@@ -91,7 +89,6 @@ private:
     TFuture<std::optional<int64_t>> DoEvalRawAsync(TFunction& function, std::vector<int64_t> args, TOptions options);
     template<bool EnableDebug>
     bool RunLoop(std::optional<int64_t>& retVal);
-    void CopyArgsToFrame(char* frameBase, const TExecFunc* exec, const int64_t* srcArgs, int srcCount);
     size_t ProcessAsyncRuntimeEvents();
 
     std::ostream& Out;

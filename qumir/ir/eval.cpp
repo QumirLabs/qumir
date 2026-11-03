@@ -670,21 +670,19 @@ std::expected<int64_t, TError> TInterpreter::InvokePrepared(TFunction& function,
     if (Module.Types.IsVector(function.ReturnTypeId)) {
         return std::unexpected(TError("function `" + name + "' returns a vector; vector results are not supported by Invoke"));
     }
-    for (const int typeId : function.Exec->ArgTypeIds) {
+    for (const int typeId : function.Exec->Params.TypeIds) {
         if (Module.Types.IsVector(typeId)) {
             return std::unexpected(TError("function `" + name + "' has a vector argument; vector arguments are not supported by Invoke"));
         }
     }
     // Argument words have no high half.
-    for (const int typeId : function.Exec->ArgTypeIds) {
+    for (const int typeId : function.Exec->Params.TypeIds) {
         if (typeId >= 0 && Module.Types.GetKind(typeId) != EKind::Struct && Module.Types.SizeInBytes(typeId) > 8) {
             return std::unexpected(TError("function `" + name + "' has an argument wider than 64 bits"));
         }
     }
     // A previous throw may have left partial extern call arguments.
     Runtime.Args.clear();
-    Runtime.Args128.clear();
-    Runtime.ArgBytes.clear();
     try {
         auto future = DoEvalRawAsync<false>(function, std::move(args), {});
         if (!future.done()) {
@@ -781,7 +779,13 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         co_return std::nullopt;
     }
 
-    CopyArgsToFrame(Runtime.Stack.data(), execFunc, args.data(), (int)args.size());
+    // Parameters are the first registers of the entry window.
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (execFunc->Params.Kinds[i] == EArgKind::Vector) {
+            throw std::runtime_error("VM vector argument is not passed by a call instruction");
+        }
+        std::memcpy(Runtime.Regs.Data() + execFunc->Params.Offsets[i], &args[i], sizeof(int64_t));
+    }
 
     // The loop never suspends itself: it stops after an await and the coroutine waits here.
     std::optional<int64_t> retVal;
@@ -800,42 +804,6 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
     }
 
     co_return retVal;
-}
-
-void TInterpreter::CopyArgsToFrame(char* frameBase, const TExecFunc* exec, const int64_t* srcArgs, int srcCount)
-{
-    for (int i = 0; i < srcCount; ++i) {
-        const bool declared = i < (int)exec->ArgKinds.size();
-        const int byteOff = declared
-            ? exec->ArgByteOffsets[i]
-            : i * 8;
-        const EArgKind kind = declared
-            ? exec->ArgKinds[i]
-            : EArgKind::Word;
-        switch (kind) {
-            case EArgKind::Struct:
-                std::memcpy(frameBase + byteOff, reinterpret_cast<const void*>(srcArgs[i]), exec->ArgSizes[i]);
-                break;
-            case EArgKind::Vector: {
-                const size_t size = exec->ArgSizes[i];
-                if (srcArgs[i] < 0 || static_cast<size_t>(srcArgs[i]) + size > Runtime.ArgBytes.size()) {
-                    throw std::runtime_error("VM vector argument is not passed by a call instruction");
-                }
-                std::memcpy(frameBase + byteOff, Runtime.ArgBytes.data() + srcArgs[i], size);
-                break;
-            }
-            case EArgKind::Int128:
-                if (i < (int)Runtime.Args128.size()) {
-                    std::memcpy(frameBase + byteOff, &Runtime.Args128[i], 16);
-                } else {
-                    std::memcpy(frameBase + byteOff, &srcArgs[i], 8);
-                }
-                break;
-            case EArgKind::Word:
-                std::memcpy(frameBase + byteOff, &srcArgs[i], 8);
-                break;
-        }
-    }
 }
 
 // Returns true when the entry function returned, false after an await instruction.
@@ -1360,17 +1328,6 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
             break;
         case EVMOp::ArgTmp128: {
             Runtime.Args.push_back(0);
-            Runtime.Args128.push_back(ReadOperand<__int128_t>(regs, instr.Operands[0]));
-            break;
-        }
-
-        case EVMOp::ArgVec: {
-            const size_t size = instr.SizeInBytes();
-            Runtime.Args.push_back(static_cast<int64_t>(Runtime.ArgBytes.size()));
-            Runtime.Args128.push_back(0);
-            Runtime.ArgBytes.resize(Runtime.ArgBytes.size() + size);
-            std::memcpy(Runtime.ArgBytes.data() + Runtime.ArgBytes.size() - size,
-                        regs.Data() + instr.Operands[0].Tmp.Idx, size);
             break;
         }
 
@@ -1392,11 +1349,9 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
             }
             break;
         }
-        case EVMOp::ArgTmp: // TODO: optimize
+        case EVMOp::ArgTmp:
         case EVMOp::ArgConst: {
-            auto value = ReadOperand(regs, instr.Operands[0]);
-            Runtime.Args.push_back(value);
-            Runtime.Args128.push_back(static_cast<__int128_t>(value));
+            Runtime.Args.push_back(ReadOperand(regs, instr.Operands[0]));
             break;
         }
         case EVMOp::ECall: {// external call
@@ -1414,8 +1369,6 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
                 (*func)(reinterpret_cast<const uint64_t*>(Runtime.Args.data()), Runtime.Args.size());
             }
             Runtime.Args.clear();
-            Runtime.Args128.clear();
-            Runtime.ArgBytes.clear();
 
             break;
         }
@@ -1431,22 +1384,22 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
             }
             auto* calleeExec = calleeFn->Exec;
 
-            const auto& localArgs = calleeFn->ArgLocals;
-            const int argCount = (int)Runtime.Args.size();
-            assert(argCount <= (int)localArgs.size() && "too many arguments for callee");
-
             frame->PC = pc; // return address
             const auto base = Runtime.Stack.size();
             const auto frameEnd = base + calleeExec->NumLocals; // NumLocals is bytes
             // Register windows of active calls count toward the same limit as their locals.
-            const auto registersEnd = Runtime.Regs.WindowEnd(calleeExec->RegisterFileSize, calleeExec->RegisterFileAlignment);
+            const size_t windowOffset = instr.Operands[2].Imm.Value;
+            const auto registersEnd = Runtime.Regs.WindowEnd(windowOffset, calleeExec->RegisterFileSize);
             if (frameEnd > MaxStackSize || registersEnd > MaxStackSize - frameEnd) {
                 throw std::runtime_error("Stack overflow in interpreter");
             }
-            const size_t registerBase = Runtime.Regs.Push(calleeExec->RegisterFileSize, calleeExec->RegisterFileAlignment);
+            // The caller has written the arguments to the start of the callee's window.
+            const size_t registerBase = Runtime.Regs.Push(
+                windowOffset,
+                calleeExec->RegisterFileSize,
+                calleeExec->RegisterFileAlignment,
+                calleeExec->Params.Bytes);
             Runtime.Stack.resize(frameEnd, 0);
-
-            CopyArgsToFrame(Runtime.Stack.data() + base, calleeExec, Runtime.Args.data(), argCount);
 
             auto link = TReturnLink {
                 .CallerDst = instr.Operands[0].Tmp.Idx,
@@ -1455,9 +1408,6 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
                     && Module.Types.IsVoid(calleeFn->CoroutineResultTypeId),
             };
 
-            Runtime.Args.clear();
-            Runtime.Args128.clear();
-            Runtime.ArgBytes.clear();
             callStack.emplace_back(TFrame {
                 .Exec = calleeExec,
                 .StackBase = base,

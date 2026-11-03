@@ -86,8 +86,8 @@ enum class EVMOp : uint8_t {
     // control flow
     Jmp,
     Cmp,
-    ArgTmp, // temporary to argument
-    ArgConst, // constant to argument
+    ArgTmp, // temporary to extern call argument
+    ArgConst, // constant to extern call argument
     Call,
     ECall, // external call
     Await,
@@ -146,7 +146,6 @@ enum class EVMOp : uint8_t {
     Ste128,
     ArgTmp128,
     Ret128,
-    ArgVec, // push the bytes of a vector register as a call argument
     RetVec, // return the bytes of a vector register
 
     // Vector arithmetic uses Format; scalar arithmetic keeps its fixed width.

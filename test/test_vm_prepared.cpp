@@ -221,6 +221,25 @@ TEST(VMPrepared, FailedPrepareLeavesNothingPrepared) {
     EXPECT_EQ(entry.Exec, nullptr);
 }
 
+TEST(VMPrepared, InvokeArgumentsAreParameterRegistersEvenWhenAssignedOrPassedByReference) {
+    TProgram program(R"((block
+      (fun bump ((var x <ref i64>)) (block (= x (+ x 7))))
+      (fun entry ((var a i64) (var b i64)) -> i64
+        (block
+          (= a (+ a 1))
+          (call bump b)
+          (return (+ a b))))))");
+    auto& entry = program.Get("entry");
+    ASSERT_TRUE(program.Compiler.Prepare({&entry}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    for (int64_t i = 0; i < 100; ++i) {
+        auto res = instance.Interpreter.Invoke(entry, {i, 3 * i});
+        ASSERT_TRUE(res) << res.error().ToString();
+        ASSERT_EQ(*res, (i + 1) + (3 * i + 7));
+    }
+}
+
 TEST(VMPrepared, InvokeRejectsWideArgument) {
     TProgram program(R"((block
       (fun entry ((var x i128)) -> i64 (block (return (cast (>> x 64) i64))))))");
