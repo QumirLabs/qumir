@@ -556,7 +556,16 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
             if (!LookupOverloads(ident->Name, scope->Id).empty()) {
                 co_return {};
             }
-            auto suggestionMsg = suggestionMessage(ident->Name, scope->Id.Id, /*includeFunctions=*/ true);
+            auto suggestion = Suggest(ident->Name, scope->Id, /*includeFunctions=*/ true);
+            std::string suggestionMsg;
+            if (suggestion) {
+                suggestionMsg = suggestion->ToString();
+            }
+            // A command of another module or a multi-word name is most likely a wrong Robot command.
+            bool otherModuleCommand = suggestion && suggestion->RequiredModuleName && suggestion->Distance == 0;
+            if (otherModuleCommand || (!suggestion && ident->Name.find(' ') != std::string::npos)) {
+                suggestionMsg += RobotCommandsHint();
+            }
             co_return TError(ident->Location, TErrorString::Get<EErrorId::UNDEFINED_IDENTIFIER>(ident->Name) + suggestionMsg);
         }
 
@@ -1310,6 +1319,24 @@ std::vector<std::string> TNameResolver::ModulesWithFunction(const std::string& n
         }
     }
     return result;
+}
+
+std::string TNameResolver::RobotCommandsHint() const
+{
+    auto it = Modules.find("Робот");
+    if (it == Modules.end() || !it->second || !ImportedModules.contains("Робот")) {
+        return "";
+    }
+    std::string result = "\n Если это команда Робота, доступны: ";
+    bool first = true;
+    for (const auto& fn : it->second->ExternalFunctions()) {
+        if (fn.IsOp) {
+            continue;
+        }
+        result += (first ? "" : ", ") + fn.Name;
+        first = false;
+    }
+    return result + ".";
 }
 
 std::string TNameResolver::ModulesList() const

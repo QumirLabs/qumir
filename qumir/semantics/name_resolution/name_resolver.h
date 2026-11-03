@@ -184,6 +184,8 @@ public:
     std::vector<std::string> GetAllImportedTypeNames() const override;
     std::vector<NRegistry::TLiteralSuffix> GetAllImportedLiteralSuffixes() const override;
     std::string ModulesList() const;
+    // Lists the commands of the imported Робот module, empty if it is not imported.
+    std::string RobotCommandsHint() const;
     std::optional<std::string> ClosestModuleName(const std::string& name);
 
     // For testing/debugging
