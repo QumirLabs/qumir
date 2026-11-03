@@ -189,8 +189,9 @@ struct TSSABuilder {
         auto& block = Function.Blocks[Function.GetBlockIdx(blockLabel)];
         const int numPreds = (int)block.Pred.size();
 
-        if (numPreds == 0) {
-            // undef
+        if (numPreds == 0 || !ReachableBlocks.contains(blockLabel)) {
+            // Braun et al. assume every block is reachable. A cycle of single-predecessor
+            // blocks unreachable from entry would recurse forever, so cut it with undef.
             return TOperand{TImm{0, Module.Types.I(EKind::Undef)}};
         }
 
@@ -340,6 +341,7 @@ struct TSSABuilder {
     void Run() {
         BuildCfg(Function);
         auto rpo = ComputeRPO(Function);
+        ReachableBlocks.insert(rpo.begin(), rpo.end());
         std::vector<int> openPredCount(Function.Blocks.size());
         for (auto& block : Function.Blocks) {
             openPredCount[block.Label.Idx] = block.Pred.size();
@@ -430,6 +432,8 @@ struct TSSABuilder {
     std::map<TLabel, std::vector<PhiInfo>> IncompletePhis;
     // block indices
     std::set<TLabel> SealedBlocks;
+    // Blocks reachable from entry
+    std::set<TLabel> ReachableBlocks;
     // Deferred tmp replacements collected while processing blocks (from tmp -> to operand)
     std::vector<std::pair<TOperand, TOperand>> GlobalPendingReplacements;
     // Locals that are safe to promote (no address taken)

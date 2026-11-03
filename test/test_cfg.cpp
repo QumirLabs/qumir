@@ -455,6 +455,55 @@ TEST(CfgTest, PromoteLocalsToSSASelfReferencingPhiInUnreachableLoop) {
     }
 }
 
+TEST(CfgTest, PromoteLocalsToSSAUnreachableSinglePredecessorCycles) {
+    // Unreachable blocks form a self-loop and a two-block cycle, each block with one predecessor.
+    NIR::TModule module;
+    NIR::TBuilder builder(module);
+    const int i64 = module.Types.I(EKind::I64);
+    const int i1 = module.Types.I(EKind::I1);
+    builder.NewFunction("f", {}, 0);
+    builder.SetReturnType(i64);
+    builder.SetType(TLocal{0}, i64, {});
+    const TLabel join = builder.NewLabel();
+    const TLabel self = builder.NewLabel();
+    const TLabel first = builder.NewLabel();
+    const TLabel second = builder.NewLabel();
+    builder.Emit0("jmp"_op, {join});
+    builder.NewBlock(join);
+    auto value = builder.Emit1("load"_op, {TLocal{0}});
+    builder.SetType(value, i64);
+    builder.Emit0("ret"_op, {value});
+    builder.NewBlock(self);
+    auto selfCond = builder.Emit1("=="_op, {TImm{0, i64}, TImm{0, i64}});
+    builder.SetType(selfCond, i1);
+    builder.Emit0("cmp"_op, {selfCond, self, join});
+    builder.NewBlock(first);
+    auto firstCond = builder.Emit1("=="_op, {TImm{0, i64}, TImm{0, i64}});
+    builder.SetType(firstCond, i1);
+    builder.Emit0("cmp"_op, {firstCond, second, join});
+    builder.NewBlock(second);
+    builder.Emit0("jmp"_op, {first});
+
+    auto& function = module.Functions.front();
+    BuildCfg(function);
+    PromoteLocalsToSSA(function, module);
+
+    // The local is never stored, so the join reads undef from every predecessor.
+    const TInstr* ret = nullptr;
+    for (const auto& block : function.Blocks) {
+        for (const auto& instr : block.Instrs) {
+            EXPECT_NE(instr.Op, "load"_op);
+            if (instr.Op == "ret"_op) {
+                ret = &instr;
+            }
+        }
+    }
+    ASSERT_NE(ret, nullptr);
+    ASSERT_EQ(ret->OperandCount, 1);
+    ASSERT_EQ(ret->Operands[0].Type, TOperand::EType::Imm);
+    EXPECT_EQ(module.Types.GetKind(ret->Operands[0].Imm.TypeId), EKind::Undef);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
