@@ -630,6 +630,44 @@ TEST(LLVMVector, InvalidIndexRaisesRuntimeError) {
     }
 }
 
+TEST(LLVMPointer, PhiWithNullPointerImmediate) {
+    for (int optLevel : {0, 1, 3}) {
+        SCOPED_TRACE(optLevel);
+        TModule module;
+        TBuilder builder(module);
+        const int i64 = module.Types.I(EKind::I64);
+        const int pointer = module.Types.Ptr(i64);
+        builder.NewFunction("pick", {TLocal{0}, TLocal{1}}, 1);
+        builder.SetReturnType(i64);
+        builder.SetType(TLocal{0}, pointer, {});
+        builder.SetType(TLocal{1}, i64, {});
+        const TLabel entryLabel = builder.CurrentBlockLabel();
+        const TLabel thenLabel = builder.NewLabel();
+        const TLabel joinLabel = builder.NewLabel();
+        auto source = builder.Emit1("load"_op, {TLocal{0}});
+        builder.SetType(source, pointer);
+        auto flag = builder.Emit1("load"_op, {TLocal{1}});
+        builder.SetType(flag, i64);
+        builder.Emit0("cmp"_op, {flag, thenLabel, joinLabel});
+        builder.NewBlock(thenLabel);
+        builder.Emit0("jmp"_op, {joinLabel});
+        builder.NewBlock(joinLabel);
+        auto phi = builder.Emit1("phi"_op, {TImm{0, pointer}, entryLabel, source, thenLabel});
+        builder.SetType(phi, pointer);
+        auto address = builder.Emit1("bitcast"_op, {phi});
+        builder.SetType(address, i64);
+        builder.Emit0("ret"_op, {address});
+        NCodeGen::TLLVMCodeGen codegen;
+        NCodeGen::TLlvmRunner runner;
+        auto* entry = runner.Lookup(codegen.Emit(module, optLevel), "pick");
+        ASSERT_NE(entry, nullptr);
+        int64_t value = 0;
+        using TPick = int64_t (*)(int64_t*, int64_t);
+        EXPECT_EQ(reinterpret_cast<TPick>(entry)(&value, 0), 0);
+        EXPECT_EQ(reinterpret_cast<TPick>(entry)(&value, 1), reinterpret_cast<int64_t>(&value));
+    }
+}
+
 int main(int argc, char** argv) {
     NQumir::NCodeGen::TLLVMInitializer llvmInit;
     testing::InitGoogleTest(&argc, argv);
