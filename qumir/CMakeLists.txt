@@ -58,6 +58,8 @@ add_library(qumir
     ir/passes/analysis/cfg.cpp
     ir/passes/transforms/const_fold.h
     ir/passes/transforms/const_fold.cpp
+    ir/passes/transforms/inline_calls.h
+    ir/passes/transforms/inline_calls.cpp
     ir/passes/transforms/de_ssa.h
     ir/passes/transforms/de_ssa.cpp
     ir/passes/transforms/locals2ssa.h
