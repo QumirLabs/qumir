@@ -1,0 +1,14 @@
+clamp: 15
+and: 4
+make: 3 4
+swap sum: 43 keeps 3 4
+swap twice: 3 4
+nested: 20 12
+lookup: 343434
+fact: 3628800 even: нет
+i128: 54 3875820019684212736
+vec: {11, 22, 33, 44}
+hello, inline
+say 0
+one
+say 2

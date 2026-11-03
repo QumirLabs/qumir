@@ -4,6 +4,7 @@
 #include <qumir/ir/passes/transforms/locals2ssa.h>
 #include <qumir/ir/passes/transforms/de_ssa.h>
 #include <qumir/ir/passes/transforms/const_fold.h>
+#include <qumir/ir/passes/transforms/inline_calls.h>
 
 #include <algorithm>
 
@@ -59,6 +60,7 @@ void Pipeline(TFunction& function, TModule& module) {
 }
 
 void Pipeline(TModule& module) {
+    InlineCalls(module);
     for (auto& function : module.Functions) {
         Pipeline(function, module);
     }
