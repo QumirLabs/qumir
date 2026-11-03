@@ -59,18 +59,20 @@ public:
 
     // Starts a call chain: the entry function's window at offset zero.
     void Reset(size_t size, size_t alignment) {
-        Open(0, size, alignment);
+        Open(0, size, alignment, 0);
     }
 
     // End of the window that Push would open, for the caller's stack limit check.
-    size_t WindowEnd(size_t size, size_t alignment) const {
-        return AlignUp(Base_ + Size_, alignment) + size;
+    size_t WindowEnd(size_t offset, size_t size) const {
+        return Base_ + offset + size;
     }
 
-    // Opens a zeroed window above the active one and returns its base.
-    size_t Push(size_t size, size_t alignment) {
-        const size_t base = AlignUp(Base_ + Size_, alignment);
-        Open(base, size, alignment);
+    // Opens a window at `offset` inside the active one, which is where the caller
+    // wrote the callee's first `keep` bytes (parameters); the rest is zeroed.
+    // Returns the window's base.
+    size_t Push(size_t offset, size_t size, size_t alignment, size_t keep) {
+        const size_t base = Base_ + offset;
+        Open(base, size, alignment, keep);
         return base;
     }
 
@@ -122,7 +124,7 @@ private:
         return (value + alignment - 1) & ~(alignment - 1);
     }
 
-    void Open(size_t base, size_t size, size_t alignment) {
+    void Open(size_t base, size_t size, size_t alignment, size_t keep) {
         assert(AlignUp(base, alignment) == base);
         if (base > ReservedBytes || size > ReservedBytes - base) {
             throw std::runtime_error("Stack overflow in interpreter");
@@ -134,8 +136,8 @@ private:
         Base_ = base;
         Size_ = size;
         Active_ = Data_.get() + base;
-        if (size != 0) {
-            std::memset(Active_, 0, size);
+        if (size > keep) {
+            std::memset(Active_ + keep, 0, size - keep);
         }
     }
 

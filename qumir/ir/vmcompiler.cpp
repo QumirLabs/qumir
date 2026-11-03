@@ -104,9 +104,12 @@ uint8_t VectorFormat(const TTypeTable& types, int vectorType) {
     return TVMInstr::MakeFormat(std::countr_zero(elementSize), std::countr_zero(count));
 }
 
+// Register windows start at multiples of this, so a callee's window can start in its caller's.
+constexpr int MaxRegisterAlignment = 16;
+
 int RegisterAlignment(const TTypeTable& types, int typeId) {
     return Is128BitInteger(types, typeId)
-        ? 16
+        ? MaxRegisterAlignment
         : 8;
 }
 
@@ -124,6 +127,39 @@ EArgKind ArgKind(const TTypeTable& types, int typeId, int size) {
         return EArgKind::Int128;
     }
     return EArgKind::Word;
+}
+
+TParamLayout LayoutParams(const TTypeTable& types, const TFunction& function) {
+    TParamLayout layout;
+    for (const auto& argLocal : function.ArgLocals) {
+        const int typeId = function.LocalTypes.at(argLocal.Idx);
+        const int size = (typeId >= 0)
+            ? types.SizeInBytes(typeId)
+            : 8;
+        const EArgKind kind = ArgKind(types, typeId, size);
+        const int alignment = RegisterAlignment(types, typeId);
+        const int offset = AlignUp(layout.Bytes, alignment);
+        layout.TypeIds.push_back(typeId);
+        layout.Sizes.push_back(size);
+        layout.Kinds.push_back(kind);
+        layout.Offsets.push_back(offset);
+        // The register of a struct parameter holds the address of the caller's struct.
+        layout.Bytes = offset + ((kind == EArgKind::Struct)
+            ? 8
+            : std::max(8, size));
+        layout.Alignment = std::max(layout.Alignment, alignment);
+    }
+    return layout;
+}
+
+// Copy format of a parameter register.
+uint8_t ParamFormat(const TTypeTable& types, int typeId) {
+    if (Is128BitInteger(types, typeId)) {
+        return TVMInstr::MakeFormat(4);
+    }
+    return types.IsVector(typeId)
+        ? VectorFormat(types, typeId)
+        : TVMInstr::MakeFormat(3);
 }
 
 EKind ClassifyKind(int typeId, const TTypeTable& tt, NFFI::EStructKind& structKind) {
@@ -258,11 +294,15 @@ bool TVMCompiler::CompileVectorInstruction(const TFunction& function, const TIns
             if (instr.Operands[0].Type != TOperand::EType::Tmp) {
                 throw std::runtime_error("VM vector " + instr.Op.ToString() + " operand must be a temporary");
             }
+            if (instr.Op == "arg"_op) {
+                // Arguments of VM calls are handled in ins2vm.
+                throw std::runtime_error("VM external calls with vectors are not supported");
+            }
             if (function.IsCoroutine && instr.Op == "ret"_op) {
                 // The future result is a single word.
                 throw std::runtime_error("VM coroutines cannot return vectors");
             }
-            out.Op = instr.Op == "arg"_op ? EVMOp::ArgVec : EVMOp::RetVec;
+            out.Op = EVMOp::RetVec;
             return true;
         }
         case "lea"_op:
@@ -542,12 +582,63 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
     std::unordered_map<int64_t, int64_t> labelToPC;
     std::unordered_map<int64_t, int64_t> labelToLastPC;
 
+    funcOut.Params = LayoutParams(Module.Types, function);
+    const auto& params = funcOut.Params;
+    funcOut.RegisterFileAlignment = std::max(funcOut.RegisterFileAlignment, params.Alignment);
+
+    // Parameter registers get tmp ids past every IR tmp and the await scratch tmp.
+    const int paramTmpBase = function.NextTmpIdx + 1;
+    for (size_t i = 0; i < params.Offsets.size(); ++i) {
+        funcOut.TmpByteOffsets[paramTmpBase + i] = params.Offsets[i];
+    }
+
+    // A parameter stays in its register unless the function takes its address, is a struct
+    // or has debug info (the debugger reads locals from the frame); those are copied at entry.
+    std::unordered_map<int, size_t> paramOfLocal;
+    std::vector<char> paramInFrame(params.Offsets.size());
+    std::vector<char> paramStored(params.Offsets.size());
+    for (size_t i = 0; i < params.Offsets.size(); ++i) {
+        paramOfLocal[function.ArgLocals[i].Idx] = i;
+        paramInFrame[i] = params.Kinds[i] == EArgKind::Struct || !function.LocalDebugInfo.empty();
+    }
+    for (const auto& block : function.Blocks) {
+        for (const auto& instr : block.Instrs) {
+            for (int i = 0; i < instr.OperandCount; ++i) {
+                if (instr.Operands[i].Type != TOperand::EType::Local) {
+                    continue;
+                }
+                auto it = paramOfLocal.find(instr.Operands[i].Local.Idx);
+                if (it == paramOfLocal.end()) {
+                    continue;
+                }
+                if (instr.Op == "stre"_op && i == 0) {
+                    paramStored[it->second] = true;
+                } else if (instr.Op != "load"_op) {
+                    paramInFrame[it->second] = true;
+                }
+            }
+        }
+    }
+    // The tmp of a load of a parameter that is never stored is the parameter register itself.
+    auto aliasedParamLoad = [&](const TInstr& instr) -> bool {
+        if (instr.Op != "load"_op || instr.Operands[0].Type != TOperand::EType::Local) {
+            return false;
+        }
+        auto it = paramOfLocal.find(instr.Operands[0].Local.Idx);
+        return it != paramOfLocal.end() && !paramInFrame[it->second] && !paramStored[it->second];
+    };
+
     auto& code = funcOut.VMCode;
+    code.resize(std::count(paramInFrame.begin(), paramInFrame.end(), true));
     std::unordered_set<int> usedTmps;
     for (const auto& block : function.Blocks) {
         labelToPC[block.Label.Idx] = code.size();
         for (const auto& instr : block.Instrs) {
             if (instr.Op == "prefetch"_op) {
+                continue;
+            }
+            if (aliasedParamLoad(instr)) {
+                funcOut.TmpByteOffsets[instr.Dest.Idx] = params.Offsets[paramOfLocal.at(instr.Operands[0].Local.Idx)];
                 continue;
             }
             if (instr.Dest.Idx >= 0) {
@@ -602,21 +693,6 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
         }
 
         funcOut.NumLocals = AlignUp(offset, 8); // frame size in bytes
-    }
-
-    // Populate ArgByteOffsets and ArgTypeIds for eval
-    for (const auto& argLocal : function.ArgLocals) {
-        if (argLocal.Idx >= 0 && argLocal.Idx < (int)funcOut.LocalByteOffsets.size()) {
-            funcOut.ArgByteOffsets.push_back(funcOut.LocalByteOffsets[argLocal.Idx]);
-            int typeId = (argLocal.Idx < (int)function.LocalTypes.size())
-                ? function.LocalTypes[argLocal.Idx] : -1;
-            funcOut.ArgTypeIds.push_back(typeId);
-            const int size = (typeId >= 0)
-                ? Module.Types.SizeInBytes(typeId)
-                : 8;
-            funcOut.ArgSizes.push_back(size);
-            funcOut.ArgKinds.push_back(ArgKind(Module.Types, typeId, size));
-        }
     }
 
     auto require = [&](const TInstr& ins, int requireDest, size_t requireOperands) {
@@ -686,9 +762,48 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
         return isF32(typeIdOp(ins.Operands[0])) || isF32(typeIdOp(ins.Operands[1]));
     };
 
-    auto ins2vm = [&](const TInstr& ins, TVMInstr*& ptr) {
-        if (ins.Op == "prefetch"_op) {
+    std::unordered_map<int64_t, TParamLayout> calleeParams;
+    auto paramsOf = [&](int64_t calleeIdx) -> const TParamLayout& {
+        auto it = calleeParams.find(calleeIdx);
+        if (it == calleeParams.end()) {
+            it = calleeParams.emplace(calleeIdx, LayoutParams(Module.Types, Module.Functions[calleeIdx])).first;
+        }
+        return it->second;
+    };
+    // Arguments of VM calls are written to the callee's parameter registers, which
+    // start at the end of this function's registers; AllocateRegisters knows where.
+    std::vector<std::pair<size_t, int>> outgoingArgs; // VM index, offset in the callee's window
+    int maxOutgoingBytes = -1; // -1: no VM calls
+    size_t pendingArgs = 0;
+
+    // Offset and type of the VM callee's parameter that the arg at `index` feeds; none for an extern callee.
+    auto outgoingParam = [&](const TBlock& block, size_t index, size_t position) -> std::optional<std::pair<int, int>> {
+        for (size_t i = index + 1; i < block.Instrs.size(); ++i) {
+            const auto& next = block.Instrs[i];
+            if ((next.Op != "call"_op && next.Op != "await"_op) || next.Operands[0].Type != TOperand::EType::Imm) {
+                continue;
+            }
+            auto callee = Module.SymIdToFuncIdx.find(next.Operands[0].Imm.Value);
+            if (callee == Module.SymIdToFuncIdx.end()) {
+                return std::nullopt;
+            }
+            const auto& layout = paramsOf(callee->second);
+            if (position >= layout.Offsets.size()) {
+                throw std::runtime_error("too many arguments for `" + std::string(Module.Functions[callee->second].Name) + "'");
+            }
+            return std::pair{layout.Offsets[position], layout.TypeIds[position]};
+        }
+        throw std::runtime_error("arg without a call");
+    };
+
+    auto ins2vm = [&](const TBlock& block, size_t index, TVMInstr*& ptr) {
+        const TInstr& ins = block.Instrs[index];
+        if (ins.Op == "prefetch"_op || aliasedParamLoad(ins)) {
             return;
+        }
+        std::optional<std::pair<int, int>> outgoing;
+        if (ins.Op == "arg"_op) {
+            outgoing = outgoingParam(block, index, pendingArgs++);
         }
         auto& out = *ptr++;
         int offset = 0;
@@ -737,6 +852,25 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     operand = TImm{reinterpret_cast<int64_t>(pc)};
                     break;
             };
+        }
+
+        if (outgoing) {
+            out.Op = EVMOp::Mov;
+            out.Operands[1] = out.Operands[0];
+            out.Operands[0] = TTmp{-1}; // set after the registers are allocated
+            out.Format = ParamFormat(Module.Types, outgoing->second);
+            outgoingArgs.emplace_back(&out - code.data(), outgoing->first);
+            return;
+        }
+        if ((ins.Op == "load"_op || ins.Op == "stre"_op) && ins.Operands[0].Type == TOperand::EType::Local) {
+            auto param = paramOfLocal.find(ins.Operands[0].Local.Idx);
+            if (param != paramOfLocal.end() && !paramInFrame[param->second]) {
+                const TTmp reg{paramTmpBase + static_cast<int>(param->second)};
+                out.Op = EVMOp::Mov;
+                out.Operands[ins.Op == "load"_op ? 1 : 0] = reg;
+                out.Format = ParamFormat(Module.Types, params.TypeIds[param->second]);
+                return;
+            }
         }
 
         if (CompileVectorInstruction(function, ins, out)) {
@@ -1098,6 +1232,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
             }
             case "arg"_op: {
                 require(ins, -1, 1);
+                // Only arguments of extern calls get here.
                 if (ins.Operands[0].Type == TOperand::EType::Tmp) {
                     out.Op = is128(typeIdOp(ins.Operands[0])) ? EVMOp::ArgTmp128 : EVMOp::ArgTmp;
                 } else if (ins.Operands[0].Type == TOperand::EType::Imm) {
@@ -1127,6 +1262,12 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 if (Module.SymIdToFuncIdx.contains(calleeId)) {
                     const int64_t calleeIdx = Module.SymIdToFuncIdx.at(calleeId);
                     assert(calleeIdx >=0 && calleeIdx < Module.Functions.size() && "Invalid callee idx");
+                    const auto& calleeLayout = paramsOf(calleeIdx);
+                    if (pendingArgs != calleeLayout.Offsets.size()) {
+                        throw std::runtime_error("`" + std::string(Module.Functions[calleeIdx].Name) + "' expects "
+                            + std::to_string(calleeLayout.Offsets.size()) + " arguments, got " + std::to_string(pendingArgs));
+                    }
+                    maxOutgoingBytes = std::max(maxOutgoingBytes, calleeLayout.Bytes);
                     out.Operands[1] = TImm{calleeIdx};
                     out.Op = EVMOp::Call;
                 } else if (Module.SymIdToExtFuncIdx.contains(calleeId)) {
@@ -1151,6 +1292,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                     throw std::runtime_error("Unknown callee id in call: " + std::to_string(calleeId));
                 }
 
+                pendingArgs = 0;
                 if (awaitCall) {
                     out.Operands[0] = future;
                     auto& resume = *ptr++;
@@ -1215,10 +1357,26 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
     };
 
     auto* ptr = code.data();
+    for (size_t i = 0; i < params.Offsets.size(); ++i) {
+        if (!paramInFrame[i]) {
+            continue;
+        }
+        auto& out = *ptr++;
+        out.Operands[0] = TLocal{funcOut.LocalByteOffsets[function.ArgLocals[i].Idx]};
+        out.Operands[1] = TTmp{paramTmpBase + static_cast<int>(i)};
+        if (params.Kinds[i] == EArgKind::Struct) {
+            out.Op = EVMOp::StructStore;
+            out.Operands[2] = TUntypedImm{params.Sizes[i]};
+        } else {
+            out.Op = EVMOp::Store;
+            out.Format = ParamFormat(Module.Types, params.TypeIds[i]);
+        }
+    }
     for (const auto& block : function.Blocks) {
+        pendingArgs = 0;
         for (size_t i = 0; i < block.Instrs.size(); ++i) {
             const size_t firstVMIndex = ptr - code.data();
-            ins2vm(block.Instrs[i], ptr);
+            ins2vm(block, i, ptr);
             if (!block.InstrDebugInfo.empty()) {
                 const size_t lastVMIndex = ptr - code.data();
                 funcOut.InstrDebugInfo.resize(lastVMIndex);
@@ -1235,6 +1393,20 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
         funcOut.InstrDebugInfo.resize(ptr - code.data());
     }
     AllocateRegisters(function, tmpFrameOffsets, funcOut);
+
+    if (maxOutgoingBytes >= 0) {
+        // A callee's window starts after the registers, at the arguments written there.
+        const int windowOffset = AlignUp(funcOut.RegisterFileSize, MaxRegisterAlignment);
+        for (const auto& [index, offset] : outgoingArgs) {
+            code[index].Operands[0].Tmp.Idx = windowOffset + offset;
+        }
+        for (auto& instr : code) {
+            if (instr.Op == EVMOp::Call) {
+                instr.Operands[2] = TUntypedImm{windowOffset};
+            }
+        }
+        funcOut.RegisterFileSize = windowOffset + maxOutgoingBytes;
+    }
 }
 
 void TVMCompiler::AllocateRegisters(
@@ -1242,7 +1414,7 @@ void TVMCompiler::AllocateRegisters(
     const std::vector<int>& tmpFrameOffsets,
     TExecFunc& out)
 {
-    int offset = 0;
+    int offset = out.Params.Bytes;
     auto allocate = [&](TTmp& tmp) {
         if (tmp.Idx < 0) {
             return;

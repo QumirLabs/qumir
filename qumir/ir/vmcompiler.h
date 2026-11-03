@@ -13,12 +13,23 @@
 namespace NQumir {
 namespace NIR {
 
-// How a call stores an argument word into the callee's frame.
+// How a parameter lives in the callee's registers.
 enum class EArgKind : uint8_t {
     Word, // the word itself, 8 bytes
-    Struct, // the word points to the struct, which is copied
-    Vector, // the word is the offset of the vector's bytes in TRuntime::ArgBytes
-    Int128, // the 16 bytes are in TRuntime::Args128
+    Struct, // the word points to the struct, which the callee copies into its frame
+    Vector, // the bytes of the vector
+    Int128, // the 16 bytes
+};
+
+// Parameters sit at the start of the callee's register file, so a caller
+// writes its arguments straight into the callee's registers.
+struct TParamLayout {
+    std::vector<int> TypeIds; // IR typeId of each parameter (Invoke checks entry arguments)
+    std::vector<int> Sizes;
+    std::vector<EArgKind> Kinds;
+    std::vector<int> Offsets; // register byte offset of each parameter
+    int Bytes = 0; // end of the last parameter
+    int Alignment = 8;
 };
 
 struct TExecFunc {
@@ -27,11 +38,7 @@ struct TExecFunc {
     int32_t RegisterFileSize = 0;
     int32_t RegisterFileAlignment = 8;
     int32_t NumLocals{0};        // frame size in bytes (not variable count)
-    std::vector<int> ArgByteOffsets; // byte offset of each argument local in the frame (for func args only!)
-    std::vector<int> ArgTypeIds;     // IR typeId of each argument (Invoke checks entry arguments)
-    // Per argument, so a call copies arguments without type table lookups.
-    std::vector<int> ArgSizes;
-    std::vector<EArgKind> ArgKinds;
+    TParamLayout Params;
     std::unordered_map<int, int> TmpByteOffsets; // IR tmp id -> register file byte offset
     struct TStructRegister {
         int FrameOffset;

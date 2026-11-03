@@ -1,0 +1,47 @@
+function caller () { ; ptr to void coroutine result i64
+  block {
+    label: label(0)
+    arg imm(3,i64) 
+    arg imm(4,i64) 
+    call tmp(0,ptr to void) = value 
+    await tmp(1,i64) = tmp(0,ptr to void) 
+    arg imm(5,i64) 
+    arg imm(6,i64) 
+    call tmp(2,ptr to void) = value 
+    await tmp(3,i64) = tmp(2,ptr to void) 
+    + tmp(4,i64) = tmp(1,i64) tmp(3,i64) 
+    stre local(0,i64) tmp(4,i64) 
+    load tmp(5,i64) = local(0,i64) 
+    stre local(1,i64) tmp(5,i64) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    load tmp(6,i64) = local(1,i64) 
+    ret tmp(6,i64) 
+  }
+}
+function value (local(0), local(1)) { ; ptr to void coroutine result i64
+  block {
+    label: label(0)
+    arg imm(11,i64) 
+    arg imm(5,i64) 
+    arg imm(5,i64) 
+    call builtin::record_locator 
+    call tmp(0,ptr to void) = вверх 
+    await tmp(0,ptr to void) 
+    load tmp(1,i64) = local(0,i64) 
+    * tmp(2,i64) = tmp(1,i64) imm(10,i64) 
+    load tmp(3,i64) = local(1,i64) 
+    + tmp(4,i64) = tmp(2,i64) tmp(3,i64) 
+    stre local(2,i64) tmp(4,i64) 
+    load tmp(5,i64) = local(2,i64) 
+    stre local(3,i64) tmp(5,i64) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    load tmp(6,i64) = local(3,i64) 
+    ret tmp(6,i64) 
+  }
+}

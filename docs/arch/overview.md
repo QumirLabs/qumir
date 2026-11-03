@@ -219,18 +219,23 @@ its own scalar opcodes (`FAdd32`, `FCmpLT32`, `FExt32`, ...); an `f32`
 immediate carries the float bits in the low four bytes of `Imm.Value`.
 Struct registers hold addresses of storage in the call frame.
 The registers of all active calls form one stack of windows inside a single
-reservation made up front. A call opens a zeroed window right above its
-caller's, aligned for the callee's registers; returning reactivates the
-caller's window without copying or clearing it. The reservation never moves,
+reservation made up front. A call opens a window at the end of its caller's
+registers; the callee's parameters are its first registers, and the caller has
+written the arguments there, so the window overlaps the caller's. The rest of
+the window is zeroed. Returning reactivates the caller's window without
+copying or clearing it. The reservation never moves,
 so a register keeps its address while its call is active, and call/return
 cost does not depend on the caller's register-file size. The windows of active
 calls count toward the VM stack limit together with their locals; exceeding it
 is a `Stack overflow in interpreter` error, after which the next invocation
 starts from an empty stack. Each interpreter reserves a second 128 MiB virtual
 area next to `Stack.reserve`, so virtual size per instance doubles under strict
-overcommit or `RLIMIT_AS`. A call copies each argument into the callee's
-frame by a layout the compiler computes once per function (`TExecFunc::ArgKinds`),
-so calls do no type-table lookups.
+overcommit or `RLIMIT_AS`. The layout of the parameters is computed once per
+function (`TExecFunc::Params`) and is the same for the callee and its callers.
+A parameter whose address is taken, a struct parameter (the register holds the
+address of the caller's struct) and any parameter of a function with debug info
+are copied into the frame at entry; the others are read and assigned in their
+registers. Arguments of extern calls still go through `ArgTmp` and `ArgConst`.
 
 ### 6.1 Execution model
 
