@@ -340,6 +340,9 @@ int OperandType(const TFunction& function, const TModule& module, const TOperand
 
 // Operands beyond TInstr::Operands are dropped, as in TBuilder::Emit0.
 TInstr MakeInstr(TOp op, std::span<const TOperand> operands, TTmp dest = TTmp{-1});
+inline TInstr MakeInstr(TOp op, std::initializer_list<TOperand> operands, TTmp dest = TTmp{-1}) {
+    return MakeInstr(op, std::span<const TOperand>(operands), dest);
+}
 
 // Keeps block.InstrDebugInfo only up to the last located instruction.
 void AppendInstr(TBlock& block, const TInstr& instr, const TInstrDebugInfo& debugInfo);
