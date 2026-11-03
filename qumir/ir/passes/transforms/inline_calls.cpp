@@ -1,5 +1,7 @@
 #include "inline_calls.h"
 
+#include <qumir/ir/passes/analysis/cfg.h>
+
 #include <algorithm>
 #include <iterator>
 #include <optional>
@@ -63,25 +65,12 @@ int OperandType(const TFunction& function, const TOperand& operand) {
     return -1;
 }
 
-std::vector<TLabel> Successors(const TBlock& block) {
-    std::vector<TLabel> result;
-    const auto& terminator = block.Instrs.back();
-    for (int i = 0; i < terminator.OperandCount; ++i) {
-        if (terminator.Operands[i].Type == TOperand::EType::Label) {
-            result.push_back(terminator.Operands[i].Label);
-        }
-    }
-    return result;
-}
-
 // A call frame starts zeroed, so a local that some path reads (or takes the
 // address of) before storing it must be zeroed on every inlined entry.
-std::vector<bool> LocalsReadBeforeStore(const TFunction& function) {
+std::vector<bool> LocalsReadBeforeStore(TFunction& function) {
+    BuildCfg(function);
     const size_t localCount = function.LocalTypes.size();
-    std::vector<size_t> blockByLabel(function.Blocks.size());
-    for (size_t i = 0; i < function.Blocks.size(); ++i) {
-        blockByLabel[function.Blocks[i].Label.Idx] = i;
-    }
+    const auto& blockByLabel = function.Label2Idx;
     auto isStore = [](const TInstr& instr) {
         return instr.Op == "stre"_op && instr.Operands[0].Type == TOperand::EType::Local;
     };
@@ -106,7 +95,7 @@ std::vector<bool> LocalsReadBeforeStore(const TFunction& function) {
                 stored[instr.Operands[0].Local.Idx] = true;
             }
         }
-        for (auto label : Successors(function.Blocks[blockIndex])) {
+        for (auto label : function.Blocks[blockIndex].Succ) {
             auto& next = storedAtStart[blockByLabel[label.Idx]];
             if (!reached[blockByLabel[label.Idx]]) {
                 reached[blockByLabel[label.Idx]] = true;
@@ -291,6 +280,8 @@ private:
     // callee, every copied `ret` jumps to the tail. Returns the tail's block index.
     size_t InlineCall(TFunction& caller, size_t blockIndex, size_t callIndex, int calleeIndex) {
         const auto& callee = Module_.Functions[calleeIndex];
+        // Earlier inlines into this caller left Succ/Pred stale; the rebuild is a no-op when current.
+        BuildCfg(caller);
         TBlock block = std::move(caller.Blocks[blockIndex]);
         const TInstr call = block.Instrs[callIndex];
         const auto callDebugInfo = DebugInfoAt(block, callIndex);
@@ -395,7 +386,7 @@ private:
             Append(tail, block.Instrs[i], DebugInfoAt(block, i));
         }
         // The split block's successors are now reached from the tail.
-        const auto successors = Successors(tail);
+        const auto successors = block.Succ;
         inserted.push_back(std::move(tail));
         const size_t tailIndex = blockIndex + inserted.size();
         caller.Blocks.insert(
