@@ -2,14 +2,14 @@
 
 #include <qumir/ir/builder.h>
 
-#include <set>
 #include <vector>
 
 namespace NQumir {
 namespace NIR {
 namespace NPasses {
 
-using TLiveSet = std::set<int>;
+// Sorted tmp ids.
+using TLiveSet = std::vector<int>;
 
 // Requires a built CFG. Phi operands are uses on their incoming edges.
 std::vector<TLiveSet> ComputeLiveOut(const TFunction& function);
