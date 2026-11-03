@@ -405,6 +405,48 @@ void TBuilder::SetScopeDebugInfo(int scopeId, int parentScopeId) {
     CurrentFunction->ScopeParents[scopeId] = parentScopeId;
 }
 
+int OperandType(const TFunction& function, const TModule& module, const TOperand& operand) {
+    auto lookup = [](int idx, const std::vector<int>& types) {
+        if (idx < 0 || idx >= (int)types.size()) {
+            return -1;
+        }
+        return types[idx];
+    };
+    switch (operand.Type) {
+        case TOperand::EType::Tmp:
+            return function.GetType(operand.Tmp);
+        case TOperand::EType::Imm:
+            return operand.Imm.TypeId;
+        case TOperand::EType::Local:
+            return lookup(operand.Local.Idx, function.LocalTypes);
+        case TOperand::EType::Slot:
+            return lookup(operand.Slot.Idx, module.GlobalTypes);
+        case TOperand::EType::Label:
+            return -1;
+    }
+    return -1;
+}
+
+TInstr MakeInstr(TOp op, std::span<const TOperand> operands, TTmp dest) {
+    TInstr instr{.Op = op, .Dest = dest};
+    instr.OperandCount = 0;
+    for (size_t i = 0; i < operands.size() && i < instr.Operands.size(); ++i) {
+        instr.Operands[i] = operands[i];
+        instr.OperandCount++;
+    }
+    return instr;
+}
+
+void AppendInstr(TBlock& block, const TInstr& instr, const TInstrDebugInfo& debugInfo) {
+    block.Instrs.push_back(instr);
+    if (debugInfo) {
+        if (block.InstrDebugInfo.size() < block.Instrs.size()) {
+            block.InstrDebugInfo.resize(block.Instrs.size());
+        }
+        block.InstrDebugInfo[block.Instrs.size() - 1] = debugInfo;
+    }
+}
+
 TTmp TBuilder::NewTmp() {
     if (!CurrentFunction) {
         throw std::runtime_error("No current function");
@@ -444,22 +486,7 @@ void TBuilder::Emit0(TOp op, std::span<const TOperand> operands, const TInstrDeb
     if (!CurrentBlock) {
         throw std::runtime_error("No current block");
     }
-    CurrentBlock->Instrs.push_back(TInstr {
-        .Op = op
-    });
-    auto& instr = CurrentBlock->Instrs.back();
-    instr.OperandCount = 0;
-    for (size_t i = 0; i < operands.size() && i < instr.Operands.size(); ++i) {
-        instr.Operands[i] = *(operands.begin() + i);
-        instr.OperandCount++;
-    }
-
-    if (debugInfo) {
-        if (CurrentBlock->InstrDebugInfo.size() < CurrentBlock->Instrs.size()) {
-            CurrentBlock->InstrDebugInfo.resize(CurrentBlock->Instrs.size());
-        }
-        CurrentBlock->InstrDebugInfo[CurrentBlock->Instrs.size() - 1] = debugInfo;
-    }
+    AppendInstr(*CurrentBlock, MakeInstr(op, operands), debugInfo);
 }
 
 bool TBuilder::IsCurrentBlockTerminated() const {
