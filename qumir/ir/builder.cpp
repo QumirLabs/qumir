@@ -322,7 +322,12 @@ std::pair<TLabel, int> TBuilder::NewBlock(TLabel label) {
         .Instrs = {}
     });
     CurrentBlock = &CurrentFunction->Blocks.back();
-    CurrentFunction->LabelToBlockIdx[CurrentBlock->Label] = CurrentFunction->Blocks.size() - 1;
+    auto& label2Idx = CurrentFunction->Label2Idx;
+    if ((size_t)CurrentBlock->Label.Idx >= label2Idx.size()) {
+        // Labels from NewLabel() may precede their blocks; -1 marks a block not created yet.
+        label2Idx.resize(CurrentBlock->Label.Idx + 1, -1);
+    }
+    label2Idx[CurrentBlock->Label.Idx] = CurrentFunction->Blocks.size() - 1;
     return {CurrentBlock->Label, CurrentFunction->Blocks.size() - 1};
 }
 
@@ -359,11 +364,11 @@ void TBuilder::SetCurrentBlock(TLabel label) {
     if (!CurrentFunction) {
         throw std::runtime_error("No current function");
     }
-    auto it = CurrentFunction->LabelToBlockIdx.find(label);
-    if (it == CurrentFunction->LabelToBlockIdx.end()) {
+    const auto& label2Idx = CurrentFunction->Label2Idx;
+    if (label.Idx < 0 || (size_t)label.Idx >= label2Idx.size() || label2Idx[label.Idx] < 0) {
         throw std::runtime_error("No block with the given label in current function");
     }
-    SetCurrentBlock(it->second);
+    SetCurrentBlock(label2Idx[label.Idx]);
 }
 
 int TBuilder::CurrentFunctionIdx() const

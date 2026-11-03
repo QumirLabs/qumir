@@ -271,7 +271,6 @@ struct TFunction {
     int32_t NextTmpIdx;
     int32_t NextLabelIdx;
     TExecFunc* Exec{nullptr};
-    std::map<TLabel, int> LabelToBlockIdx;
 
     // debug info {
     std::optional<TFunctionDebugInfo> DebugInfo;
