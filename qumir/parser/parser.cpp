@@ -572,13 +572,12 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         const auto keywordLocation = next.Location;
         next = stream.Next();
         stream.Unget(next);
-        // Only a comment after the keyword: empty condition, nothing to assert.
+        // Nothing or only a comment after the keyword: empty condition, nothing to assert.
         if (!isOp(next, EOperator::Eol) && !isEof(next)) {
             assertBefore = std::make_shared<TAssertStmt>(keywordLocation, co_await expr(context));
         }
         next = stream.Next();
     }
-    // Blank and comment-only lines are Eol tokens: skip any number of them.
     while (isOp(next, EOperator::Eol)) {
         next = stream.Next();
     }
@@ -586,13 +585,12 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         const auto keywordLocation = next.Location;
         next = stream.Next();
         stream.Unget(next);
-        // Only a comment after the keyword: empty condition, nothing to assert.
+        // Nothing or only a comment after the keyword: empty condition, nothing to assert.
         if (!isOp(next, EOperator::Eol) && !isEof(next)) {
             assertAfter = std::make_shared<TAssertStmt>(keywordLocation, co_await expr(context));
         }
         next = stream.Next();
     }
-    // Blank and comment-only lines are Eol tokens: skip any number of them.
     while (isOp(next, EOperator::Eol)) {
         next = stream.Next();
     }
