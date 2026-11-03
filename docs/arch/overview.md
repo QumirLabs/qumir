@@ -28,7 +28,7 @@ Source (.kum / core-lang)
         ▼
   [ IR lowering ]  →  TModule (SSA IR)
         │
-        ├── [ IR passes ]  (SSA, const-fold, de-SSA, …)
+        ├── [ IR passes ]  (SSA, const-fold, …)
         │
         ├──────────────────────────────────────┐
         ▼                                      ▼
@@ -334,7 +334,7 @@ Translates `TModule` to LLVM IR and then to native code or WebAssembly.
 ### 7.1 Function lowering
 
 IR basic blocks map directly to LLVM basic blocks.  IR temporaries become
-LLVM values (`alloca`-free after the de-SSA pass).  Struct arguments and
+LLVM values (`alloca`-free after the SSA passes).  Struct arguments and
 returns are modelled as ordinary LLVM values.
 
 ### 7.2 Target

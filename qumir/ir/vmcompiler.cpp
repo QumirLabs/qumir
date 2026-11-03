@@ -11,7 +11,6 @@
 #include <iostream>
 #include <iomanip>
 #include <dlfcn.h>
-#include <limits>
 #include <unordered_set>
 
 namespace NQumir {

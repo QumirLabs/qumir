@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -17,10 +18,18 @@ namespace {
 
 TRegisterSlot Shape(int typeId, const TTypeTable& types) {
     const auto kind = types.GetKind(typeId);
+    int size = 8;
+    if (kind != EKind::Struct) {
+        size = std::max(8, types.SizeInBytes(typeId));
+    }
+    int alignment = 8;
+    if (kind == EKind::I128 || kind == EKind::U128) {
+        alignment = 16;
+    }
     return {
         .Offset = 0,
-        .Size = kind == EKind::Struct ? 8 : std::max(8, types.SizeInBytes(typeId)),
-        .Alignment = kind == EKind::I128 || kind == EKind::U128 ? 16 : 8,
+        .Size = size,
+        .Alignment = alignment,
     };
 }
 
@@ -156,7 +165,9 @@ TRegisterAllocation AllocateRegisters(
     auto priority = [&](int tmp) {
         return std::tuple{-shapes[tmp].Size, -shapes[tmp].Alignment, -static_cast<int>(conflicts[tmp].size()), tmp};
     };
-    std::sort(order.begin(), order.end(), [&](int a, int b) { return priority(a) < priority(b); });
+    std::sort(order.begin(), order.end(), [&](int a, int b) {
+        return priority(a) < priority(b);
+    });
 
     std::vector<TRegisterSlot> colors;
     std::vector<int> colorOf(tmpCount, -1);

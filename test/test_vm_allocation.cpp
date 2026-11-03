@@ -70,14 +70,20 @@ TEST(VMAllocation, BackEdgesPreserveLoopCarriedValues) {
 TEST(VMAllocation, ParallelCyclesUseOneScratchAndSplitTheConditionalEdge) {
     for (int width : {8, 16, 32}) {
         for (int count : {2, 3}) {
-            for (int alignment : {width == 16 ? 16 : 8, 64}) {
+            const int smallAlignment = (width == 16)
+                ? 16
+                : 8;
+            for (int alignment : {smallAlignment, 64}) {
                 SCOPED_TRACE(width);
                 SCOPED_TRACE(count);
                 SCOPED_TRACE(alignment);
                 TTypeTable types;
-                const int type = width == 8
-                    ? types.I(EKind::I64)
-                    : (width == 16 ? types.I(EKind::I128) : types.Vec(types.I(EKind::U8), 32));
+                int type = types.Vec(types.I(EKind::U8), 32);
+                if (width == 8) {
+                    type = types.I(EKind::I64);
+                } else if (width == 16) {
+                    type = types.I(EKind::I128);
+                }
                 TFunction function{.Blocks = {
                     {.Label = {0}, .Instrs = {{.Op = "cmp"_op,
                         .Operands = {TImm{1}, TLabel{1}, TLabel{2}}, .OperandCount = 3}}},

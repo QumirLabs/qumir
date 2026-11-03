@@ -3,6 +3,8 @@
 #include <qumir/ir/passes/analysis/cfg.h>
 
 #include <algorithm>
+#include <map>
+#include <utility>
 
 namespace NQumir {
 namespace NIR {
@@ -25,7 +27,9 @@ void LowerAllocatedPhis(TFunction& function, TRegisterAllocation& allocation) {
         block.Phis.clear();
     }
     std::map<std::pair<int, int>, int> scratchOffsets;
-    auto offset = [&](TTmp tmp) { return allocation.Slots.at(tmp.Idx).Offset; };
+    auto offset = [&](TTmp tmp) {
+        return allocation.Slots.at(tmp.Idx).Offset;
+    };
     for (auto& [edge, copies] : edges) {
         std::erase_if(copies, [&](const TCopy& copy) {
             return copy.second.Type == TOperand::EType::Tmp && offset(copy.first) == offset(copy.second.Tmp);
