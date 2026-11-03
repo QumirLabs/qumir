@@ -64,28 +64,6 @@ struct TSSABuilder {
         }
     }
 
-    int TypeId(const TOperand& op) const {
-        switch (op.Type) {
-            case TOperand::EType::Tmp:
-                return Function.GetTmpType(op.Tmp.Idx);
-            case TOperand::EType::Imm:
-                return op.Imm.TypeId;
-            case TOperand::EType::Local:
-                if (op.Local.Idx >= 0 && op.Local.Idx < (int)Function.LocalTypes.size()) {
-                    return Function.LocalTypes[op.Local.Idx];
-                }
-                return -1;
-            case TOperand::EType::Slot:
-                if (op.Slot.Idx >= 0 && op.Slot.Idx < (int)Module.GlobalTypes.size()) {
-                    return Module.GlobalTypes[op.Slot.Idx];
-                }
-                return -1;
-            case TOperand::EType::Label:
-                return -1;
-        }
-        return -1;
-    }
-
     bool IsStructLocal(int localIdx) const {
         if (localIdx < 0 || localIdx >= (int)Function.LocalTypes.size()) {
             return false;
@@ -95,7 +73,7 @@ struct TSSABuilder {
     }
 
     bool IsStructValueOperand(const TOperand& op) const {
-        const int typeId = TypeId(op);
+        const int typeId = OperandType(Function, Module, op);
         return typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct;
     }
 

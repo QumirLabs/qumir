@@ -63,24 +63,8 @@ void ConstFold(TFunction& function, TModule& module) {
         }
     };
 
-    auto operandTypeId = [&](const TOperand& op) -> int {
-        switch (op.Type) {
-            case TOperand::EType::Tmp:
-                return function.GetType(op.Tmp);
-            case TOperand::EType::Imm:
-                return op.Imm.TypeId;
-            case TOperand::EType::Slot:
-                return module.GlobalTypes[static_cast<size_t>(op.Slot.Idx)];
-            case TOperand::EType::Local:
-                return function.LocalTypes[static_cast<size_t>(op.Local.Idx)];
-            case TOperand::EType::Label:
-                return -1;
-        }
-        return -1;
-    };
-
     auto canReplaceWithOp = [&](TTmp tmp, const TOperand& op) {
-        return function.GetType(tmp) == operandTypeId(op);
+        return function.GetType(tmp) == OperandType(function, module, op);
     };
 
     auto applyBinOp = [&](TOp op, auto v1, auto v2) -> std::optional<decltype(v1)> {
@@ -132,7 +116,7 @@ void ConstFold(TFunction& function, TModule& module) {
             return false;
         }
         for (size_t i = 0; i < instr.OperandCount; ++i) {
-            if (needsWideValue(operandTypeId(instr.Operands[i]))) {
+            if (needsWideValue(OperandType(function, module, instr.Operands[i]))) {
                 return false;
             }
         }

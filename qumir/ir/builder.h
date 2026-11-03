@@ -335,6 +335,18 @@ struct TModule {
     void Print(std::ostream& out) const;
 };
 
+// Type of an operand; -1 for labels and for indexes outside the type tables.
+int OperandType(const TFunction& function, const TModule& module, const TOperand& operand);
+
+// Operands beyond TInstr::Operands are dropped, as in TBuilder::Emit0.
+TInstr MakeInstr(TOp op, std::span<const TOperand> operands, TTmp dest = TTmp{-1});
+inline TInstr MakeInstr(TOp op, std::initializer_list<TOperand> operands, TTmp dest = TTmp{-1}) {
+    return MakeInstr(op, std::span<const TOperand>(operands), dest);
+}
+
+// Keeps block.InstrDebugInfo only up to the last located instruction.
+void AppendInstr(TBlock& block, const TInstr& instr, const TInstrDebugInfo& debugInfo);
+
 class TBuilder {
 public:
     TBuilder(TModule& m);

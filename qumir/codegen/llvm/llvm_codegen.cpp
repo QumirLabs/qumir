@@ -1740,11 +1740,6 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
     const auto opcode = instr.Op;
     auto* outputType = GetTypeById(outputTypeId, module.Types, *Ctx);
     auto* irb = static_cast<llvm::IRBuilder<>*>(BuilderBase.get());
-    auto operandTypeId = [&](const TOperand& op) {
-        return op.Type == TOperand::EType::Tmp
-            ? CurFun->Fun->GetTmpType(op.Tmp.Idx)
-            : op.Imm.TypeId;
-    };
     if (opcode == "movemask"_op) {
         return PackVectorBits(*irb, TruthValue(*irb, GetOp(instr.Operands[0], module)), irb->getInt32Ty());
     }
@@ -1766,7 +1761,7 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
             }
             case "shuffle"_op: {
                 auto* source = GetOp(instr.Operands[0], module);
-                if (!module.Types.IsVector(operandTypeId(instr.Operands[1]))) {
+                if (!module.Types.IsVector(OperandType(*CurFun->Fun, module, instr.Operands[1]))) {
                     const auto& mask = module.VectorShuffleMasks.at(instr.Operands[1].Imm.Value);
                     return irb->CreateShuffleVector(source, mask, "vshuffle");
                 }
@@ -1802,7 +1797,7 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
                 if (!operandVector) {
                     operandVector = llvm::cast<llvm::FixedVectorType>(right->getType());
                 }
-                int elementTypeId = operandTypeId(instr.Operands[0]);
+                int elementTypeId = OperandType(*CurFun->Fun, module, instr.Operands[0]);
                 if (module.Types.IsVector(elementTypeId)) {
                     elementTypeId = module.Types.UnderlyingType(elementTypeId);
                 }
@@ -1823,7 +1818,7 @@ llvm::Value* TLLVMCodeGen::LowerVectorInstr(const TInstr& instr, TModule& module
                 if (value->getType() == vector) {
                     return value;
                 }
-                const int sourceElement = module.Types.UnderlyingType(operandTypeId(instr.Operands[0]));
+                const int sourceElement = module.Types.UnderlyingType(OperandType(*CurFun->Fun, module, instr.Operands[0]));
                 const int destElement = module.Types.UnderlyingType(outputTypeId);
                 const auto castOp = llvm::CastInst::getCastOpcode(value, module.Types.IsSigned(sourceElement),
                     vector, module.Types.IsSigned(destElement));
@@ -1867,21 +1862,6 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             return -1;
         }
         return cache[idx];
-    };
-    auto operandTypeId = [&](const TOperand& op) -> int {
-        switch (op.Type) {
-            case TOperand::EType::Tmp:
-                return typeId(op.Tmp.Idx, CurFun->Fun->TmpTypes);
-            case TOperand::EType::Slot:
-                return typeId(op.Slot.Idx, module.GlobalTypes);
-            case TOperand::EType::Local:
-                return typeId(op.Local.Idx, CurFun->Fun->LocalTypes);
-            case TOperand::EType::Imm:
-                return op.Imm.TypeId;
-            case TOperand::EType::Label:
-                return -1;
-        }
-        return -1;
     };
     auto printType = [&](std::ostream& out, int tid) {
         if (tid >= 0) {
@@ -2103,7 +2083,7 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             auto rhs = GetOp(instr.Operands[1], module);
             if (lhs->getType()->isFloatingPointTy() || lhs->getType()->isIntegerTy()) {
                 rhs = cast(rhs, lhs->getType());
-                const int lhsTypeId = operandTypeId(instr.Operands[0]);
+                const int lhsTypeId = OperandType(*CurFun->Fun, module, instr.Operands[0]);
                 const bool isSigned = lhsTypeId < 0 || IsSignedIntegerType(module.Types, lhsTypeId);
                 const auto pred = ComparisonPredicate(opcode, lhs->getType()->isFloatingPointTy(), isSigned);
                 return storeTmp(cmpInsr(pred, lhs, rhs));
@@ -2177,11 +2157,11 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             auto ptr = GetOp(instr.Operands[0], module);
             auto value = GetOp(instr.Operands[1], module);
             llvm::Type* storeType = value->getType();
-            const int ptrTypeId = operandTypeId(instr.Operands[0]);
+            const int ptrTypeId = OperandType(*CurFun->Fun, module, instr.Operands[0]);
             if (module.Types.IsPointer(ptrTypeId)) {
                 storeType = GetTypeById(module.Types.UnderlyingType(ptrTypeId), module.Types, ctx);
             }
-            const int sourceTypeId = operandTypeId(instr.Operands[1]);
+            const int sourceTypeId = OperandType(*CurFun->Fun, module, instr.Operands[1]);
             const bool sourceSigned = sourceTypeId < 0 || IsSignedIntegerType(module.Types, sourceTypeId);
             irb->CreateAlignedStore(cast(value, storeType, sourceSigned), ptr,
                 VectorMemoryAlign(module.Types, sourceTypeId));
@@ -2295,7 +2275,7 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
         case "i2f"_op: {
             auto v = GetOp(instr.Operands[0], module);
             if (!outputType) throw std::runtime_error("cast/mov needs typed dest");
-            const int sourceTypeId = operandTypeId(instr.Operands[0]);
+            const int sourceTypeId = OperandType(*CurFun->Fun, module, instr.Operands[0]);
             const bool sourceSigned = sourceTypeId < 0 || IsSignedIntegerType(module.Types, sourceTypeId);
             return storeTmp(sourceSigned
                 ? irb->CreateSIToFP(v, outputType, "i2f")
@@ -2327,7 +2307,7 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             if (v->getType() != outputType) {
                 auto sourceType = v->getType();
                 if (sourceType->isIntegerTy() && outputType->isIntegerTy()) {
-                    const int sourceTypeId = operandTypeId(instr.Operands[0]);
+                    const int sourceTypeId = OperandType(*CurFun->Fun, module, instr.Operands[0]);
                     const bool sourceSigned = sourceTypeId < 0 || module.Types.IsSigned(sourceTypeId);
                     v = irb->CreateIntCast(v, outputType, sourceSigned, "movcast");
                 } else if (sourceType->isPointerTy() && outputType->isIntegerTy()) {

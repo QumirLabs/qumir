@@ -80,17 +80,6 @@ bool Is128BitInteger(const TTypeTable& tt, int typeId) {
     return kind == EKind::I128 || kind == EKind::U128;
 }
 
-int OperandType(const TFunction& function, const TModule& module, const TOperand& operand) {
-    switch (operand.Type) {
-        case TOperand::EType::Tmp: return function.GetTmpType(operand.Tmp.Idx);
-        case TOperand::EType::Imm: return operand.Imm.TypeId;
-        case TOperand::EType::Local: return function.LocalTypes.at(operand.Local.Idx);
-        case TOperand::EType::Slot: return module.GlobalTypes.at(operand.Slot.Idx);
-        case TOperand::EType::Label: return -1;
-    }
-    return -1;
-}
-
 uint8_t VectorFormat(const TTypeTable& types, int vectorType) {
     const int elementType = types.UnderlyingType(vectorType);
     const auto elementSize = static_cast<unsigned>(types.SizeInBytes(elementType));
