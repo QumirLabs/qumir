@@ -26,6 +26,7 @@ and Qumir's compiler pipeline. The database supplies SQL semantics, query
 planning, and scheduling; Qumir supplies the compilation layer.
 
 - Try Kumir in the browser: [qumir.dev](https://qumir.dev)
+- Kumir in a school portal: [педобраз.рф/kumir](https://педобраз.рф/kumir/) — an independent installation of the Qumir engine for computer-science classes and exam preparation.
 - Kumir user documentation: [docs/ru/index.md](docs/ru/index.md)
 - Kumir syntax: [docs/ru/syntax.md](docs/ru/syntax.md)
 - Kumir examples: [docs/ru/examples.md](docs/ru/examples.md)
