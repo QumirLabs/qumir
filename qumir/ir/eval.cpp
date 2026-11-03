@@ -417,6 +417,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
     });
 
     static constexpr size_t MaxStackSize = 128 * 1024 * 1024; // 128M
+    static_assert(MaxStackSize <= TRegisterFile::ReservedBytes);
 
     Runtime.Regs.Reset(execFunc->RegisterFileSize, execFunc->RegisterFileAlignment);
     Runtime.Stack.reserve(MaxStackSize);
@@ -429,23 +430,35 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
     auto copyArgsToFrame = [&](char* frameBase, const TExecFunc* exec,
                                 const int64_t* srcArgs, int srcCount) {
         for (int i = 0; i < srcCount; ++i) {
-            const int byteOff = (i < (int)exec->ArgByteOffsets.size())
-                ? exec->ArgByteOffsets[i] : i * 8;
-            const int typeId = (i < (int)exec->ArgTypeIds.size()) ? exec->ArgTypeIds[i] : -1;
-            const int argSize = Module.Types.SizeInBytes(typeId);
-            if (typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct) {
-                // struct arg: value is a pointer - copy the struct into the frame
-                std::memcpy(frameBase + byteOff, reinterpret_cast<const void*>(srcArgs[i]), argSize);
-            } else if (typeId >= 0 && Module.Types.IsVector(typeId)) {
-                // vector arg: srcArgs[i] is the offset of its bytes in ArgBytes
-                if (srcArgs[i] < 0 || static_cast<size_t>(srcArgs[i]) + argSize > Runtime.ArgBytes.size()) {
-                    throw std::runtime_error("VM vector argument is not passed by a call instruction");
+            const bool declared = i < (int)exec->ArgKinds.size();
+            const int byteOff = declared
+                ? exec->ArgByteOffsets[i]
+                : i * 8;
+            const EArgKind kind = declared
+                ? exec->ArgKinds[i]
+                : EArgKind::Word;
+            switch (kind) {
+                case EArgKind::Struct:
+                    std::memcpy(frameBase + byteOff, reinterpret_cast<const void*>(srcArgs[i]), exec->ArgSizes[i]);
+                    break;
+                case EArgKind::Vector: {
+                    const size_t size = exec->ArgSizes[i];
+                    if (srcArgs[i] < 0 || static_cast<size_t>(srcArgs[i]) + size > Runtime.ArgBytes.size()) {
+                        throw std::runtime_error("VM vector argument is not passed by a call instruction");
+                    }
+                    std::memcpy(frameBase + byteOff, Runtime.ArgBytes.data() + srcArgs[i], size);
+                    break;
                 }
-                std::memcpy(frameBase + byteOff, Runtime.ArgBytes.data() + srcArgs[i], argSize);
-            } else if (typeId >= 0 && argSize == 16 && i < (int)Runtime.Args128.size()) {
-                std::memcpy(frameBase + byteOff, &Runtime.Args128[i], 16);
-            } else {
-                std::memcpy(frameBase + byteOff, &srcArgs[i], 8);
+                case EArgKind::Int128:
+                    if (i < (int)Runtime.Args128.size()) {
+                        std::memcpy(frameBase + byteOff, &Runtime.Args128[i], 16);
+                    } else {
+                        std::memcpy(frameBase + byteOff, &srcArgs[i], 8);
+                    }
+                    break;
+                case EArgKind::Word:
+                    std::memcpy(frameBase + byteOff, &srcArgs[i], 8);
+                    break;
             }
         }
     };
@@ -1295,19 +1308,15 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
             const int argCount = (int)Runtime.Args.size();
             assert(argCount <= (int)localArgs.size() && "too many arguments for callee");
 
-            const size_t savedRegsBytes = frame.Exec->RegisterFileSize;
-            const size_t oldSize = Runtime.Stack.size();
-            Runtime.Stack.resize(oldSize + savedRegsBytes);
-            if (savedRegsBytes != 0) {
-                std::memcpy(Runtime.Stack.data() + oldSize, Runtime.Regs.Data(), savedRegsBytes);
-            }
-            auto base = Runtime.Stack.size();
-
-            Runtime.Regs.Reset(calleeExec->RegisterFileSize, calleeExec->RegisterFileAlignment);
-            Runtime.Stack.resize(Runtime.Stack.size() + calleeExec->NumLocals, 0); // NumLocals is bytes
-            if (Runtime.Stack.size() > MaxStackSize) {
+            const auto base = Runtime.Stack.size();
+            const auto frameEnd = base + calleeExec->NumLocals; // NumLocals is bytes
+            // Register windows of active calls count toward the same limit as their locals.
+            const auto registersEnd = Runtime.Regs.WindowEnd(calleeExec->RegisterFileSize, calleeExec->RegisterFileAlignment);
+            if (frameEnd > MaxStackSize || registersEnd > MaxStackSize - frameEnd) {
                 throw std::runtime_error("Stack overflow in interpreter");
             }
+            const size_t registerBase = Runtime.Regs.Push(calleeExec->RegisterFileSize, calleeExec->RegisterFileAlignment);
+            Runtime.Stack.resize(frameEnd, 0);
 
             copyArgsToFrame(Runtime.Stack.data() + base, calleeExec,
                             Runtime.Args.data(), argCount);
@@ -1328,6 +1337,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 .PC = &calleeExec->VMCode[0],
                 .Name = calleeFn->Name,
                 .ReturnLink = link,
+                .RegisterBase = registerBase,
             });
             break;
         }
@@ -1375,13 +1385,7 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 }
 
                 Runtime.Stack.resize(base);
-                // restore saved caller regs
-                Runtime.Regs.Reset(callerFrame.Exec->RegisterFileSize, callerFrame.Exec->RegisterFileAlignment);
-                const size_t savedRegsBytes = callerFrame.Exec->RegisterFileSize;
-                const size_t savedRegsStart = base - savedRegsBytes;
-                if (savedRegsBytes != 0) {
-                    std::memcpy(Runtime.Regs.Data(), Runtime.Stack.data() + savedRegsStart, savedRegsBytes);
-                }
+                Runtime.Regs.Pop(callerFrame.RegisterBase, callerFrame.Exec->RegisterFileSize);
                 if (link.CallerDst >= 0 && link.CalleeIsCoroutine) {
                     ITypeErasedFuture* completed = nullptr;
                     if (link.CalleeReturnsVoid) {
@@ -1397,7 +1401,6 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
                 } else if (retVal.has_value() && link.CallerDst >= 0) {
                     Runtime.Regs.Get<int64_t>(link.CallerDst) = materializedRet.value_or(*retVal);
                 }
-                Runtime.Stack.resize(savedRegsStart);
                 retVal = std::nullopt;
                 retIs128 = false;
                 retVecSize = 0;

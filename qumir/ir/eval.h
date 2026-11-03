@@ -29,6 +29,7 @@ struct TFrame {
     TVMInstr* PC{nullptr};
     std::string_view Name;
     std::optional<TReturnLink> ReturnLink;
+    size_t RegisterBase = 0; // offset of this call's window in TRuntime::Regs
 };
 
 struct TRuntime {
