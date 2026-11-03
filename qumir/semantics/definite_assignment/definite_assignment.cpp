@@ -229,6 +229,12 @@ std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignm
                         } else {
                             result.insert(*symbolId);
                         }
+                    } else {
+                        // Element target (a[i], b[i, j]) is written, but its indices are read.
+                        auto res = CheckExpr(args[i], scopeId, inAssigned);
+                        if (!res) {
+                            errors.push_back(res.error());
+                        }
                     }
                 }
             } else {
