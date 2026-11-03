@@ -185,6 +185,45 @@ TEST(VMAllocation, ParameterLoadsKeepTheirRegistersInPhiCopies) {
     EXPECT_GE(exec.TmpByteOffsets.at(result.Idx), exec.Params.Bytes);
 }
 
+TEST(VMAllocation, PhiCopiesKeepInstructionDebugInfo) {
+    TModule module;
+    TBuilder builder(module);
+    builder.NewFunction("f", {}, 0);
+    const int i64 = module.Types.I(EKind::I64);
+    const TLabel entryLabel = builder.CurrentBlockLabel();
+    const TLabel thenLabel = builder.NewLabel();
+    const TLabel joinLabel = builder.NewLabel();
+    const TInstrDebugInfo entryInfo{TLocation{1, 0, 0}, 1};
+    const TInstrDebugInfo thenInfo{TLocation{2, 0, 0}, 1};
+    const TInstrDebugInfo joinInfo{TLocation{3, 0, 0}, 1};
+    builder.Emit0("cmp"_op, {TImm{1, i64}, thenLabel, joinLabel}, entryInfo);
+    builder.NewBlock(thenLabel);
+    builder.Emit0("jmp"_op, {joinLabel}, thenInfo);
+    builder.NewBlock(joinLabel);
+    const auto phi = builder.Emit1("phi"_op, {TImm{11, i64}, entryLabel, TImm{22, i64}, thenLabel});
+    builder.SetType(phi, i64);
+    builder.Emit0("ret"_op, {phi}, joinInfo);
+
+    auto& function = module.Functions.front();
+    BuildCfg(function);
+    TRegisterAllocation allocation;
+    allocation.Reserve(phi.Idx, 8, 8);
+    LowerAllocatedPhis(function, allocation);
+
+    ASSERT_EQ(function.Blocks.size(), 4);
+    for (const auto& block : function.Blocks) {
+        ASSERT_EQ(block.InstrDebugInfo.size(), block.Instrs.size());
+    }
+    EXPECT_EQ(function.Blocks[1].InstrDebugInfo.back().Location.Line, 2);
+    EXPECT_EQ(function.Blocks[2].InstrDebugInfo.back().Location.Line, 3);
+    const auto& splitBlock = function.Blocks.back();
+    EXPECT_EQ(splitBlock.Label.Idx, 3);
+    EXPECT_EQ(function.NextLabelIdx, 4);
+    ASSERT_EQ(splitBlock.Instrs.size(), 2);
+    EXPECT_FALSE(splitBlock.InstrDebugInfo[0]);
+    EXPECT_EQ(splitBlock.InstrDebugInfo.back().Location.Line, 1);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

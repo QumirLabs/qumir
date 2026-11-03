@@ -32,7 +32,7 @@ void LowerAllocatedPhis(TFunction& function, TRegisterAllocation& allocation) {
         });
         std::vector<TInstr> moves;
         auto emit = [&](TTmp dest, TOperand source) {
-            moves.push_back({.Op = "mov"_op, .Dest = dest, .Operands = {source}, .OperandCount = 1});
+            moves.push_back(MakeInstr("mov"_op, {source}, dest));
         };
         while (!copies.empty()) {
             auto ready = std::find_if(copies.begin(), copies.end(), [&](const TCopy& copy) {
@@ -78,22 +78,24 @@ void LowerAllocatedPhis(TFunction& function, TRegisterAllocation& allocation) {
                 predecessor.InstrDebugInfo.insert(predecessor.InstrDebugInfo.end() - 1, moves.size(), TInstrDebugInfo{});
             }
         } else {
-            const TLabel label{function.NextLabelIdx++};
-            auto& terminator = predecessor.Instrs.back();
+            // BuildCfg indexes blocks by label, so labels stay 0..N-1.
+            const TLabel label{static_cast<int>(function.Blocks.size())};
+            const size_t last = predecessor.Instrs.size() - 1;
+            auto& terminator = predecessor.Instrs[last];
             for (size_t i = 0; i < terminator.OperandCount; ++i) {
                 if (terminator.Operands[i] == TOperand{edge.second}) {
                     terminator.Operands[i] = label;
                 }
             }
-            moves.push_back({.Op = "jmp"_op, .Operands = {edge.second}, .OperandCount = 1});
-            std::vector<TInstrDebugInfo> debugInfo;
-            if (!predecessor.InstrDebugInfo.empty()) {
-                debugInfo.resize(moves.size());
-                debugInfo.back() = predecessor.InstrDebugInfo.back();
-            }
-            function.Blocks.push_back({.Label = label, .Instrs = std::move(moves), .InstrDebugInfo = std::move(debugInfo)});
+            const auto debugInfo = last < predecessor.InstrDebugInfo.size()
+                ? predecessor.InstrDebugInfo[last]
+                : TInstrDebugInfo{};
+            TBlock split{.Label = label, .Instrs = std::move(moves)};
+            AppendInstr(split, MakeInstr("jmp"_op, {edge.second}), debugInfo);
+            function.Blocks.push_back(std::move(split));
         }
     }
+    function.NextLabelIdx = function.Blocks.size();
     function.CfgBuilt = false;
     BuildCfg(function);
 }
