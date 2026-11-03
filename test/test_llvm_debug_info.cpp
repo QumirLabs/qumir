@@ -340,7 +340,8 @@ TEST(LLVMDebugInfo, CheckpointsShareOneAwaitLoopPerFunction) {
             }
         }
     }
-    EXPECT_EQ(checks, 1);
+    // The shared loop checks the future before and after the step await_suspend drives.
+    EXPECT_EQ(checks, 2);
     EXPECT_LE(resume->size(), 64 + 32);
     // The first checkpoint executes eagerly in the entry function.
     EXPECT_EQ(checkpoints, 63);

@@ -1,0 +1,17 @@
+(block
+  (fun entry () -> <future i64>
+    (block
+      (var знач i64)
+      (= знач (await (call f)))
+      (cleanup-exit (return знач))))
+  (fun f () -> <future i64>
+    (block
+      (var знач i64)
+      (= знач (await (call g)))
+      (cleanup-exit (return знач))))
+  (fun g () -> <future i64>
+    (block
+      (var знач i64)
+      (await (call ждать 0))
+      (= знач 4)
+      (cleanup-exit (return знач)))))
