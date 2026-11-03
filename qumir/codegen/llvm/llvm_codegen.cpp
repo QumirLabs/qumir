@@ -1583,6 +1583,9 @@ llvm::Value* TLLVMCodeGen::GetOp(const TOperand& op, NIR::TModule& module)
                 return llvm::ConstantInt::get(i64, op.Imm.Value, true);
             } else if (module.Types.IsVector(op.Imm.TypeId) && op.Imm.Value == 0) {
                 return llvm::Constant::getNullValue(GetTypeById(op.Imm.TypeId, module.Types, ctx));
+            } else if (module.Types.IsPointer(op.Imm.TypeId) && op.Imm.Value == 0) {
+                // locals2ssa uses a zero pointer immediate for a path that never assigns the local
+                return llvm::Constant::getNullValue(GetTypeById(op.Imm.TypeId, module.Types, ctx));
             } else if (module.Types.IsFloat(op.Imm.TypeId)) {
                 return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx),
                     std::bit_cast<float>(static_cast<uint32_t>(op.Imm.Value)));
