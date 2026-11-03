@@ -1640,6 +1640,11 @@ TAstTask stmt(TParserContext& context) {
         co_return TError(first.Location, "ожидался стейтмент, но достигнут конец файла");
     }
 
+    // Habits from other languages: "// text" and "# text".
+    if (isOp(first, EOperator::FDiv) || (first.Type == TToken::Identifier && first.Name.starts_with('#'))) {
+        co_return TError(first.Location, "комментарий в КуМире начинается с `|'");
+    }
+
     if (first.Type == TToken::Keyword && IsTypeKeyword(static_cast<EKeyword>(first.Value.i64))) {
         stream.Unget(first);
         auto decls = co_await var_decl_list(context, false);
