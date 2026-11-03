@@ -10,7 +10,7 @@ void BuildCfg(TFunction& function);
 void BuildCfg(TModule& module);
 
 // reverse post order
-std::vector<TLabel> ComputeRPO(TFunction& function);
+std::vector<TLabel> ComputeRPO(const TFunction& function);
 
 } // namespace NPasses
 } // namespace NIR

@@ -1,5 +1,9 @@
 #include "liveness.h"
 
+#include <qumir/ir/passes/analysis/cfg.h>
+
+#include <algorithm>
+
 namespace NQumir {
 namespace NIR {
 namespace NPasses {
@@ -30,10 +34,15 @@ std::vector<TLiveSet> ComputeLiveOut(const TFunction& function) {
             }
         }
     }
+    // Post-order visits successors first. Blocks unreachable from the entry never run
+    // and keep empty sets.
+    auto order = ComputeRPO(function);
+    std::reverse(order.begin(), order.end());
     bool changed;
     do {
         changed = false;
-        for (size_t b = count; b-- > 0;) {
+        for (const auto& label : order) {
+            const auto b = function.GetBlockIdx(label);
             TLiveSet out;
             const auto& block = function.Blocks[b];
             for (auto successor : block.Succ) {

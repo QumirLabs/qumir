@@ -79,7 +79,7 @@ void BuildCfg(TModule& module) {
     }
 }
 
-std::vector<TLabel> ComputeRPO(TFunction& function) {
+std::vector<TLabel> ComputeRPO(const TFunction& function) {
     std::vector<TLabel> rpo;
     std::set<TLabel> seen;
     std::stack<TLabel> stack;
