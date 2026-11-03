@@ -1356,7 +1356,10 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
     irb->CreateCondBr(ready, awaitDone, awaitWait);
     irb->SetInsertPoint(awaitWait);
     irb->CreateCall(futureAwaitSuspendFn, {checkedFuture, handle});
-    irb->CreateBr(awaitSuspend);
+    // A wrapped child may finish in the step await_suspend drives; do not suspend
+    // then, or each frame of a call chain needs another resume with no event.
+    auto* readyAfterStep = irb->CreateCall(futureAwaitReadyFn, {checkedFuture}, "await.ready.after");
+    irb->CreateCondBr(readyAfterStep, awaitDone, awaitSuspend);
     irb->SetInsertPoint(awaitSuspend);
     suspendAfterStep(awaitCheck);
     irb->SetInsertPoint(awaitDone);

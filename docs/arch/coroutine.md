@@ -264,6 +264,10 @@ await.check.N:
 
 await.suspend.N:
   call ptr @__qumir_future_await_suspend(ptr %future, ptr %coro.handle)
+  %ready.after = call i1 @__qumir_future_await_ready(ptr %future)
+  br i1 %ready.after, label %after.await.N, label %await.sleep.N
+
+await.sleep.N:
   %s = call i8 @llvm.coro.suspend(token none, i1 false)
   switch i8 %s, label %suspend [
     i8 0, label %await.check.N     ; resumed → re-check
@@ -300,7 +304,10 @@ call:
 `TWrappedLLVMCoro` (returned by `__qumir_wrap_coro`) implements
 `ITypeErasedFuture` using `std::coroutine_handle<>`, which is ABI-compatible
 with LLVM coroutine frames. Its `await_suspend` drives the child one step
-and returns `noop`, so the parent polls by looping back to `await.check.N`.
+and returns `noop`. If the child finished in that step, the parent continues
+without suspending, so one resume of the root carries a finished leaf through
+the whole call chain. Otherwise the parent suspends and polls again from
+`await.check.N` on its next resume.
 
 ### Coroutine frame helpers (`__qumir_coro_*`)
 
