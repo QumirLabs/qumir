@@ -1,0 +1,12 @@
+(block
+  (fun <main> ()
+    (block
+      (call ф 1)
+      (cleanup-exit (return))))
+  (fun ф ((var x <i64 (readonly)>)) (attrs
+      (expect_after (call __ensure (> x 0) "(> x 0) @ Line: 15, Byte: 1, Column: 1")))
+    (block
+      (call __ensure (> x 0) "(> x 0) @ Line: 10, Byte: 1, Column: 1")
+      (block
+        (call output_string "ok"))
+      (cleanup-exit (return)))))

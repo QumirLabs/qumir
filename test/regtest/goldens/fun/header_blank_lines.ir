@@ -1,0 +1,34 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    arg imm(1,i64) 
+    call ф 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function ф (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,i64) = local(0,i64) 
+    > tmp(1,i1) = tmp(0,i64) imm(0,i64) 
+    arg tmp(1,i1) 
+    arg imm(1,ptr to i8) 
+    call __ensure 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(2,i64) = local(0,i64) 
+    > tmp(3,i1) = tmp(2,i64) imm(0,i64) 
+    arg tmp(3,i1) 
+    arg imm(3,ptr to i8) 
+    call __ensure 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}

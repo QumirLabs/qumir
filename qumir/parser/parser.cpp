@@ -564,24 +564,24 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     // 3. required нач EKeyword::Begin
     std::shared_ptr<TAssertStmt> assertBefore = nullptr;
     std::shared_ptr<TAssertStmt> assertAfter = nullptr;
-    if (isOp(next, EOperator::Eol)) {
-        // optional EOL after 'алг' or after return type
+    // Blank and comment-only lines are Eol tokens: skip any number of them.
+    while (isOp(next, EOperator::Eol)) {
         next = stream.Next();
     }
     if (isKeyword(next, EKeyword::AssertBefore)) {
         assertBefore = std::make_shared<TAssertStmt>(next.Location, co_await expr(context));
         next = stream.Next();
     }
-    if (isOp(next, EOperator::Eol)) {
-        // optional EOL after 'алг' or after return type
+    // Blank and comment-only lines are Eol tokens: skip any number of them.
+    while (isOp(next, EOperator::Eol)) {
         next = stream.Next();
     }
     if (isKeyword(next, EKeyword::AssertAfter)) {
         assertAfter = std::make_shared<TAssertStmt>(next.Location, co_await expr(context));
         next = stream.Next();
     }
-    if (isOp(next, EOperator::Eol)) {
-        // optional EOL after 'алг' or after return type
+    // Blank and comment-only lines are Eol tokens: skip any number of them.
+    while (isOp(next, EOperator::Eol)) {
         next = stream.Next();
     }
 
