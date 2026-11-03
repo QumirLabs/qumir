@@ -22,11 +22,17 @@ public:
         , Size_(size)
     {}
 
+    // Shared with TRegisterFile, which checks the same window.
+    template<typename T>
+    static void CheckAccess(const uint8_t* data, size_t size, int32_t byteOffset) {
+        static_assert(std::is_trivially_copyable_v<T>);
+        assert(byteOffset >= 0 && static_cast<size_t>(byteOffset) + sizeof(T) <= size);
+        assert(reinterpret_cast<uintptr_t>(data + byteOffset) % alignof(T) == 0);
+    }
+
     template<typename T>
     T& Get(int32_t byteOffset) const {
-        static_assert(std::is_trivially_copyable_v<T>);
-        assert(byteOffset >= 0 && static_cast<size_t>(byteOffset) + sizeof(T) <= Size_);
-        assert(reinterpret_cast<uintptr_t>(Data_ + byteOffset) % alignof(T) == 0);
+        CheckAccess<T>(Data_, Size_, byteOffset);
         return *reinterpret_cast<T*>(Data_ + byteOffset);
     }
 
@@ -78,13 +84,13 @@ public:
 
     template<typename T>
     T& Get(int32_t byteOffset) {
-        CheckAccess<T>(byteOffset);
+        TRegisterView::CheckAccess<T>(Active_, Size_, byteOffset);
         return *reinterpret_cast<T*>(Active_ + byteOffset);
     }
 
     template<typename T>
     const T& Get(int32_t byteOffset) const {
-        CheckAccess<T>(byteOffset);
+        TRegisterView::CheckAccess<T>(Active_, Size_, byteOffset);
         return *reinterpret_cast<const T*>(Active_ + byteOffset);
     }
 
@@ -138,13 +144,6 @@ private:
             ::operator delete(data, std::align_val_t(MaxAlignment));
         }
     };
-
-    template<typename T>
-    void CheckAccess(int32_t byteOffset) const {
-        static_assert(std::is_trivially_copyable_v<T>);
-        assert(byteOffset >= 0 && static_cast<size_t>(byteOffset) + sizeof(T) <= Size_);
-        assert(reinterpret_cast<uintptr_t>(Active_ + byteOffset) % alignof(T) == 0);
-    }
 
     std::unique_ptr<uint8_t, TDeleter> Data_;
     uint8_t* Active_ = nullptr;

@@ -25,6 +25,9 @@ using namespace NLiterals;
 
 namespace {
 
+// The register windows share this limit, so their reservation is the same size.
+constexpr size_t MaxStackSize = TRegisterFile::ReservedBytes;
+
 template<typename Dest=int64_t>
 inline Dest ReadOperand(TRegisterView regs, const TVMOperand& op) {
     switch (op.Type) {
@@ -430,8 +433,7 @@ ITypeErasedFuture* MakeCompletedValueFuture(uint64_t value) {
         break;
 
     default:
-        assert(false && "Not a vector instruction");
-        break;
+        throw std::runtime_error("Not a vector instruction");
     }
 }
 
@@ -581,8 +583,7 @@ ITypeErasedFuture* MakeCompletedValueFuture(uint64_t value) {
         break;
     }
     default:
-        assert(false && "Not a 128-bit instruction");
-        break;
+        throw std::runtime_error("Not a 128-bit instruction");
     }
 }
 
@@ -772,9 +773,6 @@ TFuture<std::optional<int64_t>> TInterpreter::DoEvalRawAsync(TFunction& function
         .Name = function.Name,
     });
 
-    // The register windows share this limit, so their reservation is the same size.
-    static constexpr size_t MaxStackSize = TRegisterFile::ReservedBytes;
-
     Runtime.Regs.Reset(execFunc->RegisterFileSize, execFunc->RegisterFileAlignment);
     Runtime.Stack.reserve(MaxStackSize);
     Runtime.Stack.resize(execFunc->NumLocals, 0); // NumLocals is frame size in bytes
@@ -849,7 +847,6 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
     TVMInstr* pc = frame->PC;
     TRegisterView regs = Runtime.Regs.View();
     char* locals = Runtime.Stack.data() + frame->StackBase;
-    static constexpr size_t MaxStackSize = TRegisterFile::ReservedBytes;
     bool retIs128 = false;
     size_t retVecSize = 0;
     auto materializeStructTmp = [this](const TFrame& targetFrame, int32_t registerOffset, const void* src) -> std::optional<int64_t> {
@@ -869,7 +866,6 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
         }
         return reinterpret_cast<int64_t>(temp);
     };
-
 
     for (;;) {
         assert(pc <= &frame->Exec->VMCode[frame->Exec->VMCode.size()-1]);
