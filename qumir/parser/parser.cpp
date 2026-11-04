@@ -516,6 +516,16 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     std::vector<std::shared_ptr<TVarStmt>> args;
     std::string name = "<main>";
 
+    auto isNameKeyword = [](const TToken& token) {
+        return token.Type == TToken::Keyword &&
+            !isKeyword(token, EKeyword::Begin) &&
+            !isKeyword(token, EKeyword::AssertBefore) &&
+            !isKeyword(token, EKeyword::AssertAfter);
+    };
+    auto nameKeywordError = [](const TToken& token) {
+        return TError(token.Location, "`" + token.RawValue + "' - ключевое слово, его нельзя использовать в имени алгоритма");
+    };
+
     if (next.Type == TToken::Keyword && IsTypeKeyword(static_cast<EKeyword>(next.Value.i64))) {
         // function return type
         bool isArray = false;
@@ -524,6 +534,11 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
             co_return TError(next.Location, "функция не может возвращать табличный тип");
         }
         next = stream.Next();
+    }
+
+    // "алг пока": a keyword where the name should start (type keywords were consumed above).
+    if (isNameKeyword(next)) {
+        co_return nameKeywordError(next);
     }
 
     if (next.Type == TToken::Identifier) {
@@ -555,15 +570,11 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
             }
 
             next = stream.Next();
+        } else if (isNameKeyword(next)) {
+            // No signature: the keyword is still part of the name, e.g. "алг снаружи от линейно".
+            co_return nameKeywordError(next);
         }
         // else: no signature (empty parameter list)
-
-        // "алг снаружи от линейно": the name ended at a keyword.
-        bool headerKeyword = isKeyword(next, EKeyword::Begin) ||
-            isKeyword(next, EKeyword::AssertBefore) || isKeyword(next, EKeyword::AssertAfter);
-        if (next.Type == TToken::Keyword && !headerKeyword) {
-            co_return TError(next.Location, "`" + next.RawValue + "' - ключевое слово, его нельзя использовать в имени алгоритма");
-        }
     }
 
     // 1. optional дано EKeyword::AssertBefore
