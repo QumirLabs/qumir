@@ -1640,8 +1640,15 @@ TAstTask stmt(TParserContext& context) {
         co_return TError(first.Location, "ожидался стейтмент, но достигнут конец файла");
     }
 
-    // Habits from other languages: "// text" and "# text".
-    if (isOp(first, EOperator::FDiv) || (first.Type == TToken::Identifier && first.Name.starts_with('#'))) {
+    // Habits from other languages: "// text", "/* text */" and "# text". A lone "/" is not a comment.
+    bool otherComment = first.Type == TToken::Identifier && first.Name.starts_with('#');
+    if (isOp(first, EOperator::FDiv)) {
+        auto second = stream.Next();
+        stream.Unget(second);
+        otherComment = (isOp(second, EOperator::FDiv) || isOp(second, EOperator::Mul)) &&
+            second.Location.Byte == first.Location.Byte + 1;
+    }
+    if (otherComment) {
         co_return TError(first.Location, "комментарий в КуМире начинается с `|'");
     }
 
