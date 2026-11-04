@@ -537,7 +537,7 @@ private:
                 co_await response.WriteBodyChunk(obuf, r);
             }
             co_await response.WriteBodyChunk("", 0);
-            int exitCode = pipe.Wait();
+            int exitCode = co_await pipe.AsyncWait();
             NotifyCompile(target, std::move(code), std::move(output), exitCode);
             co_return;
         }
@@ -794,7 +794,7 @@ private:
             output.append(buf, n);
         }
 
-        auto exitCode = pipe.Wait();
+        auto exitCode = co_await pipe.AsyncWait();
         co_return std::make_pair(output, exitCode);
     }
 
