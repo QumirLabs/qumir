@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <sstream>
 
 namespace NQumir {
 namespace NSemantics {
@@ -556,7 +557,12 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
             if (!LookupOverloads(ident->Name, scope->Id).empty()) {
                 co_return {};
             }
-            auto suggestionMsg = suggestionMessage(ident->Name, scope->Id.Id, /*includeFunctions=*/ true);
+            auto suggestion = Suggest(ident->Name, scope->Id, /*includeFunctions=*/ true);
+            std::string suggestionMsg;
+            if (suggestion) {
+                suggestionMsg = suggestion->ToString();
+            }
+            suggestionMsg += RobotCommandsHint(ident->Name, suggestion);
             co_return TError(ident->Location, TErrorString::Get<EErrorId::UNDEFINED_IDENTIFIER>(ident->Name) + suggestionMsg);
         }
 
@@ -1310,6 +1316,56 @@ std::vector<std::string> TNameResolver::ModulesWithFunction(const std::string& n
         }
     }
     return result;
+}
+
+std::string TNameResolver::RobotCommandsHint(const std::string& name, const std::optional<TSuggestion>& suggestion)
+{
+    auto it = Modules.find("Робот");
+    if (it == Modules.end() || !it->second || !ImportedModules.contains("Робот")) {
+        return "";
+    }
+    // Commands of the other executors are likely meant for the Robot, other modules (Цвета, ...) are not.
+    static const std::unordered_set<std::string> otherExecutors = { "Черепаха", "Чертежник", "Рисователь" };
+    bool wrongRobotCommand = false;
+    if (suggestion) {
+        wrongRobotCommand = suggestion->Distance == 0 && suggestion->RequiredModuleName &&
+            otherExecutors.contains(*suggestion->RequiredModuleName);
+    } else {
+        // A word of the name equals or is close to a word of a Robot command, e.g. "впереди свободно".
+        std::vector<std::vector<uint32_t>> robotWords;
+        for (const auto& fn : it->second->ExternalFunctions()) {
+            std::istringstream words(fn.Name);
+            for (std::string word; words >> word;) {
+                robotWords.push_back(CodePoints(word));
+            }
+        }
+        std::istringstream nameWords(name);
+        for (std::string word; !wrongRobotCommand && nameWords >> word;) {
+            auto wordCodePoints = CodePoints(word);
+            for (const auto& robotWord : robotWords) {
+                int distance = EditDistanceCalculator.Calc(
+                    std::span<const uint32_t>(wordCodePoints.data(), wordCodePoints.size()),
+                    std::span<const uint32_t>(robotWord.data(), robotWord.size()));
+                if (distance <= MaxSuggestionDistance(wordCodePoints.size())) {
+                    wrongRobotCommand = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (!wrongRobotCommand) {
+        return "";
+    }
+    std::string result = "\n Если это команда Робота, доступны: ";
+    bool first = true;
+    for (const auto& fn : it->second->ExternalFunctions()) {
+        if (fn.IsOp) {
+            continue;
+        }
+        result += (first ? "" : ", ") + fn.Name;
+        first = false;
+    }
+    return result + ".";
 }
 
 std::string TNameResolver::ModulesList() const
