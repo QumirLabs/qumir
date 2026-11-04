@@ -13,7 +13,7 @@ namespace NQumir::NService {
 
 // Bumped on every change to the types below: the host refuses plugins built
 // against another version.
-inline constexpr int PluginApiVersion = 2;
+inline constexpr int PluginApiVersion = 3;
 
 using THandler = std::function<NNet::TFuture<void>(NNet::TRequest&, NNet::TResponse&)>;
 
