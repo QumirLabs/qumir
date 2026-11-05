@@ -10,7 +10,7 @@
 //   each .oz file must define <main>.
 //   Goldens: .result for return value, optional .result.stdout for printed output.
 
-import { ExecutionSession } from '../service/static/runtime/execution_session.js';
+import { ExecutionSession } from '../qumir/runtime/js/execution_session.js';
 import fs from 'fs';
 import path from 'path';
 import cp from 'child_process';
@@ -51,14 +51,14 @@ const goldensDir = path.join(rootDir, 'goldens');
 // `.stdin` extension, e.g. `cases/io/input.kum` + `cases/io/input.stdin`.
 const stdinDir = casesDir;
 
-const defaultIoRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'io.js');
-const defaultResultRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'result.js');
-const defaultStringRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'string.js');
-const defaultArrayRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'array.js');
-const defaultComplexRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'complex.js');
-const defaultColorsRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'colors.js');
-const defaultKeyboardRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'keyboard.js');
-const defaultFutureRuntimePath = path.join(__dirname, '..', 'service', 'static', 'runtime', 'future.js');
+const defaultIoRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'io.js');
+const defaultResultRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'result.js');
+const defaultStringRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'string.js');
+const defaultArrayRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'array.js');
+const defaultComplexRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'complex.js');
+const defaultColorsRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'colors.js');
+const defaultKeyboardRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'keyboard.js');
+const defaultFutureRuntimePath = path.join(__dirname, '..', 'qumir', 'runtime', 'js', 'future.js');
 
 let cachedIoRuntime = null;
 let cachedResultRuntime = null;

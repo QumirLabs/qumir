@@ -70,7 +70,7 @@ if(QUMIR_NODE_EXECUTABLE)
         NAME test_exec_js
         COMMAND ${QUMIR_NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_exec.js
             --root ${CMAKE_SOURCE_DIR}/test/regtest/
-            --runtime ${CMAKE_SOURCE_DIR}/service/static/runtime/
+            --runtime ${CMAKE_SOURCE_DIR}/qumir/runtime/js/
             --wasm-dir ${CMAKE_BINARY_DIR}/wasm-output
             --xml ${CMAKE_BINARY_DIR}/test/test_js.xml
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -79,7 +79,7 @@ if(QUMIR_NODE_EXECUTABLE)
         NAME test_exec_js_core_lifetime
         COMMAND ${QUMIR_NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_exec.js
             --root ${CMAKE_SOURCE_DIR}/test/regtest/
-            --runtime ${CMAKE_SOURCE_DIR}/service/static/runtime/
+            --runtime ${CMAKE_SOURCE_DIR}/qumir/runtime/js/
             --wasm-dir ${CMAKE_BINARY_DIR}/wasm-output-core
             --core
             --filter corelang/lifetime*
@@ -90,7 +90,7 @@ if(QUMIR_NODE_EXECUTABLE)
         NAME test_exec_js_core_module
         COMMAND ${QUMIR_NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_exec.js
             --root ${CMAKE_SOURCE_DIR}/test/regtest/
-            --runtime ${CMAKE_SOURCE_DIR}/service/static/runtime/
+            --runtime ${CMAKE_SOURCE_DIR}/qumir/runtime/js/
             --wasm-dir ${CMAKE_BINARY_DIR}/wasm-output-core-module
             --core
             --filter corelang/use_module*
@@ -105,7 +105,7 @@ if(QUMIR_NODE_EXECUTABLE)
         NAME test_exec_js_wasm32_struct_ptr_field
         COMMAND ${QUMIR_NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_exec.js
             --root ${CMAKE_SOURCE_DIR}/test/regtest/
-            --runtime ${CMAKE_SOURCE_DIR}/service/static/runtime/
+            --runtime ${CMAKE_SOURCE_DIR}/qumir/runtime/js/
             --wasm-dir ${CMAKE_BINARY_DIR}/wasm-output-wasm32-struct
             --core
             --opt 3

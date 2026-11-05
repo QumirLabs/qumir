@@ -24,11 +24,16 @@ install(PROGRAMS $<TARGET_FILE:server>
     RENAME qumir-service
     COMPONENT service)
 
-# static/docs is a symlink into the source tree, so ship the real files in its place.
+# static/docs and static/runtime are symlinks into the source tree, so ship the real files in their place.
 install(DIRECTORY static/
     DESTINATION share/qumir-service/static
     COMPONENT service
-    REGEX "/docs$" EXCLUDE)
+    REGEX "/docs$" EXCLUDE
+    REGEX "/runtime$" EXCLUDE)
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../qumir/runtime/js/
+    DESTINATION share/qumir-service/static/runtime
+    COMPONENT service)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../docs/ru/
     DESTINATION share/qumir-service/static/docs

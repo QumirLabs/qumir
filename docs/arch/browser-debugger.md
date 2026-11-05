@@ -123,7 +123,7 @@ Build `qumirc`, `server`, `test_debug_async` and `test_llvm_debug_info` with Nin
 The IR tests check recursive caller propagation, result types, idempotence,
 existing Future calls and the synchronous checkpoint factory. The LLVM test checks all four debug flag combinations
 and argument packet integrity. `test/test_exec.js` compares WASM execution with
-existing goldens. Run it with `--runtime service/static/runtime`.
+existing goldens. Run it with `--runtime qumir/runtime/js`.
 
 Run `node test/test_browser_debugger.mjs` from the repository root for the browser
 test. It starts the C++ server and headless Chrome with suspension extensions
