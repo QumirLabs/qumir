@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(qumir VERSION 1.0.5)
+project(qumir VERSION 1.0.6)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(QUMIR_BUILD_SERVICE "Build Qumir service component with externals" OFF)
