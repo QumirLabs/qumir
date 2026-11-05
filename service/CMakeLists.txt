@@ -1,13 +1,17 @@
 find_package(LLVM REQUIRED CONFIG)
 
 add_executable(server server.cpp)
-# Link to our libs; LLVM libs come transitively via qumir_codegen_llvm
-if(UNIX AND NOT APPLE)
-    target_link_libraries(server PUBLIC
-        "$<LINK_GROUP:RESCAN,qumir,qumir_runtime,qumir_codegen_llvm>"
-        coroio)
+# The compiler runs as a qumirc subprocess; the server needs only coroio and LLVMSupport (llvm::json).
+if(QUMIR_LLVM_LINK_SHARED)
+    if(NOT TARGET LLVM)
+        message(FATAL_ERROR
+            "QUMIR_LLVM_LINK_SHARED=ON, but this LLVM installation ships no shared "
+            "libLLVM (check llvm-config --shared-mode)")
+    endif()
+    target_link_libraries(server PUBLIC coroio LLVM)
 else()
-    target_link_libraries(server PUBLIC qumir qumir_runtime qumir_codegen_llvm coroio)
+    llvm_map_components_to_libnames(SERVER_LLVM_LIBS support)
+    target_link_libraries(server PUBLIC coroio ${SERVER_LLVM_LIBS})
 endif()
 
 # Headers and defs for using llvm/Support headers directly in server
@@ -15,7 +19,7 @@ target_include_directories(server PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(server PRIVATE ${LLVM_DEFINITIONS}
     QUMIR_VERSION_STRING="${QUMIR_VERSION_STRING}")
 
-# Plugins resolve coroio and qumir symbols from the executable itself.
+# Plugins resolve coroio and llvm::json symbols from the executable itself.
 set_target_properties(server PROPERTIES ENABLE_EXPORTS ON)
 target_link_libraries(server PUBLIC ${CMAKE_DL_LIBS})
 
