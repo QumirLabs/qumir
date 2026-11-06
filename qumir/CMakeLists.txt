@@ -129,3 +129,8 @@ install(FILES
 install(DIRECTORY runtime/js/
     DESTINATION share/qumir/js
     COMPONENT compiler)
+
+# Architecture notes; the production static docs build reads them from here.
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/docs/arch/
+    DESTINATION share/qumir/docs/arch
+    COMPONENT compiler)
