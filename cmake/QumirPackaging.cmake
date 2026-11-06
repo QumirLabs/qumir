@@ -19,20 +19,9 @@ set(CPACK_DEBIAN_COMPILER_PACKAGE_SECTION "devel")
 # qumirc links the produced object file by invoking c++, and needs wasm-ld for --target=wasm.
 set(CPACK_DEBIAN_COMPILER_PACKAGE_DEPENDS "g++")
 set(CPACK_DEBIAN_COMPILER_PACKAGE_RECOMMENDS "lld")
+# The old qumir-service ships its own copy of the JS runtime, which would not match this compiler.
+set(CPACK_DEBIAN_COMPILER_PACKAGE_BREAKS "qumir-service (<< 1.1.0)")
 set(CPACK_COMPONENT_COMPILER_DESCRIPTION
     "Qumir compiler and interpreter.\n Compiles the KUMIR-style educational language to native code,\n WebAssembly or runs it through the IR interpreter and the LLVM JIT.")
-
-if(QUMIR_BUILD_SERVICE)
-    list(APPEND CPACK_COMPONENTS_ALL service)
-    set(CPACK_DEBIAN_SERVICE_PACKAGE_NAME "qumir-service")
-    set(CPACK_DEBIAN_SERVICE_PACKAGE_SECTION "web")
-    # The server only spawns qumirc as a subprocess, so the upstream version is
-    # enough; pinning the build number would forbid rebuilds of the same release.
-    set(CPACK_DEBIAN_SERVICE_PACKAGE_DEPENDS "qumir (>= ${PROJECT_VERSION}), adduser")
-    # Creates the qumir system account the unit runs as.
-    set(CPACK_DEBIAN_SERVICE_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/service/postinst")
-    set(CPACK_COMPONENT_SERVICE_DESCRIPTION
-        "Qumir playground web service.\n HTTP server backing the browser playground: editor, examples\n and the robot/turtle executors.")
-endif()
 
 include(CPack)

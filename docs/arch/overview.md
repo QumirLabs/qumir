@@ -40,8 +40,8 @@ The CLI tools are:
 - **`qumiri`** — interpreter / LLVM JIT
 - **`qumirc`** — compiler driver
 
-The web service wraps `qumirc` as a subprocess and serves the playground
-frontend.
+The web service lives in [QumirLabs/qumir-service](https://github.com/QumirLabs/qumir-service); it wraps `qumirc`
+as a subprocess and serves the playground frontend.
 
 ---
 

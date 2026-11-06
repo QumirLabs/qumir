@@ -119,14 +119,14 @@ On narrow screens it keeps the spinner and hides its text to leave room for Stop
 
 ## Checks
 
-Build `qumirc`, `server`, `test_debug_async` and `test_llvm_debug_info` with Ninja.
+Build `qumirc`, `test_debug_async` and `test_llvm_debug_info` with Ninja.
 The IR tests check recursive caller propagation, result types, idempotence,
 existing Future calls and the synchronous checkpoint factory. The LLVM test checks all four debug flag combinations
 and argument packet integrity. `test/test_exec.js` compares WASM execution with
 existing goldens. Run it with `--runtime qumir/runtime/js`.
 
-Run `node test/test_browser_debugger.mjs` from the repository root for the browser
-test. It starts the C++ server and headless Chrome with suspension extensions
+The browser test, `test/test_browser_debugger.mjs`, lives in
+[QumirLabs/qumir-service](https://github.com/QumirLabs/qumir-service). It starts the C++ server and headless Chrome with suspension extensions
 disabled; `QUMIR_TEST_URL` can select a running server. A paused screenshot is
 written to `build/browser_debugger.png`. The test also exercises deep WASM frame
 buffer growth, asserts zero stopping JS checkpoints during an uninterrupted Continue,

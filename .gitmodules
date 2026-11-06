@@ -1,3 +1,0 @@
-[submodule "externals/coroio"]
-	path = externals/coroio
-	url = https://github.com/resetius/coroio.git

@@ -25,16 +25,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        # the documentation screenshots shipped in qumir-service
-        lfs: true
 
     - name: apt-get update
       run: sudo apt-get update
 
     - name: Install packages
-      run: sudo apt-get install -y cmake ninja-build llvm-20-dev liburing-dev libreadline-dev lld g++-14 dpkg-dev
+      run: sudo apt-get install -y cmake ninja-build llvm-20-dev libreadline-dev lld g++-14 dpkg-dev
 
     - name: configure
       run: |
@@ -44,7 +40,6 @@ jobs:
           -DCMAKE_PREFIX_PATH="$(llvm-config-20 --prefix)" \
           -DCMAKE_CXX_COMPILER=g++-14 \
           -DCMAKE_C_COMPILER=gcc-14 \
-          -DQUMIR_BUILD_SERVICE=ON \
           -DQUMIR_BUILD_NUMBER=${{ github.run_number }}
 
     - name: build
