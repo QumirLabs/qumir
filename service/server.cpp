@@ -22,8 +22,6 @@
 
 #include "plugin.h"
 
-#include <qumir/parser/json/parser.h>
-
 using namespace NNet;
 
 namespace {
@@ -214,36 +212,41 @@ private:
     // examples/index.json lists the groups and titles in the order shown;
     // .kum files missing from it go to a trailing "Другое" group.
     std::vector<TExampleGroup> ExampleGroups() {
-        using namespace NQumir::NAst::NJson;
         std::vector<TExampleGroup> groups;
         std::set<std::string> listed;
-        auto stringOf = [](IValue* value) -> const std::string* {
-            auto* str = value ? value->As<TString>() : nullptr;
-            return str ? &str->Value : nullptr;
-        };
-        std::ifstream ifs(ExamplesBaseCanonical / "index.json", std::ios::binary);
-        TTokenStream stream(ifs);
-        auto json = TParser().Parse(stream);
-        if (!json && std::filesystem::exists(ExamplesBaseCanonical / "index.json")) {
-            std::cerr << "examples/index.json: " << json.error().ToString() << "\n";
+        llvm::json::Array noGroups;
+        auto indexPath = ExamplesBaseCanonical / "index.json";
+        std::ifstream ifs(indexPath, std::ios::binary);
+        std::string content{std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>()};
+        llvm::Expected<llvm::json::Value> json = llvm::json::parse(content);
+        if (!json) {
+            if (std::filesystem::exists(indexPath)) {
+                std::cerr << "examples/index.json: " << llvm::toString(json.takeError()) << "\n";
+            } else {
+                llvm::consumeError(json.takeError());
+            }
         }
-        auto* root = json && json->Root() ? json->Root()->As<TObject>() : nullptr;
-        auto* groupsArr = root && root->Get("groups") ? root->Get("groups")->As<TArray>() : nullptr;
-        for (auto* groupVal : groupsArr ? groupsArr->Elements : std::vector<IValue*>{}) {
-            auto* groupObj = groupVal->As<TObject>();
+        auto* root = json ? json->getAsObject() : nullptr;
+        auto* groupsArr = root ? root->getArray("groups") : nullptr;
+        if (!groupsArr) {
+            groupsArr = &noGroups;
+        }
+        for (const auto& groupVal : *groupsArr) {
+            auto* groupObj = groupVal.getAsObject();
             if (!groupObj) continue;
-            auto* title = stringOf(groupObj->Get("title"));
-            TExampleGroup group{.Title = title ? *title : ""};
-            auto* examples = groupObj->Get("examples") ? groupObj->Get("examples")->As<TArray>() : nullptr;
-            for (auto* exampleVal : examples ? examples->Elements : std::vector<IValue*>{}) {
-                auto* exampleObj = exampleVal->As<TObject>();
-                auto* examplePath = exampleObj ? stringOf(exampleObj->Get("path")) : nullptr;
-                if (!examplePath || !std::filesystem::is_regular_file(ExamplesBaseCanonical / *examplePath)) {
-                    continue;
+            TExampleGroup group{.Title = groupObj->getString("title").value_or("").str()};
+            if (auto* examples = groupObj->getArray("examples")) {
+                for (const auto& exampleVal : *examples) {
+                    auto* exampleObj = exampleVal.getAsObject();
+                    auto examplePath = exampleObj ? exampleObj->getString("path") : std::nullopt;
+                    if (!examplePath || !std::filesystem::is_regular_file(ExamplesBaseCanonical / examplePath->str())) {
+                        continue;
+                    }
+                    std::string path = examplePath->str();
+                    std::string title = exampleObj->getString("title").value_or(path).str();
+                    listed.insert(path);
+                    group.Examples.emplace_back(std::move(path), std::move(title));
                 }
-                auto* exampleTitle = stringOf(exampleObj->Get("title"));
-                listed.insert(*examplePath);
-                group.Examples.emplace_back(*examplePath, exampleTitle ? *exampleTitle : *examplePath);
             }
             if (!group.Examples.empty()) {
                 groups.push_back(std::move(group));
