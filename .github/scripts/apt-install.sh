@@ -21,7 +21,11 @@ retry() {
   local limit=$1
   shift
   for attempt in 1 2 3; do
-    if sudo timeout "$limit" "$@"; then
+    if [ "$attempt" -gt 1 ]; then
+      # A killed attempt may leave dpkg half-configured.
+      sudo dpkg --configure -a || true
+    fi
+    if sudo DEBIAN_FRONTEND=noninteractive timeout "$limit" "$@"; then
       return 0
     fi
     echo "attempt $attempt failed: $*" >&2
@@ -30,6 +34,5 @@ retry() {
   return 1
 }
 
-export DEBIAN_FRONTEND=noninteractive
 retry 300 apt-get -o Acquire::Retries=3 update
 retry 900 apt-get -o Acquire::Retries=3 install -y "$@"
