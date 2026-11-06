@@ -4,6 +4,7 @@
 //   npm install --no-save puppeteer  (once, in the repository root)
 //   npx puppeteer browsers install chrome-headless-shell
 //   build/service/server --port 8080 --static-dir service/static \
+//       --qumir-runtime qumir/runtime/js \
 //       --binary-dir build/bin --examples-dir examples --shared-links-dir /tmp/shared
 //   node docs/capture-screenshots.mjs [http://localhost:8080]
 //
