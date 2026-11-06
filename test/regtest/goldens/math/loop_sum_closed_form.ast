@@ -1,0 +1,14 @@
+(block
+  (fun <main> ()
+    (block
+      (var n i64)
+      (var i i64)
+      (var s i64)
+      (block
+        (= n (call input_int64)))
+      (= s 0)
+      (for i 1 n 1 (block (= s (+ s i))))
+      (block
+        (call output_int64 s 0)
+        (call output_string "\n"))
+      (cleanup-exit (return)))))

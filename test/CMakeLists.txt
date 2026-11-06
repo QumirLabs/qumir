@@ -113,4 +113,17 @@ if(QUMIR_NODE_EXECUTABLE)
             --xml ${CMAKE_BINARY_DIR}/test/test_js_wasm32_struct_ptr_field.xml
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
+    # At -O1 and above the loop sum becomes a closed form with a 128-bit
+    # multiplication, which wasm32 code calls as __multi3 from the JS runtime.
+    add_test(
+        NAME test_exec_js_multi3
+        COMMAND ${QUMIR_NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/test_exec.js
+            --root ${CMAKE_SOURCE_DIR}/test/regtest/
+            --runtime ${CMAKE_SOURCE_DIR}/qumir/runtime/js/
+            --wasm-dir ${CMAKE_BINARY_DIR}/wasm-output-multi3
+            --opt 1
+            --filter math/loop_sum_closed_form
+            --xml ${CMAKE_BINARY_DIR}/test/test_js_multi3.xml
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
 endif()

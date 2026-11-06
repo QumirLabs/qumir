@@ -58,10 +58,24 @@ export function rand_int64_range(a, b) {
   return A + r;
 }
 
-// Common compiler-rt builtins that may be referenced when --allow-undefined is used.
-// Minimal shims to satisfy linkage; adjust if exact semantics are needed.
-export function __multi3(a, b) {
-  // return lower 64 bits of 128-bit product
-  const MOD64 = (1n << 64n) - 1n;
-  return (BigInt(a) * BigInt(b)) & MOD64;
+let MEMORY = null; // WebAssembly.Memory, bound by io.js __bindMemory
+
+export function __bindMemory(mem) {
+  MEMORY = mem;
+}
+
+// compiler-rt builtins that LLVM calls instead of inline code and that are left
+// undefined by --allow-undefined.
+
+// 128-bit multiplication, e.g. in the closed form LLVM substitutes for a loop sum
+// at -O1 and above. The operands come as (low, high) 64-bit halves; the low 128
+// bits of the product are stored at ret as two little-endian 64-bit words.
+export function __multi3(ret, aLo, aHi, bLo, bHi) {
+  const a = (BigInt.asUintN(64, aHi) << 64n) | BigInt.asUintN(64, aLo);
+  const b = (BigInt.asUintN(64, bHi) << 64n) | BigInt.asUintN(64, bLo);
+  const product = BigInt.asUintN(128, a * b);
+  const dv = new DataView(MEMORY.buffer);
+  const at = Number(ret);
+  dv.setBigUint64(at, BigInt.asUintN(64, product), true);
+  dv.setBigUint64(at + 8, product >> 64n, true);
 }
