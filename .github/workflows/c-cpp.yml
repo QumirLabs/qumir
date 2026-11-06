@@ -31,12 +31,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Checkout submodules
-      run: git submodule update --init --recursive
     - name: apt-get update
       run: sudo apt-get update
     - name: Install packages
-      run: sudo apt-get install ccache libcmocka-dev liburing-dev cmake ninja-build llvm-20-dev libgtest-dev libreadline-dev lld nodejs g++-14
+      run: sudo apt-get install ccache cmake ninja-build llvm-20-dev libgtest-dev libreadline-dev lld nodejs g++-14
     - name: Set up ccache
       uses: Chocobo1/setup-ccache-action@a4d08616f5b614053bce228ddf881592f69d61d4 # v1.5.9
       with:

@@ -27,9 +27,7 @@ planning, and scheduling; Qumir supplies the compilation layer.
 
 - Try Kumir in the browser: [qumir.dev](https://qumir.dev)
 - Kumir in a school portal: [педобраз.рф/kumir](https://педобраз.рф/kumir/) — an independent installation of the Qumir engine for computer-science classes and exam preparation.
-- Kumir user documentation: [docs/ru/index.md](docs/ru/index.md)
-- Kumir syntax: [docs/ru/syntax.md](docs/ru/syntax.md)
-- Kumir examples: [docs/ru/examples.md](docs/ru/examples.md)
+- Kumir user documentation, syntax and examples: [QumirLabs/qumir-service](https://github.com/QumirLabs/qumir-service) (`docs/ru`, `examples`)
 - oz-lang tutorial and reference: [docs/arch/core-lang.md](docs/arch/core-lang.md)
 - Compiler architecture: [docs/arch/overview.md](docs/arch/overview.md)
 
@@ -124,7 +122,7 @@ build/bin/qumiri --print-ast --print-ir -i program.kum
 build/bin/qumiri --core -i test/regtest/cases/corelang/implicit_return.oz
 ```
 
-Use `build/bin/qumiri --help` for the complete and current option list. See [docs/ru/interpreter.md](docs/ru/interpreter.md) for a guided reference.
+Use `build/bin/qumiri --help` for the complete and current option list.
 
 ### `qumirc`
 
@@ -136,7 +134,7 @@ build/bin/qumirc --llvm program.kum -o program.ll
 build/bin/qumirc --wasm program.kum -o program.wasm
 ```
 
-Use `build/bin/qumirc --help` for all output modes and optimization flags. See [docs/ru/compiler.md](docs/ru/compiler.md) for more examples.
+Use `build/bin/qumirc --help` for all output modes and optimization flags.
 
 ## Compiler architecture
 
@@ -255,26 +253,21 @@ The built-in [Turtle module](qumir/modules/turtle/turtle.cpp) is a compact examp
 
 For lower-level control, a host can parse core lang with `qumir/parser/core`, construct or transform `NAst::TExpr` trees directly, run `NTransform::Pipeline`, lower with `NIR::TAstLowerer`, and then choose the interpreter or LLVM backend. This is the same pipeline used by the runners and command-line tools.
 
-For browser embedding, compile with `qumirc --wasm` and provide the imported host functions. The JavaScript runtime used by the playground is in [qumir/runtime/js](qumir/runtime/js); an HTTP compiler service is only needed when source must be compiled on demand.
+For browser embedding, compile with `qumirc --wasm` and provide the imported host functions. The JavaScript runtime used by the playground is in [qumir/runtime/js](qumir/runtime/js); an HTTP compiler service ([qumir-service](https://github.com/QumirLabs/qumir-service)) is only needed when source must be compiled on demand.
 
 ## Repository layout
 
 - `qumir/` contains the reusable compiler, runtime interfaces, modules, runners, IR, and LLVM backend.
 - `bin/` contains `qumiri` and `qumirc`.
 - `test/` contains unit and regression tests, including `.kum` and `.oz` programs.
-- `examples/` contains complete Kumir programs grouped by topic and executor.
-- `service/` contains the online playground service and browser runtime.
-- `docs/` contains user documentation, architecture notes, and design issues.
+- `docs/arch/` contains architecture notes.
+
+The online playground service, the Russian user documentation and the Kumir examples live in [QumirLabs/qumir-service](https://github.com/QumirLabs/qumir-service).
 
 ## Documentation
 
-On the website, a `kumir` code block inside `<qumir-example id="unique-id">` becomes an editable, runnable example. Set `io="false"` on the tag to hide the input/output panel for graphics examples; execution results and errors remain visible below the editor. The panel is visible by default, or with `io="true"`. Keep it visible when readers need text input, output, or file editing. Robot fields can be edited directly in the preview even with `io="false"`. Markdown code blocks and screenshots remain readable on GitHub.
+User documentation (Russian), syntax, examples and the FAQ are in [QumirLabs/qumir-service](https://github.com/QumirLabs/qumir-service).
 
-- [User documentation](docs/ru/index.md)
-- [Syntax reference](docs/ru/syntax.md)
-- [Standard functions](docs/ru/standard-functions.md)
-- [Examples](docs/ru/examples.md)
-- [FAQ](docs/ru/faq.md)
 - [Architecture overview](docs/arch/overview.md)
 - [oz-lang tutorial and reference](docs/arch/core-lang.md)
 - [Code style](docs/arch/codestyle.md)

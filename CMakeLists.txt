@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.30)
 project(qumir VERSION 1.0.6)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(QUMIR_BUILD_SERVICE "Build Qumir service component with externals" OFF)
 option(QUMIR_BUILD_TESTS "Build Qumir tests" OFF)
 option(QUMIR_USE_CCACHE "Compile through ccache when it is installed" ON)
 option(QUMIR_LLVM_LINK_SHARED "Link the shared libLLVM instead of static LLVM archives" OFF)
@@ -14,7 +13,6 @@ set(QUMIR_DEB_VERSION "${PROJECT_VERSION}-${QUMIR_BUILD_NUMBER}")
 
 # Only major.minor names the install tree, so patch releases replace files in place.
 set(QUMIR_RELEASE "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
-set(QUMIR_DATA_DIR "/var/lib/qumir-data" CACHE STRING "Writable data directory, created by the administrator")
 
 # Build number 0 means a working copy; anything else comes from CI and names a package.
 string(TIMESTAMP QUMIR_BUILD_DATE "%Y-%m-%d" UTC)
@@ -38,7 +36,7 @@ set(QUMIR_PRIVATE_DIR "lib/qumir-${QUMIR_RELEASE}")
 set(QUMIR_PRIVATE_BINDIR "${QUMIR_PRIVATE_DIR}/bin")
 set(QUMIR_PRIVATE_LIBDIR "${QUMIR_PRIVATE_DIR}/lib")
 
-# Set before any target exists; the submodules under externals/ inherit it.
+# Set before any target exists.
 # A launcher passed on the command line (CI does) or by a parent project takes precedence.
 if(QUMIR_USE_CCACHE AND NOT CMAKE_C_COMPILER_LAUNCHER AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
     find_program(CCACHE_PROGRAM ccache)
@@ -61,11 +59,6 @@ if(QUMIR_BUILD_TESTS)
     add_subdirectory(test)
 endif()
 add_subdirectory(bin)
-
-if(QUMIR_BUILD_SERVICE)
-    add_subdirectory(externals)
-    add_subdirectory(service)
-endif()
 
 # Only the standalone build packages itself; embedded in another project its CPack
 # configuration would overwrite the outer one.
