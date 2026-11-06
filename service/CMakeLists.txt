@@ -17,7 +17,8 @@ endif()
 # Headers and defs for using llvm/Support headers directly in server
 target_include_directories(server PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(server PRIVATE ${LLVM_DEFINITIONS}
-    QUMIR_VERSION_STRING="${QUMIR_VERSION_STRING}")
+    QUMIR_VERSION_STRING="${QUMIR_VERSION_STRING}"
+    QUMIR_DEFAULT_RUNTIME_DIR="${CMAKE_INSTALL_PREFIX}/share/qumir/js")
 
 # Plugins resolve coroio and llvm::json symbols from the executable itself.
 set_target_properties(server PROPERTIES ENABLE_EXPORTS ON)
@@ -28,12 +29,12 @@ install(PROGRAMS $<TARGET_FILE:server>
     RENAME qumir-service
     COMPONENT service)
 
-# static/docs and static/runtime are symlinks into the source tree, so ship the real files in their place.
+# static/docs is a symlink into the source tree, so ship the real files in its place.
+# The runtime copy stays until nginx serves /runtime/ from the qumir package.
 install(DIRECTORY static/
     DESTINATION share/qumir-service/static
     COMPONENT service
-    REGEX "/docs$" EXCLUDE
-    REGEX "/runtime$" EXCLUDE)
+    REGEX "/docs$" EXCLUDE)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../qumir/runtime/js/
     DESTINATION share/qumir-service/static/runtime
