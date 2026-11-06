@@ -26,11 +26,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: apt-get update
-      run: sudo apt-get update
-
     - name: Install packages
-      run: sudo apt-get install -y cmake ninja-build llvm-20-dev libreadline-dev lld g++-14 dpkg-dev
+      run: bash .github/scripts/apt-install.sh cmake ninja-build llvm-20-dev libreadline-dev lld g++-14 dpkg-dev
 
     - name: configure
       run: |
