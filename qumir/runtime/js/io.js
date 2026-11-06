@@ -1,5 +1,6 @@
 import { __allocCString, __bindMemory as bindStringMemory, __loadString } from './string.js';
 import { allocFuture, enqueuePendingOp } from './future.js';
+import { __bindMemory as bindMathMemory } from './math.js';
 
 // IO runtime shims: provide input/output functions expected by the program
 // and allow embedders to inject their own input/output streams. Also exposes
@@ -13,6 +14,7 @@ export function __bindMemory(mem) {
   if (typeof bindStringMemory === 'function') {
     try { bindStringMemory(mem); } catch {}
   }
+  bindMathMemory(mem);
 }
 
 const NullInputStream = {
