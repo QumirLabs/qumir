@@ -124,3 +124,8 @@ install(FILES
     modules/modalias
     DESTINATION ${QUMIR_PRIVATE_DIR}/modules
     COMPONENT compiler)
+
+# Browser/Node host runtime for WebAssembly output.
+install(DIRECTORY runtime/js/
+    DESTINATION share/qumir/js
+    COMPONENT compiler)

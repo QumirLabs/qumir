@@ -412,7 +412,7 @@ advancement happens inside `process_events`.
 ### Await protocol imports
 
 In the WASM build, `__qumir_future_*` and `__qumir_wrap_coro` are **JS
-imports** (implemented in `service/static/runtime/future.js`). They never
+imports** (implemented in `qumir/runtime/js/future.js`). They never
 enter the WASM binary as C++ code. The WASM binary only exports the
 `__qumir_coro_*` helpers.
 

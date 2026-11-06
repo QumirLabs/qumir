@@ -57,7 +57,7 @@ export async function loadRuntime(bytes, options = {}) {
     import('./complex.js'),
     import('./future.js'),
     import('./locator.js'),
-    import('../io_wrapper.js'),
+    import('./io_wrapper.js'),
     optionalImport('./turtle.js', usesImport(imports, 'turtle_')),
     optionalImport('./robot.js', usesImport(imports, 'robot_')),
     optionalImport('./drawer.js', usesImport(imports, 'drawer_')),

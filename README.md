@@ -255,7 +255,7 @@ The built-in [Turtle module](qumir/modules/turtle/turtle.cpp) is a compact examp
 
 For lower-level control, a host can parse core lang with `qumir/parser/core`, construct or transform `NAst::TExpr` trees directly, run `NTransform::Pipeline`, lower with `NIR::TAstLowerer`, and then choose the interpreter or LLVM backend. This is the same pipeline used by the runners and command-line tools.
 
-For browser embedding, compile with `qumirc --wasm` and provide the imported host functions. The JavaScript runtime used by the playground is in [service/static/runtime](service/static/runtime); an HTTP compiler service is only needed when source must be compiled on demand.
+For browser embedding, compile with `qumirc --wasm` and provide the imported host functions. The JavaScript runtime used by the playground is in [qumir/runtime/js](qumir/runtime/js); an HTTP compiler service is only needed when source must be compiled on demand.
 
 ## Repository layout
 
