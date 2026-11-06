@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(qumir VERSION 1.0.6)
+project(qumir VERSION 1.1.0)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(QUMIR_BUILD_TESTS "Build Qumir tests" OFF)
@@ -8,7 +8,7 @@ option(QUMIR_LLVM_LINK_SHARED "Link the shared libLLVM instead of static LLVM ar
 set(QUMIR_BUILD_NUMBER "0" CACHE STRING "Build number, becomes the Debian revision after the hyphen")
 
 # The upstream version is bumped by hand above; the build number rides along as the
-# Debian revision, so the package version reads 1.0.0-42.
+# Debian revision, so the package version reads 1.1.0-42.
 set(QUMIR_DEB_VERSION "${PROJECT_VERSION}-${QUMIR_BUILD_NUMBER}")
 
 # Only major.minor names the install tree, so patch releases replace files in place.
