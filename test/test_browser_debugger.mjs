@@ -8,6 +8,7 @@ import puppeteer from 'puppeteer';
 const url = process.env.QUMIR_TEST_URL || 'http://127.0.0.1:8097/';
 const server = process.env.QUMIR_TEST_URL ? null : spawn('build/service/server', [
   '--port', '8097', '--static-dir', 'service/static', '--binary-dir', 'build/bin',
+  '--qumir-runtime', 'qumir/runtime/js',
   '--examples-dir', 'examples', '--shared-links-dir', 'build/browser-shared',
 ], { stdio: ['ignore', 'ignore', 'pipe'] });
 server?.stderr.on('data', data => {

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <optional>
@@ -53,6 +54,7 @@ struct TOptions {
     std::function<TPipe(const std::string&, const std::vector<std::string>&, bool)> PipeFactory;
     std::string StaticDir = "static";
     std::string BinaryDir = "bin";
+    std::string QumirRuntimeDir = QUMIR_DEFAULT_RUNTIME_DIR;
     std::string ExamplesDir = "examples";
     std::string SharedLinksDir = "shared";
     std::vector<std::string> Plugins;
@@ -65,6 +67,7 @@ public:
         : PipeFactory(std::move(options.PipeFactory))
         , StaticDir(std::move(options.StaticDir))
         , BinaryDir(std::move(options.BinaryDir))
+        , QumirRuntimeDir(std::move(options.QumirRuntimeDir))
         , ExamplesDir(std::move(options.ExamplesDir))
         , SharedLinksDir(std::move(options.SharedLinksDir))
     {
@@ -79,6 +82,15 @@ public:
         if (ec || BinaryBaseCanonical.empty()) {
             // Fallback to lexical normalization if canonicalization fails
             BinaryBaseCanonical = std::filesystem::path(BinaryDir).lexically_normal();
+        }
+
+        RuntimeBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(QumirRuntimeDir), ec);
+        if (ec || RuntimeBaseCanonical.empty()) {
+            // Fallback to lexical normalization if canonicalization fails
+            RuntimeBaseCanonical = std::filesystem::path(QumirRuntimeDir).lexically_normal();
+        }
+        if (!std::filesystem::is_regular_file(RuntimeBaseCanonical / "loader.js")) {
+            throw std::runtime_error("--qumir-runtime: " + (RuntimeBaseCanonical / "loader.js").string() + " not found");
         }
 
         ExamplesBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(ExamplesDir), ec);
@@ -406,6 +418,8 @@ private:
             co_await response.SendHeaders();
         } else if (auto* handler = Routes.FindGet(path)) {
             co_await (*handler)(request, response);
+        } else if (path.rfind("/runtime/", 0) == 0) {
+            co_await ServeStaticFile(response, path.substr(std::strlen("/runtime")), RuntimeBaseCanonical);
         } else {
             co_await ServeStaticFile(response, request.Uri().Path(), StaticBaseCanonical);
         }
@@ -923,6 +937,8 @@ private:
     std::filesystem::path StaticBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(StaticDir));
     std::string BinaryDir;
     std::filesystem::path BinaryBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(BinaryDir));
+    std::string QumirRuntimeDir;
+    std::filesystem::path RuntimeBaseCanonical;
     std::string ExamplesDir;
     std::filesystem::path ExamplesBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(ExamplesDir));
     std::string SharedLinksDir;
@@ -949,6 +965,8 @@ int main(int argc, char** argv) {
             options.StaticDir = argv[++i];
         } else if (!strcmp(argv[i], "--binary-dir") && i < argc-1) {
             options.BinaryDir = argv[++i];
+        } else if (!strcmp(argv[i], "--qumir-runtime") && i < argc-1) {
+            options.QumirRuntimeDir = argv[++i];
         } else if (!strcmp(argv[i], "--examples-dir") && i < argc-1) {
             options.ExamplesDir = argv[++i];
         } else if (!strcmp(argv[i], "--shared-links-dir") && i < argc-1) {
@@ -958,7 +976,10 @@ int main(int argc, char** argv) {
         } else if (!strcmp(argv[i], "--plugin-arg") && i < argc-1) {
             options.PluginArgs.push_back(argv[++i]);
         } else if (!strcmp(argv[i], "--help")) {
-            std::cout << "Usage: " << argv[0] << " [--port port] [--static-dir dir] [--binary-dir dir] [--examples-dir dir] [--shared-links-dir dir] [--plugin path.so] [--plugin-arg value]\n";
+            std::cout << "Usage: " << argv[0] << " [--port port] [--static-dir dir] [--binary-dir dir]"
+                " [--qumir-runtime dir] [--examples-dir dir] [--shared-links-dir dir] [--plugin path.so] [--plugin-arg value]\n"
+                "--qumir-runtime dir: JS runtime served under /runtime/ (must contain loader.js; default "
+                QUMIR_DEFAULT_RUNTIME_DIR ")\n";
             return 0;
         }
     }
