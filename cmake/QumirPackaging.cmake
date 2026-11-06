@@ -9,7 +9,7 @@ set(CPACK_STRIP_FILES ON)
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-# Yields 1.0.0-42; the hyphen is the Debian revision separator.
+# Yields 1.1.0-42; the hyphen is the Debian revision separator.
 set(CPACK_DEBIAN_PACKAGE_RELEASE "${QUMIR_BUILD_NUMBER}")
 
 set(CPACK_COMPONENTS_ALL compiler)
