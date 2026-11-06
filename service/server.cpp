@@ -55,6 +55,7 @@ struct TOptions {
     std::string StaticDir = "static";
     std::string BinaryDir = "bin";
     std::string QumirRuntimeDir = QUMIR_DEFAULT_RUNTIME_DIR;
+    std::string QumirDocsDir;
     std::string ExamplesDir = "examples";
     std::string SharedLinksDir = "shared";
     std::vector<std::string> Plugins;
@@ -68,6 +69,7 @@ public:
         , StaticDir(std::move(options.StaticDir))
         , BinaryDir(std::move(options.BinaryDir))
         , QumirRuntimeDir(std::move(options.QumirRuntimeDir))
+        , QumirDocsDir(std::move(options.QumirDocsDir))
         , ExamplesDir(std::move(options.ExamplesDir))
         , SharedLinksDir(std::move(options.SharedLinksDir))
     {
@@ -91,6 +93,13 @@ public:
         }
         if (!std::filesystem::is_regular_file(RuntimeBaseCanonical / "loader.js")) {
             throw std::runtime_error("--qumir-runtime: " + (RuntimeBaseCanonical / "loader.js").string() + " not found");
+        }
+
+        if (!QumirDocsDir.empty()) {
+            ArchDocsBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(QumirDocsDir), ec);
+            if (ec || ArchDocsBaseCanonical.empty()) {
+                ArchDocsBaseCanonical = std::filesystem::path(QumirDocsDir).lexically_normal();
+            }
         }
 
         ExamplesBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(ExamplesDir), ec);
@@ -420,6 +429,8 @@ private:
             co_await (*handler)(request, response);
         } else if (path.rfind("/runtime/", 0) == 0) {
             co_await ServeStaticFile(response, path.substr(std::strlen("/runtime")), RuntimeBaseCanonical);
+        } else if (!ArchDocsBaseCanonical.empty() && path.rfind("/docs/arch/", 0) == 0) {
+            co_await ServeStaticFile(response, path.substr(std::strlen("/docs/arch")), ArchDocsBaseCanonical);
         } else {
             co_await ServeStaticFile(response, request.Uri().Path(), StaticBaseCanonical);
         }
@@ -939,6 +950,8 @@ private:
     std::filesystem::path BinaryBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(BinaryDir));
     std::string QumirRuntimeDir;
     std::filesystem::path RuntimeBaseCanonical;
+    std::string QumirDocsDir;
+    std::filesystem::path ArchDocsBaseCanonical;
     std::string ExamplesDir;
     std::filesystem::path ExamplesBaseCanonical = std::filesystem::weakly_canonical(std::filesystem::path(ExamplesDir));
     std::string SharedLinksDir;
@@ -967,6 +980,8 @@ int main(int argc, char** argv) {
             options.BinaryDir = argv[++i];
         } else if (!strcmp(argv[i], "--qumir-runtime") && i < argc-1) {
             options.QumirRuntimeDir = argv[++i];
+        } else if (!strcmp(argv[i], "--qumir-docs") && i < argc-1) {
+            options.QumirDocsDir = argv[++i];
         } else if (!strcmp(argv[i], "--examples-dir") && i < argc-1) {
             options.ExamplesDir = argv[++i];
         } else if (!strcmp(argv[i], "--shared-links-dir") && i < argc-1) {
@@ -977,9 +992,10 @@ int main(int argc, char** argv) {
             options.PluginArgs.push_back(argv[++i]);
         } else if (!strcmp(argv[i], "--help")) {
             std::cout << "Usage: " << argv[0] << " [--port port] [--static-dir dir] [--binary-dir dir]"
-                " [--qumir-runtime dir] [--examples-dir dir] [--shared-links-dir dir] [--plugin path.so] [--plugin-arg value]\n"
+                " [--qumir-runtime dir] [--qumir-docs dir] [--examples-dir dir] [--shared-links-dir dir] [--plugin path.so] [--plugin-arg value]\n"
                 "--qumir-runtime dir: JS runtime served under /runtime/ (must contain loader.js; default "
-                QUMIR_DEFAULT_RUNTIME_DIR ")\n";
+                QUMIR_DEFAULT_RUNTIME_DIR ")\n"
+                "--qumir-docs dir: development only, render the architecture notes (md) under /docs/arch/\n";
             return 0;
         }
     }
