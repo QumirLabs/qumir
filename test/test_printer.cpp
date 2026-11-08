@@ -348,6 +348,13 @@ struct TDecType : TNamedType {
     {}
 };
 
+// Custom named type without args, printed short: Unit
+struct TUnitType : TNamedType {
+    TUnitType()
+        : TNamedType("Unit", nullptr)
+    {}
+};
+
 TPrintOptions MakeTypePrintOptions() {
     TPrintOptions opts;
     opts.TypePrinters[TOptType::TypeId] = [](TType& type, TPrinter& p, int level) {
@@ -364,6 +371,12 @@ TTypeParserMap MakeTypeParsers() {
             return std::unexpected("Opt expects one type argument");
         }
         return std::make_shared<TOptType>(std::move(args[0].Type));
+    };
+    parsers["Unit"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
+        if (!args.empty()) {
+            return std::unexpected("Unit expects no arguments");
+        }
+        return std::make_shared<TUnitType>();
     };
     parsers["Dec"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (args.size() != 2 || args[0].Kind != TGenericArg::EKind::Value || args[1].Kind != TGenericArg::EKind::Value) {
@@ -409,6 +422,19 @@ TEST(TypeExtensions, ParseWithoutParsersKeepsNamedType) {
     ASSERT_TRUE(type.has_value());
     EXPECT_TRUE(TMaybeType<TNamedType>(*type));
     EXPECT_FALSE(std::dynamic_pointer_cast<TOptType>(*type));
+}
+
+TEST(TypeExtensions, BareNamedTypeConsultsParsers) {
+    TPrintOptions opts;
+    opts.ShortNamedTypes.insert("Unit");
+    auto text = PrintType(std::make_shared<TUnitType>(), opts);
+    EXPECT_EQ(text, "Unit");
+    auto parsed = ParseTypeText(text, MakeTypeParsers());
+    ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
+    EXPECT_TRUE(std::dynamic_pointer_cast<TUnitType>(*parsed));
+    auto plain = ParseTypeText(text, {});
+    ASSERT_TRUE(plain.has_value());
+    EXPECT_FALSE(std::dynamic_pointer_cast<TUnitType>(*plain));
 }
 
 TEST(TypeExtensions, RoundTripNested) {

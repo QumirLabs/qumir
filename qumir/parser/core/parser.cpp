@@ -629,6 +629,15 @@ TTypeTask ParseType(TParserContext& context) {
     if (IsNil(token)) co_return TTypePtr{};
     if (token.Type == TToken::Identifier) {
         if (auto scalar = ScalarTypeByName(token.Name)) co_return scalar;
+        if (context.TypeParsers) {
+            if (auto it = context.TypeParsers->find(token.Name); it != context.TypeParsers->end()) {
+                auto custom = it->second({});
+                if (!custom) {
+                    co_return TError(token.Location, custom.error());
+                }
+                co_return std::move(*custom);
+            }
+        }
         co_return std::make_shared<TNamedType>(token.Name, nullptr);
     }
     if (IsOp(token, '<')) {
