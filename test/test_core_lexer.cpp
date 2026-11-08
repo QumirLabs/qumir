@@ -500,3 +500,66 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+namespace {
+
+// Names without '|' (which cannot be written inside bars).
+const std::vector<std::string>& TrickyIdentifiers() {
+    static const std::vector<std::string> names = {
+        "x(y)", "a)b", "a(b", "a;b", "a>b", "a<b", "a-b", "a/b", "a,b", "a\"b", "a'b", "a#b",
+        "a\\b", "a\tb", "a\nb", "x ", "a b", "a.b", "1x", "42", "-1", ".5", "#t", "a[b]", "a=b",
+        "\xD0\xB6 \xD1\x8B", "x\ry", "foo", "my_var", "$x", "\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82",
+    };
+    return names;
+}
+
+} // namespace
+
+TEST(CoreIdentifierQuotingTest, PlainNamesStayBare) {
+    for (const auto* name : {"foo", "my_var", "$x", "x1", "+", "-", "->", "a:b", "<main>"}) {
+        SCOPED_TRACE(name);
+        auto var = std::make_shared<NQumir::NAst::TVarStmt>(
+            NQumir::TLocation{}, name, std::make_shared<NQumir::NAst::TBoolType>());
+        EXPECT_EQ(PrintAst(var, TPrintOptions{.Pretty = false}), std::string("(var ") + name + " bool)");
+    }
+}
+
+TEST(CoreIdentifierQuotingTest, StructFieldNamesRoundTrip) {
+    for (const auto& name : TrickyIdentifiers()) {
+        SCOPED_TRACE(name);
+        auto type = std::make_shared<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
+            {name, std::make_shared<NQumir::NAst::TBoolType>()},
+            {"z", std::make_shared<NQumir::NAst::TBoolType>()},
+        });
+        const auto text = PrintType(type);
+
+        std::istringstream input(text);
+        TTokenStream tokens(input);
+        auto parsed = ParseType(tokens);
+        ASSERT_TRUE(parsed.has_value()) << text << ": " << parsed.error().ToString();
+        auto st = TMaybeType<TStructType>(*parsed).Cast();
+        ASSERT_TRUE(st) << text;
+        ASSERT_EQ(st->Fields.size(), 2u);
+        EXPECT_EQ(st->Fields[0].first, name) << text;
+        EXPECT_EQ(PrintType(*parsed), text);
+    }
+}
+
+TEST(CoreIdentifierQuotingTest, VariableNamesRoundTrip) {
+    for (const auto& name : TrickyIdentifiers()) {
+        SCOPED_TRACE(name);
+        auto var = std::make_shared<NQumir::NAst::TVarStmt>(
+            NQumir::TLocation{}, name, std::make_shared<NQumir::NAst::TBoolType>());
+        const auto text = PrintAst(var, TPrintOptions{.Pretty = false});
+
+        std::istringstream input(text);
+        TTokenStream tokens(input);
+        TParser parser;
+        auto parsed = parser.Parse(tokens);
+        ASSERT_TRUE(parsed.has_value()) << text << ": " << parsed.error().ToString();
+        auto parsedVar = NQumir::NAst::TMaybeNode<NQumir::NAst::TVarStmt>(*parsed).Cast();
+        ASSERT_TRUE(parsedVar) << text;
+        EXPECT_EQ(parsedVar->Name, name) << text;
+        EXPECT_EQ(PrintAst(*parsed, TPrintOptions{.Pretty = false}), text);
+    }
+}
