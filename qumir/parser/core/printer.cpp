@@ -259,6 +259,8 @@ void TPrinter::PrintType(TTypePtr type, int level) {
         *Out << '>';
     } else if (auto t = TMaybeType<TStructType>(type)) {
         PrintStructType(t.Cast(), level);
+    } else if (auto it = Options.TypePrinters.find(type->TypeName()); it != Options.TypePrinters.end()) {
+        it->second(*type, *this, level);
     } else {
         throw std::runtime_error("unsupported type for core print: " + std::string(type->TypeName()));
     }

@@ -38,9 +38,14 @@ struct IParseHandle {
 using TNodeParser = std::function<TAstTask(IParseHandle&, TLocation)>;
 using TNodeParserMap = std::unordered_map<std::string, TNodeParser>;
 
+// Builds a custom type from the generic args of "<named Name [args]>".
+using TTypeParser = std::function<std::expected<TTypePtr, std::string>(std::vector<TGenericArg>)>;
+using TTypeParserMap = std::unordered_map<std::string, TTypeParser>;
+
 class TParser {
 public:
     TNodeParserMap NodeParsers;
+    TTypeParserMap TypeParsers;
     std::vector<TPragma> Pragmas;
 
     std::expected<TExprPtr, TError> Parse(TTokenStream& stream);
@@ -48,6 +53,7 @@ public:
 
 // Reads a single type off the stream, leaving whatever follows it unconsumed.
 std::expected<TTypePtr, TError> ParseType(ITokenStream& stream);
+std::expected<TTypePtr, TError> ParseType(ITokenStream& stream, const TTypeParserMap& typeParsers);
 
 } // namespace NCore
 } // namespace NAst
