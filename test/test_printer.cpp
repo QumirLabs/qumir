@@ -318,11 +318,6 @@ TEST(LifetimeNodes, CleanupChildrenPutValueBeforeOrderedCleanups) {
     EXPECT_EQ(global->Children(), (std::vector<TExprPtr>{cleanup2, cleanup1}));
 }
 
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
-
 namespace {
 
 // Custom type: <named Opt [T]>
@@ -451,4 +446,9 @@ TEST(TypeExtensions, ParserErrorFromBuilder) {
     auto parsed = ParseTypeText("<named Opt [1 2]>", MakeTypeParsers());
     ASSERT_FALSE(parsed.has_value());
     EXPECT_NE(parsed.error().ToString().find("Opt expects one type argument"), std::string::npos);
+}
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
