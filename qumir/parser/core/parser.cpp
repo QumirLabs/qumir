@@ -38,6 +38,7 @@ struct TParserContext {
     TListHandlerMap Handlers;
     std::vector<TPragma> Pragmas;
     int BlockDepth = 0;
+    const TTypeParserMap* TypeParsers = nullptr;
 };
 
 std::shared_ptr<TIntegerType> IntegerTypeByName(const std::string& name) {
@@ -582,6 +583,15 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
         auto type = std::make_shared<TNamedType>(std::move(name), nullptr, std::move(typeArgs));
         auto tok = context.Stream.Next();
         if (IsOp(tok, '>')) {
+            if (context.TypeParsers) {
+                if (auto it = context.TypeParsers->find(type->Name); it != context.TypeParsers->end()) {
+                    auto custom = it->second(std::move(type->TypeArgs));
+                    if (!custom) {
+                        co_return TError(location, custom.error());
+                    }
+                    co_return std::move(*custom);
+                }
+            }
             co_return type;
         }
         // "<named Name (attrs)>" - a reference with no inline underlying type,
@@ -1112,6 +1122,7 @@ struct TParseHandleImpl : NQumir::NAst::NCore::IParseHandle {
 std::expected<TExprPtr, TError> TParser::Parse(TTokenStream& baseStream) {
     TWrappedTokenStream stream(baseStream, 4);
     TParserContext context{stream, MakeDefaultHandlers()};
+    context.TypeParsers = &TypeParsers;
     for (auto& [key, handler] : NodeParsers) {
         context.Handlers[key] = [h = handler](TParserContext& ctx, TLocation loc) -> TAstTask {
             TParseHandleImpl handle{ctx};
@@ -1131,8 +1142,13 @@ std::expected<TExprPtr, TError> TParser::Parse(TTokenStream& baseStream) {
 }
 
 std::expected<TTypePtr, TError> ParseType(ITokenStream& baseStream) {
+    return ParseType(baseStream, TTypeParserMap{});
+}
+
+std::expected<TTypePtr, TError> ParseType(ITokenStream& baseStream, const TTypeParserMap& typeParsers) {
     TWrappedTokenStream stream(baseStream, 4);
     TParserContext context{stream};
+    context.TypeParsers = &typeParsers;
     return ParseType(context).result();
 }
 
