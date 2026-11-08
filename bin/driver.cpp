@@ -540,11 +540,11 @@ int Generate(const std::string& inputFile, const std::string& outputFile, bool c
         std::string cmd = std::string("wasm-ld --no-entry --export-all --allow-undefined ")
             + (wasmBits == 64 ? "-mwasm64 " : "") + "-o " + outputFile + " " + objTmp;
         int rc = std::system(cmd.c_str());
+        std::remove(objTmp.c_str());
         if (rc != 0) {
             std::cerr << "wasm-ld failed with code " << rc << "\n";
             return 1;
         }
-        std::remove(objTmp.c_str());
         return 0;
     }
 
