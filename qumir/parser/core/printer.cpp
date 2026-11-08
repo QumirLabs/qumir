@@ -1,4 +1,5 @@
 #include "printer.h"
+#include "lexer.h"
 
 #include <cmath>
 #include <iomanip>
@@ -266,13 +267,39 @@ void TPrinter::PrintType(TTypePtr type, int level) {
     }
 }
 
+namespace {
+
+// True if the tokenizer reads `name` back as one identifier (head position is the most permissive).
+bool IsSingleIdentifier(const std::string& name) {
+    std::istringstream input("(" + name + ")");
+    try {
+        TTokenStream tokens(input);
+        auto open = tokens.Next();
+        auto ident = tokens.Next();
+        auto close = tokens.Next();
+        return open.RawValue == "(" && ident.Type == TToken::Identifier && ident.Name == name
+            && close.RawValue == ")" && tokens.Next().IsEof();
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+// The parser also accepts "<name>" as a single name, e.g. "<main>".
+bool IsBareName(const std::string& name) {
+    if (name.size() > 2 && name.front() == '<' && name.back() == '>') {
+        return IsSingleIdentifier(name.substr(1, name.size() - 2));
+    }
+    return IsSingleIdentifier(name);
+}
+
+} // namespace
+
 void TPrinter::PrintIdentifier(const std::string& value) {
-    const bool needsQuoting = value.find(' ') != std::string::npos
-                           || value.find('.') != std::string::npos;
-    if (needsQuoting) {
-        *Out << '|' << value << '|';
-    } else {
+    // Names with '|' or edge cases like "| x" cannot be written in bars either; they stay unsupported.
+    if (IsBareName(value)) {
         *Out << value;
+    } else {
+        *Out << '|' << value << '|';
     }
 }
 
