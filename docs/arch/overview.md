@@ -28,7 +28,7 @@ Source (.kum / core-lang)
         ▼
   [ IR lowering ]  →  TModule (SSA IR)
         │
-        ├── [ IR passes ]  (SSA, const-fold, de-SSA, …)
+        ├── [ IR passes ]  (SSA, const-fold, …)
         │
         ├──────────────────────────────────────┐
         ▼                                      ▼
@@ -193,8 +193,10 @@ opcodes can be added without touching an enum.
 |----------------|-------------------------------------------|
 | `locals2ssa`   | stack locals → SSA temporaries            |
 | `const_fold`   | constant folding                          |
-| `de_ssa`       | insert copies at φ-joins before codegen   |
 | CFG analysis   | predecessor / successor computation       |
+| liveness       | live-out temporaries of each block        |
+| `allocate_registers` | VM register slots of temporaries    |
+| `lower_allocated_phis` | φ copies between allocated VM slots |
 
 ### 5.4 IR type table
 
@@ -210,6 +212,25 @@ The VM is a register-based bytecode interpreter. The IR is compiled to
 `TVMInstr` bytecode by `TVMCompiler`, which assigns stack-frame byte offsets
 to locals and aligned register-file byte offsets to temporaries. IR temporary
 ids remain unchanged; only VM operands contain the assigned byte offsets.
+
+Before eliminating SSA, the VM computes liveness to a fixed point over the
+control-flow graph. Phi inputs are live on their incoming edges rather than
+in every predecessor. A conflict graph then assigns non-overlapping lifetimes
+to reusable slots of the same size, respecting alignment. This is deterministic
+greedy placement, not a minimum-size guarantee. Parameter registers keep their
+`TExecFunc::Params` offsets and are not shared; the other slots follow them,
+and the window of a callee starts after all of them. Ordinary instruction results
+do not share slots with their inputs: vector handlers can write early lanes
+before reading later lanes or a broadcast input. Struct addresses retain unique
+slots because return materialization associates each with a specific frame
+object.
+
+Phi elimination uses that placement to omit copies between identical slots,
+order the remaining parallel copies, and break cycles with a scratch slot per
+size/alignment class. Conditional edges carrying copies are split so another
+successor cannot observe those writes. Compilation lowers a private copy of
+the function: removing a copy because two values share a slot must not erase
+SSA semantics needed by a later compilation with another placement.
 
 Each invocation uses one aligned byte buffer for all registers, including
 128-bit integers. Existing scalar opcodes use eight-byte slots even for
@@ -313,7 +334,7 @@ Translates `TModule` to LLVM IR and then to native code or WebAssembly.
 ### 7.1 Function lowering
 
 IR basic blocks map directly to LLVM basic blocks.  IR temporaries become
-LLVM values (`alloca`-free after the de-SSA pass).  Struct arguments and
+LLVM values (`alloca`-free after the SSA passes).  Struct arguments and
 returns are modelled as ordinary LLVM values.
 
 ### 7.2 Target

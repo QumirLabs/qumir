@@ -56,12 +56,16 @@ add_library(qumir
     ir/debug_data.cpp
     ir/passes/analysis/cfg.h
     ir/passes/analysis/cfg.cpp
+    ir/passes/analysis/liveness.h
+    ir/passes/analysis/liveness.cpp
+    ir/passes/transforms/allocate_registers.h
+    ir/passes/transforms/allocate_registers.cpp
+    ir/passes/transforms/lower_allocated_phis.h
+    ir/passes/transforms/lower_allocated_phis.cpp
     ir/passes/transforms/const_fold.h
     ir/passes/transforms/const_fold.cpp
     ir/passes/transforms/inline_calls.h
     ir/passes/transforms/inline_calls.cpp
-    ir/passes/transforms/de_ssa.h
-    ir/passes/transforms/de_ssa.cpp
     ir/passes/transforms/locals2ssa.h
     ir/passes/transforms/locals2ssa.cpp
     ir/passes/transforms/pipeline.h

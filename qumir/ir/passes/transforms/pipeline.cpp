@@ -1,8 +1,6 @@
 #include "pipeline.h"
 
-#include <qumir/ir/passes/analysis/cfg.h>
 #include <qumir/ir/passes/transforms/locals2ssa.h>
-#include <qumir/ir/passes/transforms/de_ssa.h>
 #include <qumir/ir/passes/transforms/const_fold.h>
 #include <qumir/ir/passes/transforms/inline_calls.h>
 
@@ -63,17 +61,6 @@ void Pipeline(TModule& module) {
     InlineCalls(module);
     for (auto& function : module.Functions) {
         Pipeline(function, module);
-    }
-}
-
-void BeforeCompile(TFunction& function, TModule& module) {
-    BuildCfg(function);
-    DeSSA(function, module);
-}
-
-void BeforeCompile(TModule& module) {
-    for (auto& function : module.Functions) {
-        BeforeCompile(function, module);
     }
 }
 

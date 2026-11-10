@@ -7,7 +7,6 @@
 #include <qumir/ir/type.h>
 #include <qumir/ir/passes/analysis/cfg.h>
 #include <qumir/ir/passes/transforms/locals2ssa.h>
-#include <qumir/ir/passes/transforms/de_ssa.h>
 
 #include <memory>
 #include <set>
@@ -257,48 +256,6 @@ TEST(CfgTest, InstructionDebugInfoIsOptional) {
     EXPECT_TRUE(hasSourceLocation);
 }
 
-TEST(CfgTest, DeSSAPreservesInstructionDebugInfo) {
-    using namespace NIR::NLiterals;
-
-    NIR::TModule module;
-    NIR::TBuilder builder(module);
-    builder.NewFunction("f", {}, 0);
-    const int i64 = module.Types.I(EKind::I64);
-    const TLabel entryLabel = builder.CurrentBlockLabel();
-    const TLabel thenLabel = builder.NewLabel();
-    const TLabel joinLabel = builder.NewLabel();
-    const TInstrDebugInfo entryInfo{TLocation{1, 0, 0}, 1};
-    const TInstrDebugInfo thenInfo{TLocation{2, 0, 0}, 1};
-    const TInstrDebugInfo joinInfo{TLocation{3, 0, 0}, 1};
-
-    builder.Emit0("cmp"_op, {TImm{1, i64}, thenLabel, joinLabel}, entryInfo);
-    builder.NewBlock(thenLabel);
-    builder.Emit0("jmp"_op, {joinLabel}, thenInfo);
-    builder.NewBlock(joinLabel);
-    auto phi = builder.Emit1(
-        "phi"_op,
-        {TImm{11, i64}, entryLabel, TImm{22, i64}, thenLabel},
-        joinInfo);
-    builder.SetType(phi, i64);
-    builder.Emit0("ret"_op, {phi}, joinInfo);
-
-    auto& function = module.Functions.front();
-    BuildCfg(function);
-    DeSSA(function, module);
-
-    ASSERT_EQ(function.Blocks.size(), 4);
-    for (const auto& block : function.Blocks) {
-        ASSERT_EQ(block.InstrDebugInfo.size(), block.Instrs.size());
-    }
-    EXPECT_EQ(function.Blocks[1].InstrDebugInfo.back().Location.Line, 2);
-    EXPECT_EQ(function.Blocks[2].InstrDebugInfo.back().Location.Line, 3);
-    const auto& splitBlock = function.Blocks.back();
-    ASSERT_EQ(splitBlock.Instrs.size(), 3);
-    EXPECT_FALSE(splitBlock.InstrDebugInfo[0]);
-    EXPECT_FALSE(splitBlock.InstrDebugInfo[1]);
-    EXPECT_EQ(splitBlock.InstrDebugInfo.back().Location.Line, 1);
-}
-
 TEST(CfgTest, Basic) {
     std::string s = R"(
 алг
@@ -441,11 +398,6 @@ std::string s = R"(
     PromoteLocalsToSSA(function, module);
 
     function.Print(std::cout, module);
-
-    DeSSA(function, module);
-
-    function.Print(std::cout, module);
-
 }
 
 TEST(CfgTest, PromoteLocalsToSSAContinue) {

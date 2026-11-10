@@ -1,0 +1,236 @@
+#include <qumir/ir/eval.h>
+#include <qumir/ir/passes/analysis/cfg.h>
+#include <qumir/ir/passes/transforms/lower_allocated_phis.h>
+
+#include <gtest/gtest.h>
+
+#include <cstring>
+#include <sstream>
+
+using namespace NQumir;
+using namespace NQumir::NIR;
+using namespace NQumir::NIR::NLiterals;
+using namespace NQumir::NIR::NPasses;
+
+TEST(VMAllocation, PhiInputsAreLiveOnlyOnTheirOwnEdges) {
+    TFunction function{.Blocks = {
+        {.Label = {0}, .Instrs = {{.Op = "cmp"_op, .Operands = {TImm{1}, TLabel{1}, TLabel{2}}, .OperandCount = 3}}},
+        {.Label = {1}, .Instrs = {
+            {.Op = "mov"_op, .Dest = {0}, .Operands = {TImm{7}}, .OperandCount = 1},
+            {.Op = "jmp"_op, .Operands = {TLabel{3}}, .OperandCount = 1}}},
+        {.Label = {2}, .Instrs = {
+            {.Op = "mov"_op, .Dest = {1}, .Operands = {TImm{9}}, .OperandCount = 1},
+            {.Op = "jmp"_op, .Operands = {TLabel{3}}, .OperandCount = 1}}},
+        {.Label = {3}, .Phis = {{.Op = "phi"_op, .Dest = {2},
+            .Operands = {TTmp{0}, TLabel{1}, TTmp{1}, TLabel{2}}}},
+            .Instrs = {{.Op = "ret"_op, .Operands = {TTmp{2}}, .OperandCount = 1}}},
+    }};
+    BuildCfg(function);
+    const auto live = ComputeLiveOut(function);
+    EXPECT_TRUE(live[0].empty());
+    EXPECT_EQ(live[1], TLiveSet{0});
+    EXPECT_EQ(live[2], TLiveSet{1});
+    EXPECT_TRUE(live[3].empty());
+}
+
+TEST(VMAllocation, BackEdgesPreserveLoopCarriedValues) {
+    TModule module;
+    const int type = module.Types.I(EKind::I64);
+    module.Functions.push_back({.Name = "loop", .Blocks = {
+        {.Label = {0}, .Instrs = {
+            {.Op = "mov"_op, .Dest = {0}, .Operands = {TImm{0, type}}, .OperandCount = 1},
+            {.Op = "jmp"_op, .Operands = {TLabel{1}}, .OperandCount = 1}}},
+        {.Label = {1}, .Phis = {{.Op = "phi"_op, .Dest = {1},
+            .Operands = {TTmp{0}, TLabel{0}, TTmp{2}, TLabel{2}}}}, .Instrs = {
+            {.Op = "<"_op, .Dest = {3}, .Operands = {TTmp{1}, TImm{17, type}}, .OperandCount = 2},
+            {.Op = "cmp"_op, .Operands = {TTmp{3}, TLabel{2}, TLabel{3}}, .OperandCount = 3}}},
+        {.Label = {2}, .Instrs = {
+            {.Op = "+"_op, .Dest = {2}, .Operands = {TTmp{1}, TImm{1, type}}, .OperandCount = 2},
+            {.Op = "jmp"_op, .Operands = {TLabel{1}}, .OperandCount = 1}}},
+        {.Label = {3}, .Instrs = {{.Op = "ret"_op, .Operands = {TTmp{1}}, .OperandCount = 1}}},
+    }, .TmpTypes = {type, type, type, module.Types.I(EKind::I1)},
+       .ReturnTypeId = type, .SymId = 0, .UniqueId = 0, .NextTmpIdx = 4, .NextLabelIdx = 4});
+    auto& function = module.Functions[0];
+    BuildCfg(function);
+    const auto live = ComputeLiveOut(function);
+    EXPECT_EQ(live[0], TLiveSet{0});
+    EXPECT_EQ(live[1], TLiveSet{1});
+    EXPECT_EQ(live[2], TLiveSet{2});
+    TVMCompiler compiler(module);
+    std::ostringstream out;
+    std::istringstream in;
+    TInterpreter interpreter(module, compiler, out, in);
+    EXPECT_EQ(interpreter.EvalRaw(function, {}, {}), 17);
+    ASSERT_EQ(function.Blocks[1].Phis.size(), 1);
+    TVMCompiler recompiled(module);
+    function.Exec = &recompiled.Compile(function);
+    EXPECT_EQ(interpreter.EvalRaw(function, {}, {}), 17);
+}
+
+TEST(VMAllocation, ParallelCyclesUseOneScratchAndSplitTheConditionalEdge) {
+    for (int width : {8, 16, 32}) {
+        for (int count : {2, 3}) {
+            const int smallAlignment = (width == 16)
+                ? 16
+                : 8;
+            for (int alignment : {smallAlignment, 64}) {
+                SCOPED_TRACE(width);
+                SCOPED_TRACE(count);
+                SCOPED_TRACE(alignment);
+                TTypeTable types;
+                int type = types.Vec(types.I(EKind::U8), 32);
+                if (width == 8) {
+                    type = types.I(EKind::I64);
+                } else if (width == 16) {
+                    type = types.I(EKind::I128);
+                }
+                TFunction function{.Blocks = {
+                    {.Label = {0}, .Instrs = {{.Op = "cmp"_op,
+                        .Operands = {TImm{1}, TLabel{1}, TLabel{2}}, .OperandCount = 3}}},
+                    {.Label = {1}, .Instrs = {{.Op = "ret"_op}}},
+                    {.Label = {2}, .Instrs = {{.Op = "ret"_op}}},
+                }, .TmpTypes = std::vector<int>(2 * count, type),
+                   .NextTmpIdx = 2 * count, .NextLabelIdx = 3};
+                TRegisterAllocation allocation;
+                for (int i = 0; i < count; ++i) {
+                    allocation.Reserve(i, width, alignment);
+                }
+                for (int i = 0; i < count; ++i) {
+                    allocation.Slots[count + i] = allocation.Slots.at((i + 1) % count);
+                    function.Blocks[1].Phis.push_back({.Op = "phi"_op, .Dest = {count + i},
+                        .Operands = {TTmp{i}, TLabel{0}}});
+                }
+                BuildCfg(function);
+                LowerAllocatedPhis(function, allocation);
+                ASSERT_EQ(function.Blocks.size(), 4);
+                EXPECT_EQ(function.Blocks[0].Instrs.back().Operands[2].Label.Idx, 2);
+                EXPECT_EQ(function.Blocks[0].Instrs.back().Operands[1].Label.Idx, 3);
+                EXPECT_EQ(allocation.Size, count * std::max(width, alignment) + width);
+                for (const auto& [tmp, slot] : allocation.Slots) {
+                    EXPECT_EQ(slot.Offset % slot.Alignment, 0);
+                }
+                std::vector<char> registers(allocation.Size);
+                for (int i = 0; i < count; ++i) {
+                    std::memset(registers.data() + allocation.Slots.at(i).Offset, i + 1, width);
+                }
+                for (const auto& instr : function.Blocks[3].Instrs) {
+                    if (instr.Op == "mov"_op) {
+                        std::memcpy(registers.data() + allocation.Slots.at(instr.Dest.Idx).Offset,
+                            registers.data() + allocation.Slots.at(instr.Operands[0].Tmp.Idx).Offset, width);
+                    }
+                }
+                for (int i = 0; i < count; ++i) {
+                    const std::vector<char> expected(width, i + 1);
+                    EXPECT_EQ(std::memcmp(registers.data() + allocation.Slots.at(count + i).Offset,
+                        expected.data(), width), 0);
+                }
+            }
+        }
+    }
+}
+
+TEST(VMAllocation, LongChainsReuseSlotsWithoutChangingVirtualIds) {
+    TModule module;
+    TBuilder builder(module);
+    const int type = module.Types.I(EKind::I64);
+    builder.NewFunction("chain", {}, 0);
+    auto tmp = builder.Emit1("mov"_op, {TImm{0, type}});
+    builder.SetType(tmp, type);
+    for (int i = 0; i < 1000; ++i) {
+        tmp = builder.Emit1("+"_op, {tmp, TImm{1, type}});
+        builder.SetType(tmp, type);
+    }
+    builder.Emit0("ret"_op, {tmp});
+    builder.SetReturnType(type);
+    TVMCompiler compiler(module);
+    std::ostringstream out;
+    std::istringstream in;
+    TInterpreter interpreter(module, compiler, out, in);
+    auto& function = module.Functions[0];
+    EXPECT_EQ(interpreter.EvalRaw(function, {}, {}), 1000);
+    EXPECT_LE(function.Exec->RegisterFileSize, 16);
+    EXPECT_EQ(function.Blocks[0].Instrs[1000].Dest.Idx, tmp.Idx);
+}
+
+TEST(VMAllocation, ParameterLoadsKeepTheirRegistersInPhiCopies) {
+    TModule module;
+    TBuilder builder(module);
+    const int type = module.Types.I(EKind::I64);
+    builder.NewFunction("pick", {TLocal{0}}, 0);
+    builder.SetType(TLocal{0}, type, {});
+    const TLabel add = builder.NewLabel();
+    const TLabel keep = builder.NewLabel();
+    const TLabel join = builder.NewLabel();
+    const auto param = builder.Emit1("load"_op, {TLocal{0}});
+    builder.SetType(param, type);
+    const auto small = builder.Emit1("<"_op, {param, TImm{10, type}});
+    builder.SetType(small, module.Types.I(EKind::I1));
+    builder.Emit0("cmp"_op, {small, add, keep});
+    builder.NewBlock(add);
+    const auto sum = builder.Emit1("+"_op, {param, TImm{100, type}});
+    builder.SetType(sum, type);
+    builder.Emit0("jmp"_op, {join});
+    builder.NewBlock(keep);
+    builder.Emit0("jmp"_op, {join});
+    builder.NewBlock(join);
+    const auto result = builder.Emit1("phi"_op, {sum, add, param, keep});
+    builder.SetType(result, type);
+    builder.Emit0("ret"_op, {result});
+    builder.SetReturnType(type);
+    TVMCompiler compiler(module);
+    std::ostringstream out;
+    std::istringstream in;
+    TInterpreter interpreter(module, compiler, out, in);
+    auto& function = module.Functions[0];
+    EXPECT_EQ(interpreter.EvalRaw(function, {3}, {}), 103);
+    EXPECT_EQ(interpreter.EvalRaw(function, {41}, {}), 41);
+    // The load is the parameter register; nothing else may share it.
+    const auto& exec = *function.Exec;
+    EXPECT_EQ(exec.TmpByteOffsets.at(param.Idx), exec.Params.Offsets[0]);
+    EXPECT_GE(exec.TmpByteOffsets.at(sum.Idx), exec.Params.Bytes);
+    EXPECT_GE(exec.TmpByteOffsets.at(result.Idx), exec.Params.Bytes);
+}
+
+TEST(VMAllocation, PhiCopiesKeepInstructionDebugInfo) {
+    TModule module;
+    TBuilder builder(module);
+    builder.NewFunction("f", {}, 0);
+    const int i64 = module.Types.I(EKind::I64);
+    const TLabel entryLabel = builder.CurrentBlockLabel();
+    const TLabel thenLabel = builder.NewLabel();
+    const TLabel joinLabel = builder.NewLabel();
+    const TInstrDebugInfo entryInfo{TLocation{1, 0, 0}, 1};
+    const TInstrDebugInfo thenInfo{TLocation{2, 0, 0}, 1};
+    const TInstrDebugInfo joinInfo{TLocation{3, 0, 0}, 1};
+    builder.Emit0("cmp"_op, {TImm{1, i64}, thenLabel, joinLabel}, entryInfo);
+    builder.NewBlock(thenLabel);
+    builder.Emit0("jmp"_op, {joinLabel}, thenInfo);
+    builder.NewBlock(joinLabel);
+    const auto phi = builder.Emit1("phi"_op, {TImm{11, i64}, entryLabel, TImm{22, i64}, thenLabel});
+    builder.SetType(phi, i64);
+    builder.Emit0("ret"_op, {phi}, joinInfo);
+
+    auto& function = module.Functions.front();
+    BuildCfg(function);
+    TRegisterAllocation allocation;
+    allocation.Reserve(phi.Idx, 8, 8);
+    LowerAllocatedPhis(function, allocation);
+
+    ASSERT_EQ(function.Blocks.size(), 4);
+    for (const auto& block : function.Blocks) {
+        ASSERT_EQ(block.InstrDebugInfo.size(), block.Instrs.size());
+    }
+    EXPECT_EQ(function.Blocks[1].InstrDebugInfo.back().Location.Line, 2);
+    EXPECT_EQ(function.Blocks[2].InstrDebugInfo.back().Location.Line, 3);
+    const auto& splitBlock = function.Blocks.back();
+    EXPECT_EQ(splitBlock.Label.Idx, 3);
+    EXPECT_EQ(function.NextLabelIdx, 4);
+    ASSERT_EQ(splitBlock.Instrs.size(), 2);
+    EXPECT_FALSE(splitBlock.InstrDebugInfo[0]);
+    EXPECT_EQ(splitBlock.InstrDebugInfo.back().Location.Line, 1);
+}
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

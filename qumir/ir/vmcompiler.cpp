@@ -2,7 +2,8 @@
 #include <qumir/align.h>
 #include <qumir/ir/type.h>
 #include <qumir/ir/vminstr.h>
-#include <qumir/ir/passes/transforms/pipeline.h>
+#include <qumir/ir/passes/analysis/cfg.h>
+#include <qumir/ir/passes/transforms/lower_allocated_phis.h>
 
 #include <cassert>
 #include <algorithm>
@@ -10,7 +11,6 @@
 #include <iostream>
 #include <iomanip>
 #include <dlfcn.h>
-#include <limits>
 #include <unordered_set>
 
 namespace NQumir {
@@ -507,8 +507,11 @@ TExecFunc& TVMCompiler::Compile(TFunction& function, bool printByteCode) {
     };
 
     auto& execFunc = CodeCache[function.SymId];
-    NPasses::BeforeCompile(function, Module);
-    CompileUltraLow(function, execFunc);
+    // Removing coalesced phi copies is valid only for this allocation. Keep
+    // the original SSA available for recompilation after a failed Prepare.
+    auto lowered = function;
+    NPasses::BuildCfg(lowered);
+    CompileUltraLow(lowered, execFunc);
     if (printByteCode) {
         std::cerr << "Compiled function " << function.Name << " (symId=" << function.SymId << ", uniqueId=" << function.UniqueId << "):\n";
         std::cerr << "Start address: " << (uint64_t)execFunc.VMCode.data() << ", insrt size: " << sizeof(TVMInstr) << " bytes\n";
@@ -567,7 +570,7 @@ std::expected<void, TError> TVMCompiler::Prepare(const std::vector<TFunction*>& 
     return {};
 }
 
-void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
+void TVMCompiler::CompileUltraLow(TFunction& function, TExecFunc& funcOut)
 {
     int lowStringTypeId = Module.Types.Ptr(Module.Types.I(EKind::I8));
     std::unordered_map<int64_t, int64_t> labelToPC;
@@ -575,13 +578,6 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
 
     funcOut.Params = LayoutParams(Module.Types, function);
     const auto& params = funcOut.Params;
-    funcOut.RegisterFileAlignment = std::max(funcOut.RegisterFileAlignment, params.Alignment);
-
-    // Parameter registers get tmp ids past every IR tmp and the await scratch tmp.
-    const int paramTmpBase = function.NextTmpIdx + 1;
-    for (size_t i = 0; i < params.Offsets.size(); ++i) {
-        funcOut.TmpByteOffsets[paramTmpBase + i] = params.Offsets[i];
-    }
 
     // A parameter stays in its register unless the function takes its address, is a struct
     // or has debug info (the debugger reads locals from the frame); those are copied at entry.
@@ -619,6 +615,30 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
         return it != paramOfLocal.end() && !paramInFrame[it->second] && !paramStored[it->second];
     };
 
+    // Parameters are live-in at their offsets, the other values get slots past them;
+    // the callee window for outgoing arguments starts after all of them.
+    NPasses::TRegisterAllocation allocation{.Size = params.Bytes, .Alignment = params.Alignment};
+    for (const auto& block : function.Blocks) {
+        for (const auto& instr : block.Instrs) {
+            if (aliasedParamLoad(instr)) {
+                const size_t i = paramOfLocal.at(instr.Operands[0].Local.Idx);
+                allocation.Slots[instr.Dest.Idx] = {
+                    .Offset = params.Offsets[i],
+                    .Size = std::max(8, params.Sizes[i]),
+                    .Alignment = RegisterAlignment(Module.Types, params.TypeIds[i]),
+                };
+            }
+        }
+    }
+    allocation = NPasses::AllocateRegisters(function, Module.Types, NPasses::ComputeLiveOut(function), std::move(allocation));
+    NPasses::LowerAllocatedPhis(function, allocation);
+
+    // Parameter registers get tmp ids past every IR tmp and the await scratch tmp.
+    const int paramTmpBase = function.NextTmpIdx + 1;
+    for (size_t i = 0; i < params.Offsets.size(); ++i) {
+        funcOut.TmpByteOffsets[paramTmpBase + i] = params.Offsets[i];
+    }
+
     auto& code = funcOut.VMCode;
     code.resize(std::count(paramInFrame.begin(), paramInFrame.end(), true));
     std::unordered_set<int> usedTmps;
@@ -629,7 +649,6 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
                 continue;
             }
             if (aliasedParamLoad(instr)) {
-                funcOut.TmpByteOffsets[instr.Dest.Idx] = params.Offsets[paramOfLocal.at(instr.Operands[0].Local.Idx)];
                 continue;
             }
             if (instr.Dest.Idx >= 0) {
@@ -762,7 +781,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
         return it->second;
     };
     // Arguments of VM calls are written to the callee's parameter registers, which
-    // start at the end of this function's registers; AllocateRegisters knows where.
+    // start at the end of this function's registers; BindRegisters knows where.
     std::vector<std::pair<size_t, int>> outgoingArgs; // VM index, offset in the callee's window
     int maxOutgoingBytes = -1; // -1: no VM calls
     size_t pendingArgs = 0;
@@ -1388,7 +1407,7 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
     if (!funcOut.InstrDebugInfo.empty()) {
         funcOut.InstrDebugInfo.resize(ptr - code.data());
     }
-    AllocateRegisters(function, tmpFrameOffsets, funcOut);
+    BindRegisters(function, tmpFrameOffsets, allocation, funcOut);
 
     if (maxOutgoingBytes >= 0) {
         // A callee's window starts after the registers, at the arguments written there.
@@ -1405,12 +1424,12 @@ void TVMCompiler::CompileUltraLow(const TFunction& function, TExecFunc& funcOut)
     }
 }
 
-void TVMCompiler::AllocateRegisters(
+void TVMCompiler::BindRegisters(
     const TFunction& function,
     const std::vector<int>& tmpFrameOffsets,
+    NPasses::TRegisterAllocation& allocation,
     TExecFunc& out)
 {
-    int offset = out.Params.Bytes;
     auto allocate = [&](TTmp& tmp) {
         if (tmp.Idx < 0) {
             return;
@@ -1420,28 +1439,19 @@ void TVMCompiler::AllocateRegisters(
             tmp.Idx = it->second;
             return;
         }
-        // Direct await calls share one backend scratch register for their Future.
-        const int typeId = tmpId == function.NextTmpIdx
-            ? Module.Types.Ptr(Module.Types.I(EKind::Void))
-            : function.GetTmpType(tmpId);
-        const bool isStruct = typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct;
-        // Existing scalar opcodes read/write a full machine word; struct values are addresses.
-        const int size = isStruct
-            ? 8
-            : std::max(8, Module.Types.SizeInBytes(typeId));
-        const int alignment = RegisterAlignment(Module.Types, typeId);
-        if (offset > std::numeric_limits<int32_t>::max() - alignment - size) {
-            throw std::runtime_error("VM register file is too large");
+        // The expanded call/await pair owns a dedicated scratch slot.
+        if (tmpId == function.NextTmpIdx && !allocation.Slots.contains(tmpId)) {
+            allocation.Reserve(tmpId, 8, 8);
         }
-        offset = AlignUp(offset, alignment);
+        const int typeId = function.GetTmpType(tmpId);
+        const bool isStruct = typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct;
+        const int offset = allocation.Slots.at(tmpId).Offset;
         out.TmpByteOffsets[tmpId] = offset;
         if (isStruct) {
             const int frameOffset = tmpFrameOffsets.at(tmpId);
             out.StructRegisters[offset] = {frameOffset, Module.Types.SizeInBytes(typeId)};
         }
         tmp.Idx = offset;
-        offset += size;
-        out.RegisterFileAlignment = std::max(out.RegisterFileAlignment, alignment);
     };
     for (auto& instr : out.VMCode) {
         for (auto& operand : instr.Operands) {
@@ -1451,7 +1461,8 @@ void TVMCompiler::AllocateRegisters(
         }
         allocate(instr.Mask);
     }
-    out.RegisterFileSize = offset;
+    out.RegisterFileSize = allocation.Size;
+    out.RegisterFileAlignment = allocation.Alignment;
 }
 
 } // namespace NIR
