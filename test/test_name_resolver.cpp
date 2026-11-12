@@ -484,7 +484,7 @@ TEST(TypeAnnotation, FutureVoidEmitsLlvmCoroutineIntrinsics) {
     EXPECT_NE(llvmIr.find("define i32 @__qumir_coro_done"), std::string::npos) << llvmIr;
     EXPECT_NE(llvmIr.find("define void @__qumir_coro_resume"), std::string::npos) << llvmIr;
     EXPECT_NE(llvmIr.find("define void @__qumir_coro_destroy"), std::string::npos) << llvmIr;
-    EXPECT_NE(llvmIr.find("AfterCoroEnd"), std::string::npos) << llvmIr;
+    EXPECT_NE(llvmIr.find("void @helper.resume("), std::string::npos) << llvmIr;
 }
 
 TEST(TypeAnnotation, FutureVoidCoroutineLlvmKeepsLoopControlFlow) {
