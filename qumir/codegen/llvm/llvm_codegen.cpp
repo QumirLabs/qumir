@@ -40,6 +40,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
+#include <llvm/Transforms/Utils/Local.h>
 
 #include <utility>
 
@@ -703,6 +704,54 @@ void EmitCoroutineRuntimeHelpers(llvm::Module& module, llvm::LLVMContext& ctx) {
     }
 }
 
+// All awaits of a coroutine share one waiting loop that dispatches to the
+// continuation, so in the CFG every await site reaches every continuation, and
+// a value defined between two awaits does not dominate its uses after the next
+// one. As reg2mem does, keep every value that crosses a block boundary in a
+// stack slot: coro-split moves the slots live across a suspend into the frame,
+// and the optimizer promotes the rest back to registers. The utilities are
+// called directly because passes skip optnone functions of debug builds.
+void DemoteCrossBlockValues(llvm::Function& function) {
+    auto& entry = function.getEntryBlock();
+    std::vector<llvm::Instruction*> escaping;
+    for (auto& block : function) {
+        for (auto& instr : block) {
+            if (!instr.getType()->isSized() || (llvm::isa<llvm::AllocaInst>(instr) && &block == &entry)) {
+                continue;
+            }
+            for (auto* user : instr.users()) {
+                auto* userInstr = llvm::cast<llvm::Instruction>(user);
+                if (userInstr->getParent() != &block || llvm::isa<llvm::PHINode>(userInstr)) {
+                    escaping.push_back(&instr);
+                    break;
+                }
+            }
+        }
+    }
+    for (auto* instr : escaping) {
+        llvm::DemoteRegToStack(*instr);
+    }
+    std::vector<llvm::PHINode*> phis;
+    for (auto& block : function) {
+        for (auto& phi : block.phis()) {
+            phis.push_back(&phi);
+        }
+    }
+    for (auto* phi : phis) {
+        llvm::DemotePHIToStack(phi);
+    }
+}
+
+void VerifyModule(const llvm::Module& module) {
+    std::string errors;
+    llvm::raw_string_ostream os(errors);
+    if (llvm::verifyModule(module, &os)) {
+        llvm::errs() << "[LLVMCodeGen] Module verify failed. Dumping IR:\n";
+        module.print(llvm::errs(), nullptr);
+        throw std::runtime_error("LLVM verify failed:\n" + errors);
+    }
+}
+
 std::unordered_map<uint64_t, llvm::Instruction::BinaryOps> ibinOpMap = {
     { "+"_op, llvm::Instruction::Add },
     { "-"_op, llvm::Instruction::Sub },
@@ -1097,21 +1146,18 @@ std::unique_ptr<ILLVMModuleArtifacts> TLLVMCodeGen::Emit(TModule& module, int op
         }
     }
 
-    // Coroutine passes must run before verification: pre-split coroutine IR
-    // intentionally violates SSA dominance (values live across suspend points
-    // are not yet spilled). coro-split inserts the frame spills that make the
-    // IR valid. Verifying before the passes would reject well-formed coroutines.
+    // The passes, coroutine ones included, expect a valid module; on an
+    // invalid one the optimizer can loop forever instead of failing.
+    if (optLevel > 0 || hasCoroutines) {
+        VerifyModule(*LModule);
+    }
     if (optLevel > 0) {
         Optimize(optLevel);
     } else if (hasCoroutines) {
         RunCoroutinePasses();
     }
 
-    if (llvm::verifyModule(*LModule, &llvm::errs())) {
-        llvm::errs() << "\n[LLVMCodeGen] Module verify failed. Dumping IR:\n";
-        LModule->print(llvm::errs(), nullptr);
-        throw std::runtime_error("LLVM verify failed");
-    }
+    VerifyModule(*LModule);
 
     auto out = std::make_unique<TLLVMModuleArtifacts>();
     out->Ctx = std::move(Ctx);
@@ -1531,6 +1577,7 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
     });
     irb->CreateRet(handle);
 
+    DemoteCrossBlockValues(*lfun);
     return lfun;
 }
 

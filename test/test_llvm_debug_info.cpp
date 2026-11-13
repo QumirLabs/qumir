@@ -1,12 +1,18 @@
 #include <qumir/codegen/llvm/llvm_codegen.h>
 #include <qumir/codegen/llvm/llvm_initializer.h>
+#include <qumir/frontend/compose.h>
+#include <qumir/frontend/source_module_loader.h>
 #include <qumir/ir/builder.h>
 #include <qumir/ir/lowering/lower_ast.h>
 #include <qumir/ir/passes/transforms/debug_async.h>
+#include <qumir/ir/passes/transforms/pipeline.h>
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/parser.h>
+#include <qumir/modules/builtins/builtins.h>
 #include <qumir/modules/system/system.h>
+#include <qumir/modules/turtle/turtle.h>
+#include <qumir/semantics/kumir/pipeline.h>
 #include <qumir/semantics/transform/transform.h>
 
 #include <gtest/gtest.h>
@@ -345,6 +351,62 @@ TEST(LLVMDebugInfo, CheckpointsShareOneAwaitLoopPerFunction) {
     EXPECT_LE(resume->size(), 64 + 32);
     // The first checkpoint executes eagerly in the entry function.
     EXPECT_EQ(checkpoints, 63);
+}
+
+TEST(LLVMDebugInfo, LoopCounterAcrossSharedAwaitLoop) {
+    // The counted loop is unreachable, but the shared await loop gives its
+    // counter a path around its definition.
+    const std::string code =
+        "использовать Черепаха\nалг\nнач\nнц\nвправо (90)\nкц\nнц 4 раз\nвперед (15)\nкц\nкон\n";
+    for (bool points : {false, true}) {
+        // O0 runs only the coroutine passes, O1 also the optimizer that never
+        // finished on this program.
+        for (int optLevel : {0, 1}) {
+            NSemantics::TNameResolver resolver;
+            NRegistry::BuiltinsModule builtins;
+            NRegistry::SystemModule system;
+            NRegistry::TurtleModule turtle;
+            resolver.RegisterModule(&builtins);
+            resolver.RegisterModule(&system);
+            resolver.RegisterModule(&turtle);
+            ASSERT_TRUE(resolver.ImportModule(builtins.Name()));
+            ASSERT_TRUE(resolver.ImportModule(system.Name()));
+            std::istringstream input(code);
+            NAst::TTokenStream tokens(input);
+            NAst::TParser parser;
+            NFrontend::TSourceModuleLoader loader;
+            auto parsed = parser.parse(tokens, &resolver, &loader);
+            ASSERT_TRUE(parsed);
+            if (points) {
+                // Like qumirc: debug points call into the debug runtime.
+                auto runtime = loader.Load("debug");
+                ASSERT_TRUE(runtime);
+                for (auto& stmt : NAst::TMaybeNode<NAst::TBlockExpr>((*runtime)->Ast).Cast()->Stmts) {
+                    if (auto function = NAst::TMaybeNode<NAst::TFunDecl>(stmt)) {
+                        function.Cast()->Used = true;
+                    }
+                }
+            }
+            auto composed = NFrontend::LoadAndCompose(loader, *parsed, tokens.GetContext()->GetPragmas());
+            ASSERT_TRUE(composed);
+            resolver.ApplyPragmas(composed->Pragmas);
+            auto ast = composed->Ast;
+            ASSERT_TRUE(NTransform::Pipeline(ast, resolver, {.Extensions = NSemantics::NKumir::PipelineExtensions()}));
+            TModule source;
+            source.Types.SetPointerSize(4);
+            source.AsyncMode = "coroutine";
+            TBuilder builder(source);
+            TAstLowerer lowerer(source, builder, resolver, {false, points});
+            ASSERT_TRUE(lowerer.LowerTop(ast));
+            if (!points) {
+                NPasses::Pipeline(source);
+            }
+            llvm::LLVMContext context;
+            NCodeGen::TLLVMCodeGenOptions options;
+            options.TargetTriple = "wasm32-unknown-unknown";
+            EXPECT_TRUE(Emit(source, context, optLevel, options)) << "debug points " << points << ", O" << optLevel;
+        }
+    }
 }
 
 TEST(LLVMDebugInfo, LoweringRetainsSourceModulePresence) {
