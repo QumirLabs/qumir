@@ -85,8 +85,17 @@ void ConstFold(TFunction& function, TModule& module) {
             else return v1 * v2;
         }
         if (op == "/"_op) {
-            if (v2 == 0) return std::nullopt;
-            return v1 / v2;
+            if constexpr (std::is_integral_v<T>) {
+                // Same defined results as the VM and the JIT: x / 0 == 0, MIN / -1 == MIN.
+                if (v2 == 0) return T{0};
+                if constexpr (std::is_signed_v<T>) {
+                    if (v2 == -1) return WrapNeg<T>(v1);
+                }
+                return v1 / v2;
+            } else {
+                if (v2 == 0) return std::nullopt;
+                return v1 / v2;
+            }
         }
         if constexpr (std::is_integral_v<decltype(v1)>) {
             if (op == "&"_op) return v1 & v2;
@@ -203,7 +212,7 @@ void ConstFold(TFunction& function, TModule& module) {
             instr.Operands[1].Type == TOperand::EType::Imm)
         {
             if (instr.Operands[1].Imm.Value == 0) {
-                // x + 0 = x, x - 0 = x, x * 0 = 0, x / 0 = undef
+                // x + 0 = x, x - 0 = x, x * 0 = 0, x / 0 is not folded here (defined as 0)
                 if ((op == "+"_op || op == "-"_op) && canReplaceWithOp(instr.Dest, instr.Operands[0])) {
                     replaceTmpWithOp(instr.Dest, instr.Operands[0]);
                     instr.Clear();

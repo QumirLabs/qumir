@@ -773,6 +773,27 @@ void VerifyModule(const llvm::Module& module) {
     }
 }
 
+// Integer division and remainder with defined results: x / 0 == 0, x % 0 == 0,
+// MIN / -1 == MIN, MIN % -1 == 0. The divisor is replaced by 1 where the hardware
+// divide would trap, so there are no branches. With a divisor of 1, MIN / -1 already
+// gives MIN and every remainder gives 0; only x / 0 needs a select.
+llvm::Value* CreateDefinedDivRem(llvm::IRBuilderBase& irb, llvm::Instruction::BinaryOps op, llvm::Value* lhs, llvm::Value* rhs) {
+    auto* type = lhs->getType();
+    auto* one = llvm::ConstantInt::get(type, 1);
+    auto* isZero = irb.CreateICmpEQ(rhs, llvm::Constant::getNullValue(type), "divzero");
+    llvm::Value* trap = isZero;
+    if (op == llvm::Instruction::SDiv || op == llvm::Instruction::SRem) {
+        auto* isMin = irb.CreateICmpEQ(lhs, llvm::ConstantInt::get(type, llvm::APInt::getSignedMinValue(type->getIntegerBitWidth())));
+        auto* isMinusOne = irb.CreateICmpEQ(rhs, llvm::Constant::getAllOnesValue(type));
+        trap = irb.CreateOr(isZero, irb.CreateAnd(isMin, isMinusOne), "divtrap");
+    }
+    auto* result = irb.CreateBinOp(op, lhs, irb.CreateSelect(trap, one, rhs, "divisor"), "bintmp");
+    if (op == llvm::Instruction::SDiv || op == llvm::Instruction::UDiv) {
+        return irb.CreateSelect(isZero, llvm::Constant::getNullValue(type), result, "divres");
+    }
+    return result;
+}
+
 std::unordered_map<uint64_t, llvm::Instruction::BinaryOps> ibinOpMap = {
     { "+"_op, llvm::Instruction::Add },
     { "-"_op, llvm::Instruction::Sub },
@@ -2048,6 +2069,11 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
         // TODO: cast after operation
         auto lhs = cast(GetOp(instr.Operands[0], module), outputType);
         auto rhs = cast(GetOp(instr.Operands[1], module), outputType);
+        if (op == llvm::Instruction::SDiv || op == llvm::Instruction::SRem
+            || op == llvm::Instruction::UDiv || op == llvm::Instruction::URem)
+        {
+            return CreateDefinedDivRem(*irb, op, lhs, rhs);
+        }
         return irb->CreateBinOp(op, lhs, rhs, "bintmp");
     };
 

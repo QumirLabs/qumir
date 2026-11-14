@@ -370,6 +370,47 @@ TEST_F(ModuleExecTest, FloatToInt128Saturates) {
         "0 9223372036854775807 -9223372036854775808 0\n");
 }
 
+// Integer division and remainder have defined results instead of trapping:
+// x / 0 == 0, x % 0 == 0, MIN / -1 == MIN, MIN % -1 == 0. The VM, constant folding and
+// the JIT must agree; the functions keep the operands out of the constant folder.
+TEST_F(ModuleExecTest, IntegerDivisionHasDefinedResults) {
+    ExpectAll(
+        "(block"
+        " (fun dv ((var a i64) (var b i64)) -> i64 (block (return (// a b))))"
+        " (fun rm ((var a i64) (var b i64)) -> i64 (block (return (% a b))))"
+        " (fun udv ((var a u64) (var b u64)) -> i64 (block (return (cast (// a b) i64))))"
+        " (fun urm ((var a u64) (var b u64)) -> i64 (block (return (cast (% a b) i64))))"
+        " (fun <main> () (block"
+        "   (var min i64) (= min (- (- 9223372036854775807) 1))"
+        "   (var zero i64) (= zero 0)"
+        "   (var m1 i64) (= m1 -1)"
+        "   (output (call dv 7 zero) \" \" (call rm 7 zero) \" \" (call dv min m1) \" \" (call rm min m1)"
+        "           \" \" (call dv -7 2) \" \" (call rm -7 2) \"\\n\")"
+        "   (output (call udv (: 7 u64) (: 0 u64)) \" \" (call urm (: 7 u64) (: 0 u64))"
+        "           \" \" (call udv (~ (: 0 u64)) (: 3 u64)) \"\\n\")"
+        // literal operands are folded at -O1 and above
+        "   (output (// (: 7 i64) (: 0 i64)) \" \" (% (: 7 i64) (: 0 i64)) \" \""
+        "           (// (- (- 9223372036854775807) 1) (: -1 i64)) \" \" (% (- (- 9223372036854775807) 1) (: -1 i64)) \"\\n\"))))",
+        "0 0 -9223372036854775808 0 -3 -1\n"
+        "0 0 6148914691236517205\n"
+        "0 0 -9223372036854775808 0\n");
+}
+
+TEST_F(ModuleExecTest, Integer128DivisionHasDefinedResults) {
+    ExpectAll(
+        "(block"
+        " (fun top ((var x i128)) -> i64 (block (return (cast (>> x (: 64 i128)) i64))))"
+        " (fun low ((var x i128)) -> i64 (block (return (cast x i64))))"
+        " (fun <main> () (block"
+        "   (var min i128) (= min (<< (: 1 i128) (: 127 i128)))"
+        "   (var zero i128) (= zero (: 0 i128))"
+        "   (var m1 i128) (= m1 (: -1 i128))"
+        "   (var seven i128) (= seven (: 7 i128))"
+        "   (output (call low (// seven zero)) \" \" (call low (% seven zero)) \" \""
+        "           (call top (// min m1)) \" \" (call low (// min m1)) \" \" (call top (% min m1)) \" \" (call low (% min m1)) \"\\n\"))))",
+        "0 0 -9223372036854775808 0 0 0\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {

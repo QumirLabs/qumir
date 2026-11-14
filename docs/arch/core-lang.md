@@ -253,7 +253,8 @@ bitcasts are low-level operations with separate representation rules; see
 `(/ 7 2)` produces `3.5`; `(// 7 2)` produces `3`; `(% 7 2)` produces `1`.
 Integer division truncates toward zero. The remainder has the dividend's
 sign: `(// -7 2)` is `-3`, and `(% -7 2)` is `-1`. Integer quotient and
-remainder respect the operands' signedness. Division by zero is not checked.
+remainder respect the operands' signedness. Division never traps:
+`x // 0` and `x % 0` are 0, `MIN // -1` is `MIN`, and `MIN % -1` is 0.
 
 Most binary numeric operations convert operands to an appropriate common
 type. `/` produces `f64`, whereas `//` and `%` require integer operands.
