@@ -95,6 +95,34 @@ inline Dest ReadOperand(TRegisterView regs, const TVMOperand& op) {
     }
 }
 
+// numeric_limits is not specialized for __int128 in strict -std modes
+template<typename T>
+constexpr T MinOf() {
+    return static_cast<T>(-1) < 0 ? static_cast<T>(~T{0} << (sizeof(T) * 8 - 1)) : T{0};
+}
+
+// Integer division and remainder have defined results: x / 0 == 0, x % 0 == 0,
+// MIN / -1 == MIN, MIN % -1 == 0. The divisor is replaced by 1 where the divide
+// would trap; MIN / -1 then gives MIN and every remainder gives 0 by itself.
+template<typename T>
+struct TDefinedDivides {
+    T operator()(T a, T b) const {
+        constexpr bool isSigned = static_cast<T>(-1) < 0;
+        T divisor = (b == 0 || (isSigned && a == MinOf<T>() && b == static_cast<T>(-1))) ? T{1} : b;
+        T quotient = a / divisor;
+        return b == 0 ? T{0} : quotient;
+    }
+};
+
+template<typename T>
+struct TDefinedModulus {
+    T operator()(T a, T b) const {
+        constexpr bool isSigned = static_cast<T>(-1) < 0;
+        T divisor = (b == 0 || (isSigned && a == MinOf<T>() && b == static_cast<T>(-1))) ? T{1} : b;
+        return a % divisor;
+    }
+};
+
 inline int64_t FloatBits(float value) {
     return static_cast<int64_t>(std::bit_cast<uint32_t>(value));
 }
@@ -501,18 +529,18 @@ ITypeErasedFuture* MakeCompletedValueFuture(uint64_t value) {
         regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, TWrapMultiplies<__int128_t>{});
         break;
     case EVMOp::IDivS128:
-        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, std::divides<__int128_t>{});
+        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, TDefinedDivides<__int128_t>{});
         break;
     case EVMOp::IDivU128:
         regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<__int128_t>(
-            AluU128(regs, instr, std::divides<__uint128_t>{}));
+            AluU128(regs, instr, TDefinedDivides<__uint128_t>{}));
         break;
     case EVMOp::IRemS128:
-        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, std::modulus<__int128_t>{});
+        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, TDefinedModulus<__int128_t>{});
         break;
     case EVMOp::IRemU128:
         regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = std::bit_cast<__int128_t>(
-            AluU128(regs, instr, std::modulus<__uint128_t>{}));
+            AluU128(regs, instr, TDefinedModulus<__uint128_t>{}));
         break;
     case EVMOp::IAnd128:
         regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, std::bit_and<__int128_t>{});
@@ -1108,19 +1136,19 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
 
         case EVMOp::IDivS:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, std::divides<int64_t>{});
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, TDefinedDivides<int64_t>{});
             break;
         case EVMOp::IDivU:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(regs, instr, std::divides<uint64_t>{});
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(regs, instr, TDefinedDivides<uint64_t>{});
             break;
         case EVMOp::IRemS:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, std::modulus<int64_t>{});
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, TDefinedModulus<int64_t>{});
             break;
         case EVMOp::IRemU:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(regs, instr, std::modulus<uint64_t>{});
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<uint64_t>(regs, instr, TDefinedModulus<uint64_t>{});
             break;
         case EVMOp::FDiv:
             assert(instr.Operands[0].Tmp.Idx >= 0);
