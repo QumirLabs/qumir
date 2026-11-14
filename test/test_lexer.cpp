@@ -520,6 +520,21 @@ TEST(WrappedTokenStreamTest, WindowSizeOne) {
     ExpectInt(wrapped.GetWindow()[0], 2);
 }
 
+TEST(WrappedTokenStreamTest, UngetPastWindow) {
+    std::istringstream input("1 2 3");
+    TTokenStream baseTokens(input);
+    TWrappedTokenStream wrapped(baseTokens, 1);
+
+    auto a = wrapped.Next();
+    auto b = wrapped.Next();
+    wrapped.Unget(b);
+    wrapped.Unget(a); // The window is already empty.
+    EXPECT_EQ(wrapped.GetWindow().size(), 0);
+
+    ExpectInt(wrapped.Next(), 1);
+    ExpectInt(wrapped.Next(), 2);
+}
+
 TEST(WrappedTokenStreamTest, LocationDelegation) {
     std::istringstream input("x := 5");
     TTokenStream baseTokens(input);
