@@ -503,12 +503,13 @@ int main(int argc, char** argv) {
 
 namespace {
 
-// Names without '|' (which cannot be written inside bars).
 const std::vector<std::string>& TrickyIdentifiers() {
     static const std::vector<std::string> names = {
         "x(y)", "a)b", "a(b", "a;b", "a>b", "a<b", "a-b", "a/b", "a,b", "a\"b", "a'b", "a#b",
         "a\\b", "a\tb", "a\nb", "x ", "a b", "a.b", "1x", "42", "-1", ".5", "#t", "a[b]", "a=b",
         "\xD0\xB6 \xD1\x8B", "x\ry", "foo", "my_var", "$x", "\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82",
+        "|", "||", "a|b", "|a", "a|", "\\", "\\|", "|\\", "\\n", "\\\\|", " x", ")x", " ", ")", "\tx", "\nx", "\rx", "\vx", "\fx",
+        "a\\nb", "| |", "|)|", " |)\t\n\r\\|", "x |y\\z| w",
     };
     return names;
 }
@@ -562,4 +563,31 @@ TEST(CoreIdentifierQuotingTest, VariableNamesRoundTrip) {
         EXPECT_EQ(parsedVar->Name, name) << text;
         EXPECT_EQ(PrintAst(*parsed, TPrintOptions{.Pretty = false}), text);
     }
+}
+
+TEST(CoreIdentifierQuotingTest, EscapesInBars) {
+    auto read = [](const std::string& text) {
+        std::istringstream input(text);
+        TTokenStream tokens(input);
+        auto ident = tokens.Next();
+        EXPECT_TRUE(ident.Type == TToken::Identifier) << text;
+        EXPECT_TRUE(tokens.Next().IsEof()) << text;
+        return ident.Name;
+    };
+    EXPECT_EQ(read("|a\\|b|"), "a|b");
+    EXPECT_EQ(read("|a\\\\b|"), "a\\b");
+    EXPECT_EQ(read("|a\\nb\\tc\\rd|"), "a\nb\tc\rd");
+    EXPECT_EQ(read("|\\ x|"), " x");
+    EXPECT_EQ(read("|\\)x|"), ")x");
+    // Names without a backslash are read as before; an unknown escape stays verbatim.
+    EXPECT_EQ(read("|a b.c|"), "a b.c");
+    EXPECT_EQ(read("|a\\qb|"), "a\\qb");
+    EXPECT_EQ(read("||"), "||");
+    EXPECT_EQ(read("|"), "|");
+}
+
+TEST(CoreIdentifierQuotingTest, EmptyNameIsRejected) {
+    auto var = std::make_shared<NQumir::NAst::TVarStmt>(
+        NQumir::TLocation{}, "", std::make_shared<NQumir::NAst::TBoolType>());
+    EXPECT_THROW(PrintAst(var, TPrintOptions{.Pretty = false}), std::invalid_argument);
 }

@@ -361,7 +361,20 @@ void TTokenStream::Read() {
             } else {
                 std::string name;
                 while (In.peek() != Eof && In.peek() != '|') {
-                    name += Take();
+                    char ch = Take();
+                    if (ch == '\\' && In.peek() != Eof) {
+                        // Escapes: \| \\ \n \t \r \v \f, "\ " and "\)" (a leading space or ')'); others stay verbatim.
+                        switch (In.peek()) {
+                            case '|': case '\\': case ' ': case ')': ch = Take(); break;
+                            case 'n': Take(); ch = '\n'; break;
+                            case 't': Take(); ch = '\t'; break;
+                            case 'r': Take(); ch = '\r'; break;
+                            case 'v': Take(); ch = '\v'; break;
+                            case 'f': Take(); ch = '\f'; break;
+                            default: break;
+                        }
+                    }
+                    name += ch;
                 }
                 if (In.peek() != '|') {
                     throw std::runtime_error("unterminated bar identifier at " + tokenLocation.ToString());

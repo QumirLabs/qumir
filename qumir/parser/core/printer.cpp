@@ -295,12 +295,30 @@ bool IsBareName(const std::string& name) {
 } // namespace
 
 void TPrinter::PrintIdentifier(const std::string& value) {
-    // Names with '|' or edge cases like "| x" cannot be written in bars either; they stay unsupported.
+    if (value.empty()) {
+        // "||" would be read back as the identifier "||".
+        throw std::invalid_argument("cannot print an empty identifier");
+    }
     if (IsBareName(value)) {
         *Out << value;
-    } else {
-        *Out << '|' << value << '|';
+        return;
     }
+    *Out << '|';
+    for (size_t i = 0; i < value.size(); ++i) {
+        switch (value[i]) {
+            case '|': *Out << "\\|"; break;
+            case '\\': *Out << "\\\\"; break;
+            case '\n': *Out << "\\n"; break;
+            case '\t': *Out << "\\t"; break;
+            case '\r': *Out << "\\r"; break;
+            case '\v': *Out << "\\v"; break;
+            case '\f': *Out << "\\f"; break;
+            // A leading space or ')' would make "|" a lone identifier.
+            case ' ': case ')': *Out << (i == 0 ? "\\" : "") << value[i]; break;
+            default: *Out << value[i];
+        }
+    }
+    *Out << '|';
 }
 
 void TPrinter::PrintString(const std::string& value, char quote) {
