@@ -1,4 +1,5 @@
 #include "printer.h"
+#include "lexer.h"
 
 #include <cmath>
 #include <iomanip>
@@ -266,14 +267,71 @@ void TPrinter::PrintType(TTypePtr type, int level) {
     }
 }
 
-void TPrinter::PrintIdentifier(const std::string& value) {
-    const bool needsQuoting = value.find(' ') != std::string::npos
-                           || value.find('.') != std::string::npos;
-    if (needsQuoting) {
-        *Out << '|' << value << '|';
-    } else {
-        *Out << value;
+namespace {
+
+// True if the tokenizer reads `text` as "(", `prefix` identifiers, one identifier `name`, ")".
+bool ReadsBackAs(const std::string& text, size_t prefix, const std::string& name) {
+    std::istringstream input(text);
+    try {
+        TTokenStream tokens(input);
+        if (tokens.Next().RawValue != "(") {
+            return false;
+        }
+        for (size_t i = 0; i < prefix; ++i) {
+            if (tokens.Next().Type != TToken::Identifier) {
+                return false;
+            }
+        }
+        auto ident = tokens.Next();
+        auto close = tokens.Next();
+        return ident.Type == TToken::Identifier && ident.Name == name
+            && close.RawValue == ")" && tokens.Next().IsEof();
+    } catch (const std::exception&) {
+        return false;
     }
+}
+
+// True if the tokenizer reads `name` back as one identifier both right after "(" and in a
+// non-head position (the lexer reads "<<", "<=", ">=", ">>" differently in the two).
+bool IsSingleIdentifier(const std::string& name) {
+    return ReadsBackAs("(" + name + ")", 0, name) && ReadsBackAs("(x " + name + ")", 1, name);
+}
+
+// The parser also accepts "<name>" as a single name, e.g. "<main>".
+bool IsBareName(const std::string& name) {
+    if (name.size() > 2 && name.front() == '<' && name.back() == '>') {
+        return IsSingleIdentifier(name.substr(1, name.size() - 2));
+    }
+    return IsSingleIdentifier(name);
+}
+
+} // namespace
+
+void TPrinter::PrintIdentifier(const std::string& value) {
+    if (value.empty()) {
+        // "||" would be read back as the identifier "||".
+        throw std::invalid_argument("cannot print an empty identifier");
+    }
+    if (IsBareName(value)) {
+        *Out << value;
+        return;
+    }
+    *Out << '|';
+    for (size_t i = 0; i < value.size(); ++i) {
+        switch (value[i]) {
+            case '|': *Out << "\\|"; break;
+            case '\\': *Out << "\\\\"; break;
+            case '\n': *Out << "\\n"; break;
+            case '\t': *Out << "\\t"; break;
+            case '\r': *Out << "\\r"; break;
+            case '\v': *Out << "\\v"; break;
+            case '\f': *Out << "\\f"; break;
+            // A leading space or ')' would make "|" a lone identifier.
+            case ' ': case ')': *Out << (i == 0 ? "\\" : "") << value[i]; break;
+            default: *Out << value[i];
+        }
+    }
+    *Out << '|';
 }
 
 void TPrinter::PrintString(const std::string& value, char quote) {
