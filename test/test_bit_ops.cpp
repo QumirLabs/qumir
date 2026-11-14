@@ -15,6 +15,7 @@
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/codegen/llvm/llvm_runner.h>
 
+#include <limits>
 #include <sstream>
 
 using namespace NQumir;
@@ -211,6 +212,19 @@ TEST(BitOps, ConstFoldEliminatesLiteralBitOps) {
     EXPECT_EQ(result.ir.find(" ^ "), std::string::npos) << result.ir;
     EXPECT_EQ(result.ir.find(" << "), std::string::npos) << result.ir;
     EXPECT_EQ(result.ir.find(" ~ "), std::string::npos) << result.ir;
+}
+
+TEST(BitOps, ConstFoldWrapsIntegerOverflow) {
+    constexpr int64_t Max = std::numeric_limits<int64_t>::max();
+    constexpr int64_t Min = std::numeric_limits<int64_t>::min();
+    auto fold = [&](const char* op, int64_t a, int64_t b) {
+        auto result = RunBitExpr(binary(op, num(a), num(b)), EBackend::VM, true);
+        EXPECT_TRUE(result.ok()) << result.error;
+        return result.output;
+    };
+    EXPECT_EQ(fold("+", Max, 1), std::to_string(Min) + "\n");
+    EXPECT_EQ(fold("-", Min, 1), std::to_string(Max) + "\n");
+    EXPECT_EQ(fold("*", Max, 2), "-2\n");
 }
 
 TEST(BitOps, TypeRejectsNonIntegerOperands) {
