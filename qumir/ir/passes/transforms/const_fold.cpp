@@ -212,7 +212,7 @@ void ConstFold(TFunction& function, TModule& module) {
             instr.Operands[1].Type == TOperand::EType::Imm)
         {
             if (instr.Operands[1].Imm.Value == 0) {
-                // x + 0 = x, x - 0 = x, x * 0 = 0, x / 0 = undef
+                // x + 0 = x, x - 0 = x, x * 0 = 0, x / 0 is not folded here (defined as 0)
                 if ((op == "+"_op || op == "-"_op) && canReplaceWithOp(instr.Dest, instr.Operands[0])) {
                     replaceTmpWithOp(instr.Dest, instr.Operands[0]);
                     instr.Clear();
