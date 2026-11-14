@@ -1,4 +1,5 @@
 #include "eval.h"
+#include "wrap_arith.h"
 
 #include <algorithm>
 #include <bit>
@@ -441,7 +442,7 @@ ITypeErasedFuture* MakeCompletedValueFuture(uint64_t value) {
 [[gnu::noinline]] void ExecInt128Op(TRegisterView regs, const TVMInstr& instr) {
     switch (instr.Op) {
     case EVMOp::INeg128:
-        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = -ReadOperand<__int128_t>(regs, instr.Operands[1]);
+        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = WrapNeg(ReadOperand<__int128_t>(regs, instr.Operands[1]));
         break;
     case EVMOp::IBitNot128:
         regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = ~ReadOperand<__int128_t>(regs, instr.Operands[1]);
@@ -453,13 +454,13 @@ ITypeErasedFuture* MakeCompletedValueFuture(uint64_t value) {
         regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = ReadOperand<__int128_t>(regs, instr.Operands[1]) != 0;
         break;
     case EVMOp::IAdd128:
-        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, std::plus<__int128_t>{});
+        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, TWrapPlus<__int128_t>{});
         break;
     case EVMOp::ISub128:
-        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, std::minus<__int128_t>{});
+        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, TWrapMinus<__int128_t>{});
         break;
     case EVMOp::IMul128:
-        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, std::multiplies<__int128_t>{});
+        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, TWrapMultiplies<__int128_t>{});
         break;
     case EVMOp::IDivS128:
         regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = Alu128(regs, instr, std::divides<__int128_t>{});
@@ -1020,7 +1021,7 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
             break;
         case EVMOp::INeg:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = -ReadOperand(regs, instr.Operands[1]);
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = WrapNeg<int64_t>(ReadOperand(regs, instr.Operands[1]));
             break;
         case EVMOp::FNeg: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
@@ -1042,7 +1043,7 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
 
         case EVMOp::IAdd:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, std::plus<int64_t>{});
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, TWrapPlus<int64_t>{});
             break;
         case EVMOp::FAdd:
             assert(instr.Operands[0].Tmp.Idx >= 0);
@@ -1051,7 +1052,7 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
 
         case EVMOp::ISub:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, std::minus<int64_t>{});
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, TWrapMinus<int64_t>{});
             break;
         case EVMOp::FSub:
             assert(instr.Operands[0].Tmp.Idx >= 0);
@@ -1060,7 +1061,7 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
 
         case EVMOp::IMulS:
             assert(instr.Operands[0].Tmp.Idx >= 0);
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, std::multiplies<int64_t>{});
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = EvalAlu<int64_t>(regs, instr, TWrapMultiplies<int64_t>{});
             break;
         case EVMOp::FMul:
             assert(instr.Operands[0].Tmp.Idx >= 0);

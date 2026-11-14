@@ -1,5 +1,7 @@
 #include "const_fold.h"
 
+#include <qumir/ir/wrap_arith.h>
+
 #include <bit>
 #include <type_traits>
 #include <unordered_map>
@@ -68,9 +70,20 @@ void ConstFold(TFunction& function, TModule& module) {
     };
 
     auto applyBinOp = [&](TOp op, auto v1, auto v2) -> std::optional<decltype(v1)> {
-        if (op == "+"_op) return v1 + v2;
-        if (op == "-"_op) return v1 - v2;
-        if (op == "*"_op) return v1 * v2;
+        using T = decltype(v1);
+        // Integers wrap like the VM and LLVM backends; signed overflow is UB.
+        if (op == "+"_op) {
+            if constexpr (std::is_integral_v<T>) return TWrapPlus<T>{}(v1, v2);
+            else return v1 + v2;
+        }
+        if (op == "-"_op) {
+            if constexpr (std::is_integral_v<T>) return TWrapMinus<T>{}(v1, v2);
+            else return v1 - v2;
+        }
+        if (op == "*"_op) {
+            if constexpr (std::is_integral_v<T>) return TWrapMultiplies<T>{}(v1, v2);
+            else return v1 * v2;
+        }
         if (op == "/"_op) {
             if (v2 == 0) return std::nullopt;
             return v1 / v2;

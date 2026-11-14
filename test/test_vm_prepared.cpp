@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -97,6 +98,28 @@ std::vector<const TExecFunc*> ExecPointers(const TModule& module) {
 }
 
 } // namespace
+
+TEST(VMPrepared, IntegerArithmeticWrapsAround) {
+    TProgram program(R"((block
+  (fun add ((var a i64) (var b i64)) -> i64 (block (return (+ a b))))
+  (fun sub ((var a i64) (var b i64)) -> i64 (block (return (- a b))))
+  (fun mul ((var a i64) (var b i64)) -> i64 (block (return (* a b))))
+))");
+    ASSERT_TRUE(program.Compiler.Prepare({&program.Get("add"), &program.Get("sub"), &program.Get("mul")}));
+    TInstance instance(program);
+    ASSERT_TRUE(instance.Interpreter.Initialize());
+    constexpr int64_t Max = std::numeric_limits<int64_t>::max();
+    constexpr int64_t Min = std::numeric_limits<int64_t>::min();
+    auto call = [&](const char* name, int64_t a, int64_t b) {
+        auto res = instance.Interpreter.Invoke(program.Get(name), {a, b});
+        EXPECT_TRUE(res);
+        return res ? *res : 0;
+    };
+    EXPECT_EQ(call("add", Max, 1), Min);
+    EXPECT_EQ(call("sub", Min, 1), Max);
+    EXPECT_EQ(call("mul", Max, 2), -2);
+    EXPECT_EQ(call("mul", Min, -1), Min);
+}
 
 TEST(VMPrepared, PrepareAndInvokeManyTimes) {
     TProgram program(KernelSource);
