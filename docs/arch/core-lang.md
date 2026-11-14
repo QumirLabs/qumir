@@ -104,6 +104,12 @@ and non-ASCII characters. A colon can occur inside a name, as in
 `|total price|`. Names such as `field_assign` use underscores; a hyphen is an
 operator character, not an ordinary identifier character.
 
+Inside `|...|`, `\|` is a bar, `\\` a backslash, and `\n \t \r \v \f` the control
+characters. `\ ` (backslash, space) and `\)` are a space and `)`; the printer
+uses them as the first character. Any other `\` stays verbatim. The empty name
+cannot be printed. The printer quotes every name that does not read back as one
+identical identifier both right after `(` and elsewhere (for example `|<<|`).
+
 Strings use double quotes and characters use single quotes. Escapes include
 `\n`, `\t`, `\\`, `\"`, and `\'`. Boolean literals are `#t` and `#f`.
 Decimal numbers include `123`, `-42`, `1.25`, `.5`, and `3e-2`.

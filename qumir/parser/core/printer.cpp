@@ -269,19 +269,32 @@ void TPrinter::PrintType(TTypePtr type, int level) {
 
 namespace {
 
-// True if the tokenizer reads `name` back as one identifier (head position is the most permissive).
-bool IsSingleIdentifier(const std::string& name) {
-    std::istringstream input("(" + name + ")");
+// True if the tokenizer reads `text` as "(", `prefix` identifiers, one identifier `name`, ")".
+bool ReadsBackAs(const std::string& text, size_t prefix, const std::string& name) {
+    std::istringstream input(text);
     try {
         TTokenStream tokens(input);
-        auto open = tokens.Next();
+        if (tokens.Next().RawValue != "(") {
+            return false;
+        }
+        for (size_t i = 0; i < prefix; ++i) {
+            if (tokens.Next().Type != TToken::Identifier) {
+                return false;
+            }
+        }
         auto ident = tokens.Next();
         auto close = tokens.Next();
-        return open.RawValue == "(" && ident.Type == TToken::Identifier && ident.Name == name
+        return ident.Type == TToken::Identifier && ident.Name == name
             && close.RawValue == ")" && tokens.Next().IsEof();
     } catch (const std::exception&) {
         return false;
     }
+}
+
+// True if the tokenizer reads `name` back as one identifier both right after "(" and in a
+// non-head position (the lexer reads "<<", "<=", ">=", ">>" differently in the two).
+bool IsSingleIdentifier(const std::string& name) {
+    return ReadsBackAs("(" + name + ")", 0, name) && ReadsBackAs("(x " + name + ")", 1, name);
 }
 
 // The parser also accepts "<name>" as a single name, e.g. "<main>".
