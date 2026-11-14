@@ -232,7 +232,10 @@ TToken TWrappedTokenStream::Next() {
 
 void TWrappedTokenStream::Unget(TToken token) {
     BaseStream.Unget(token);
-    Window.pop_back();
+    // A parser may unget more tokens than the window keeps.
+    if (!Window.empty()) {
+        Window.pop_back();
+    }
 }
 
 const TLocation& TWrappedTokenStream::operator()() const {
