@@ -170,6 +170,12 @@ a variable whose type is inferred. Initialize a scalar before reading it:
 declaration without an initializer does not promise a default value, and the
 compiler checks definite assignment.
 
+A `cast` from a float to a signed 64-bit integer truncates toward zero. For NaN
+and out-of-range values the result is platform-defined, and the VM and the JIT
+agree: on x86-64 both give `INT64_MIN`; on AArch64 the value saturates and NaN
+gives 0. A cast to `i128` saturates on every platform. Narrow, unsigned, and
+vector float-to-integer conversions are unchanged and still undefined out of range.
+
 ### Integer widths
 
 Implicit integer conversion is allowed when every source value fits:
