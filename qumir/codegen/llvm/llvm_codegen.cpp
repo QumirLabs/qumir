@@ -23,6 +23,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/IntrinsicsX86.h>
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/Linker/Linker.h>
@@ -215,6 +216,26 @@ EAbiArch ModuleAbiArch(const llvm::Module& module) {
 #else
     return AbiArchOf(module.getTargetTriple());
 #endif
+}
+
+bool ModuleIsX86_64(const llvm::Module& module) {
+    return ModuleAbiArch(module) == EAbiArch::X86_64;
+}
+
+// Float to signed integer without the poison of plain fptosi. An out-of-range or NaN
+// result is platform-defined and matches the VM: x86-64 cvttsd2si gives INT64_MIN,
+// AArch64 fcvtzs saturates and maps NaN to 0. Targets without a native conversion
+// (and 128-bit results) saturate.
+llvm::Value* CreateFpToSignedInt(llvm::IRBuilderBase& irb, const llvm::Module& module, llvm::Value* v, llvm::Type* destTy) {
+    if (destTy->getIntegerBitWidth() == 64 && ModuleIsX86_64(module)) {
+        const bool isDouble = v->getType()->isDoubleTy();
+        auto* vecTy = llvm::FixedVectorType::get(v->getType(), isDouble ? 2 : 4);
+        auto* vec = irb.CreateInsertElement(llvm::PoisonValue::get(vecTy), v, irb.getInt32(0));
+        return irb.CreateIntrinsic(destTy,
+            isDouble ? llvm::Intrinsic::x86_sse2_cvttsd2si64 : llvm::Intrinsic::x86_sse_cvttss2si64,
+            {vec}, nullptr, "f2i");
+    }
+    return irb.CreateIntrinsic(llvm::Intrinsic::fptosi_sat, {destTy, v->getType()}, {v}, nullptr, "f2i");
 }
 
 llvm::Type* AbiIntType(llvm::LLVMContext& ctx, int bytes) {
@@ -2334,6 +2355,10 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
         case "f2i"_op: {
             auto v = GetOp(instr.Operands[0], module);
             if (!outputType) throw std::runtime_error("cast/mov needs typed dest");
+            const unsigned width = outputType->getIntegerBitWidth();
+            if (IsSignedIntegerType(module.Types, outputTypeId) && (width == 64 || width == 128)) {
+                return storeTmp(CreateFpToSignedInt(*irb, *LModule, v, outputType));
+            }
             return storeTmp(IsSignedIntegerType(module.Types, outputTypeId)
                 ? irb->CreateFPToSI(v, outputType, "f2i")
                 : irb->CreateFPToUI(v, outputType, "f2u"));

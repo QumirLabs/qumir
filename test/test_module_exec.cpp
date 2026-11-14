@@ -331,6 +331,45 @@ TEST_F(ModuleExecTest, CustomPrintOperatorAndUserPrintFunction) {
     EXPECT_EQ(RunKumir(main, EBackend::LLVM), "(1;2) 42\n");
 }
 
+// Out-of-range float to integer conversion is platform-defined: x86-64 cvttsd2si gives
+// INT64_MIN for NaN and out-of-range values, AArch64 fcvtzs saturates and maps NaN to 0.
+// The VM and the JIT must agree on it.
+TEST_F(ModuleExecTest, FloatToIntOutOfRangeIsPlatformDefined) {
+#if defined(__x86_64__) || defined(_M_X64)
+    const std::string big = "-9223372036854775808", neg = "-9223372036854775808", nan = "-9223372036854775808";
+#elif defined(__aarch64__)
+    const std::string big = "9223372036854775807", neg = "-9223372036854775808", nan = "0";
+#else
+    GTEST_SKIP() << "no native float to integer conversion on this platform";
+#endif
+    const std::string main =
+        "(block"
+        " (fun d64 ((var x f64)) -> i64 (block (return (cast x i64))))"
+        " (fun d32 ((var x f32)) -> i64 (block (return (cast x i64))))"
+        " (fun <main> () (block"
+        "   (var z f64) (= z (: 0.0 f64))"
+        "   (var h f64) (= h (: 1e30 f64))"
+        "   (var nz f32) (= nz (: 0.0 f32))"
+        "   (var h32 f32) (= h32 (: 1e30 f32))"
+        "   (output (call d64 (/ z z)) \" \" (call d64 h) \" \" (call d64 (- h)) \" \" (call d64 (: 2.9 f64)) \" \" (call d64 (: -2.9 f64)) \"\\n\")"
+        "   (output (call d32 (/ nz nz)) \" \" (call d32 h32) \" \" (call d32 (- h32)) \" \" (call d32 (: 2.9 f32)) \"\\n\"))))";
+    ExpectAll(main,
+        nan + " " + big + " " + neg + " 2 -2\n" +
+        nan + " " + big + " " + neg + " 2\n");
+}
+
+// 128-bit results have no native conversion: they saturate and map NaN to 0 everywhere.
+TEST_F(ModuleExecTest, FloatToInt128Saturates) {
+    ExpectAll(
+        "(block"
+        " (fun top ((var x f64)) -> i64 (block (return (cast (>> (cast x i128) (: 64 i128)) i64))))"
+        " (fun <main> () (block"
+        "   (var z f64) (= z (: 0.0 f64))"
+        "   (var h f64) (= h (: 1e40 f64))"
+        "   (output (call top (/ z z)) \" \" (call top h) \" \" (call top (- h)) \" \" (call top (: 3.0 f64)) \"\\n\"))))",
+        "0 9223372036854775807 -9223372036854775808 0\n");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
