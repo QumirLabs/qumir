@@ -1439,6 +1439,9 @@ llvm::Function* TLLVMCodeGen::LowerCoroutineFunction(const TFunction& fun, NIR::
         if (actualTy->isIntegerTy() && expectedType->isPointerTy()) {
             return irb->CreateIntToPtr(val, expectedType, "coro.ret.cast");
         }
+        if (actualTy->isPointerTy() && expectedType->isStructTy()) {
+            return irb->CreateLoad(expectedType, val, "coro.ret.struct");
+        }
         throw std::runtime_error("coroutine return type mismatch; pre-cast required");
     };
 
