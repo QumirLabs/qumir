@@ -9,6 +9,12 @@
 #include <cstring>
 #include <type_traits>
 
+#if defined(__x86_64__) || defined(_M_X64)
+#include <emmintrin.h>
+#elif defined(__aarch64__)
+#include <arm_neon.h>
+#endif
+
 #include <qumir/runtime/string.h> // for str_release
 #include <qumir/runtime/drawer.h>
 #include <qumir/runtime/painter.h>
@@ -27,6 +33,38 @@ namespace {
 
 // The register windows share this limit, so their reservation is the same size.
 constexpr size_t MaxStackSize = TRegisterFile::ReservedBytes;
+
+// Float to signed integer through the native truncating conversion, matching the LLVM
+// backend. An out-of-range or NaN result is platform-defined: x86-64 cvttsd2si gives
+// INT64_MIN, AArch64 fcvtzs saturates and maps NaN to 0. Other targets saturate.
+template<typename TInt, typename TFloat>
+inline TInt NativeFloatToInt(TFloat value) {
+    if constexpr (sizeof(TInt) == 8) {
+#if defined(__x86_64__) || defined(_M_X64)
+        if constexpr (std::is_same_v<TFloat, double>) {
+            return _mm_cvttsd_si64(_mm_set_sd(value));
+        } else {
+            return _mm_cvttss_si64(_mm_set_ss(value));
+        }
+#elif defined(__aarch64__)
+        // float to double is exact, so the result is that of fcvtzs on the float
+        return vcvtd_s64_f64(static_cast<double>(value));
+#endif
+    }
+    // numeric_limits is not specialized for __int128 in strict -std modes
+    constexpr TInt minValue = ~TInt{0} << (sizeof(TInt) * 8 - 1);
+    constexpr TInt maxValue = ~minValue;
+    if (value != value) {
+        return 0;
+    }
+    if (value >= static_cast<TFloat>(maxValue)) {
+        return maxValue;
+    }
+    if (value <= static_cast<TFloat>(minValue)) {
+        return minValue;
+    }
+    return static_cast<TInt>(value);
+}
 
 template<typename Dest=int64_t>
 inline Dest ReadOperand(TRegisterView regs, const TVMOperand& op) {
@@ -566,7 +604,7 @@ ITypeErasedFuture* MakeCompletedValueFuture(uint64_t value) {
     }
     case EVMOp::F2I128: {
         double fval = ReadOperand<double>(regs, instr.Operands[1]);
-        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = static_cast<__int128_t>(fval);
+        regs.Get<__int128_t>(instr.Operands[0].Tmp.Idx) = NativeFloatToInt<__int128_t>(fval);
         break;
     }
     case EVMOp::Lde128: {
@@ -1256,7 +1294,7 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
                 ReadOperand<int64_t>(regs, instr.Operands[1]) ? -1.0f : 0.0f);
             break;
         case EVMOp::F2I32:
-            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = static_cast<int64_t>(
+            regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = NativeFloatToInt<int64_t>(
                 ReadOperand<float>(regs, instr.Operands[1]));
             break;
         case EVMOp::FExt32:
@@ -1281,7 +1319,7 @@ bool TInterpreter::RunLoop(std::optional<int64_t>& retVal) {
         case EVMOp::F2I: {
             assert(instr.Operands[0].Tmp.Idx >= 0);
             double fval = ReadOperand<double>(regs, instr.Operands[1]);
-            int64_t ival = static_cast<int64_t>(fval);
+            int64_t ival = NativeFloatToInt<int64_t>(fval);
             regs.Get<int64_t>(instr.Operands[0].Tmp.Idx) = ival;
             break;
         }
