@@ -4,6 +4,7 @@
 #include <qumir/parser/ast.h>
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/core/printer.h>
+#include <array>
 #include <sstream>
 
 using namespace NQumir;
@@ -81,6 +82,43 @@ TExprPtr MakeIdent(std::string name) {
 TEST(PrinterCustomNodes, TagCompact) {
     auto expr = std::make_shared<TTagExpr>("hello", MakeIdent("x"));
     EXPECT_EQ(PrintAst(expr, MakeOptions()), "(tag \"hello\" x)");
+}
+
+namespace {
+
+// Counts destructions: a node printer must not lose its captured state while it runs.
+struct TStateGuard {
+    static inline int Destroyed = 0;
+    static inline int DestroyedWhileChildPrinted = -1;
+    std::array<char, 64> Pad{};
+
+    TStateGuard() = default;
+    TStateGuard(const TStateGuard&) = default;
+    ~TStateGuard()
+    {
+        ++Destroyed;
+    }
+};
+
+} // namespace
+
+TEST(PrinterCustomNodes, NodePrinterKeepsItsStateWhilePrintingAChild) {
+    TPrintOptions opts;
+    opts.LineWidth = 20;
+    opts.NodePrinters[TTagExpr::NodeId] =
+        [guard = TStateGuard()](TExpr& node, TPrinter& p, TPrintFrame frame) {
+            auto& tag = static_cast<TTagExpr&>(node);
+            p.GetOut() << "(tag \"" << tag.Label << "\"";
+            p.Separator(frame.Level + 1);
+            int before = TStateGuard::Destroyed;
+            // The child fits one line, so the printer renders it compactly.
+            p.PrintExpr(tag.Child, frame.AllowTypeWrap, frame.Level + 1);
+            TStateGuard::DestroyedWhileChildPrinted = TStateGuard::Destroyed - before;
+            p.GetOut() << ')';
+        };
+    auto expr = std::make_shared<TTagExpr>("a label longer than the line", MakeIdent("x"));
+    EXPECT_EQ(PrintAst(expr, opts), "(tag \"a label longer than the line\"\n  x)");
+    EXPECT_EQ(TStateGuard::DestroyedWhileChildPrinted, 0);
 }
 
 TEST(PrinterNumbers, IntegralFloatKeepsItsLiteralType) {
