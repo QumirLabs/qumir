@@ -94,7 +94,10 @@ struct TStateGuard {
 
     TStateGuard() = default;
     TStateGuard(const TStateGuard&) = default;
-    ~TStateGuard() { ++Destroyed; }
+    ~TStateGuard()
+    {
+        ++Destroyed;
+    }
 };
 
 } // namespace
