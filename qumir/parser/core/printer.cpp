@@ -47,10 +47,11 @@ bool TPrinter::ForceMultiline(const TExprPtr& expr) const {
 }
 
 void TPrinter::PrintCompact(TExprPtr expr, bool allowTypeWrap, int level) {
-    auto options = Options;
+    // Restore only Pretty: reassigning the whole options would destroy the node
+    // printer that is still running.
     Options.Pretty = false;
     PrintExpr(std::move(expr), allowTypeWrap, level);
-    Options = options;
+    Options.Pretty = true;
 }
 
 void TPrinter::Separator(int level) {
