@@ -23,42 +23,39 @@ std::optional<int64_t> AsSingleCharCode(const std::string& s) {
         return static_cast<int64_t>(static_cast<unsigned char>(s[0]));
     }
 
-    // Validate exact one UTF-8 codepoint
-    const unsigned char *p = reinterpret_cast<const unsigned char*>(s.data());
+    // Validate exactly one well-formed UTF-8 codepoint (no overlong forms,
+    // surrogates, values above U+10FFFF or trailing bytes).
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
     size_t len = s.size();
-    int64_t code = 0;
-    int utf8bytesLeft = -1;
-
-    for (size_t i = 0; i < len; ++i) {
-        unsigned char c = p[i];
-        if (utf8bytesLeft == -1) {
-            if ((c & 0b10000000) == 0) {
-                utf8bytesLeft = 0;
-                code = c;
-            } else if ((c & 0b11100000) == 0b11000000) {
-                utf8bytesLeft = 1;
-                code = c & 0b00011111;
-            } else if ((c & 0b11110000) == 0b11100000) {
-                utf8bytesLeft = 2;
-                code = c & 0b00001111;
-            } else if ((c & 0b11111000) == 0b11110000) {
-                utf8bytesLeft = 3;
-                code = c & 0b00000111;
-            } else {
-                return std::nullopt;
-            }
-            code <<= utf8bytesLeft * 6;
-        } else {
-            if ((c & 0b11000000) != 0b10000000) {
-                return std::nullopt;
-            }
-            utf8bytesLeft--;
-            code |= static_cast<int64_t>(c & 0b00111111) << (utf8bytesLeft * 6);
-        }
+    unsigned char lead = p[0];
+    size_t need;
+    int64_t code;
+    int64_t min;
+    if ((lead & 0b11100000) == 0b11000000) {
+        need = 2;
+        code = lead & 0b00011111;
+        min = 0x80;
+    } else if ((lead & 0b11110000) == 0b11100000) {
+        need = 3;
+        code = lead & 0b00001111;
+        min = 0x800;
+    } else if ((lead & 0b11111000) == 0b11110000) {
+        need = 4;
+        code = lead & 0b00000111;
+        min = 0x10000;
+    } else {
+        return std::nullopt;
     }
-
-    if (utf8bytesLeft != 0) {
-        // Not finished or overshot: not a single well-formed codepoint
+    if (len != need) {
+        return std::nullopt;
+    }
+    for (size_t i = 1; i < need; ++i) {
+        if ((p[i] & 0b11000000) != 0b10000000) {
+            return std::nullopt;
+        }
+        code = (code << 6) | (p[i] & 0b00111111);
+    }
+    if (code < min || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
         return std::nullopt;
     }
     return code;
