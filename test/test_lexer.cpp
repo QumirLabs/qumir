@@ -571,3 +571,37 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+TEST(LexerTest, AsSingleCharCodeMalformedUtf8) {
+    EXPECT_EQ(AsSingleCharCode("\xC3\xA9"), 0xE9);
+    EXPECT_EQ(AsSingleCharCode("\xE2\x82\xAC"), 0x20AC);
+    EXPECT_EQ(AsSingleCharCode("\xF0\x9F\x98\x80"), 0x1F600);
+    for (const char* bad : {
+        "\xDB\x9F\x9F",          // stray continuation after a complete char
+        "\xDB",                  // truncated
+        "\xE2\x82",              // truncated
+        "\xF0\x9F\x98",          // truncated
+        "\x9F",                  // lone continuation
+        "\xC3\xA9\xC3\xA9",      // two characters
+        "\xC0\x80",              // overlong
+        "\xE0\x80\x80",          // overlong
+        "\xF0\x80\x80\x80",      // overlong
+        "\xED\xA0\x80",          // surrogate
+        "\xF4\x90\x80\x80",      // above U+10FFFF
+        "\xF5\x80\x80\x80",
+        "\xF8\x88\x80\x80\x80",
+        "\xFF",
+        "\xC3\x28",              // bad continuation
+    }) {
+        EXPECT_FALSE(AsSingleCharCode(bad).has_value()) << bad;
+    }
+}
+
+TEST(LexerTest, MalformedUtf8InQuotes) {
+    std::string src = "\"\xDB\x9F\x9F\"";
+    std::istringstream in(src);
+    TTokenStream stream(in);
+    auto t = stream.Next();
+    EXPECT_EQ(t.Type, TToken::String);
+    EXPECT_EQ(t.Name, "\xDB\x9F\x9F");
+}
