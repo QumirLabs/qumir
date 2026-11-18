@@ -428,7 +428,8 @@ std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> TLLVMRunner::EmitLoweredModule(
     const std::unordered_set<std::string>* emitAsExternal,
     std::string* error,
     const std::vector<std::string>* llvmBitcode,
-    const std::unordered_set<std::string>* inlineDefinitions)
+    const std::unordered_set<std::string>* inlineDefinitions,
+    const std::unordered_set<std::string>* exports)
 {
     if (error) {
         error->clear();
@@ -442,6 +443,7 @@ std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> TLLVMRunner::EmitLoweredModule(
         .RestrictToDefinitions = restrictToDefinitions,
         .EmitAsExternal = emitAsExternal,
         .InlineDefinitions = inlineDefinitions,
+        .Exports = exports,
         .LlvmBitcode = llvmBitcode,
     });
     std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> artifacts;
@@ -476,7 +478,8 @@ std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> TLLVMRunner::EmitKernelArtifacts
     if (!LowerKernelAst(std::move(ast), entryNames, error, std::move(mainPragmas))) {
         return nullptr;
     }
-    return EmitLoweredModule(nullptr, nullptr, error, llvmBitcode);
+    std::unordered_set<std::string> exports(entryNames.begin(), entryNames.end());
+    return EmitLoweredModule(nullptr, nullptr, error, llvmBitcode, nullptr, &exports);
 }
 
 std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
@@ -648,9 +651,10 @@ TLLVMRunner::PrepareFusedKernelsCached(
     auto imports = Options.OptLevel > 0
         ? NCodeGen::CollectInlineDefinitions(Module, depSet, definitions)
         : std::unordered_set<std::string>{};
+    std::unordered_set<std::string> exports(entryNames.begin(), entryNames.end());
     auto kernelArt = EmitLoweredModule(
         /*restrict=*/nullptr, required.empty() ? nullptr : &depSet, error,
-        nullptr, &imports);
+        nullptr, &imports, &exports);
     if (!kernelArt) {
         return std::nullopt;
     }

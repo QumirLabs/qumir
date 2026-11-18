@@ -69,6 +69,9 @@ struct TLLVMCodeGenOptions {
     const std::unordered_set<std::string>* EmitAsExternal {nullptr};
     // Optimizer-visible bodies owned by another object. They are never exports.
     const std::unordered_set<std::string>* InlineDefinitions {nullptr};
+    // When set, only these and `used` definitions keep external linkage; the
+    // rest become internal, so LLVM can drop them once they are inlined.
+    const std::unordered_set<std::string>* Exports {nullptr};
     // Binary LLVM bitcode modules linked into the generated module before the
     // LLVM optimization pipeline. The pointed-to vector must outlive Emit().
     const std::vector<std::string>* LlvmBitcode {nullptr};
