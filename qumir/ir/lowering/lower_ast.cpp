@@ -2238,7 +2238,9 @@ void TAstLowerer::ImportExternalFunctions() {
     }
 }
 
-std::expected<std::monostate, TError> TAstLowerer::LowerTop(const NAst::TExprPtr& expr) {
+std::expected<std::monostate, TError> TAstLowerer::LowerTop(
+    const NAst::TExprPtr& expr, const std::unordered_set<std::string>* entries)
+{
     NSemantics::TLifetimeValidator validator(Context);
     if (auto validation = validator.Validate(expr); !validation) {
         return std::unexpected(validation.error());
@@ -2313,7 +2315,9 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(const NAst::TExprPtr
         for (const auto& stmt : block->Stmts) {
             Module.HasSourceModules |= stmt && stmt->Origin.has_value();
             if (auto fun = NAst::TMaybeNode<NAst::TFunDecl>(stmt)) {
-                if (!stmt->Origin) {
+                const bool root = fun.Cast()->Used
+                    || (entries ? entries->contains(fun.Cast()->Name) : !stmt->Origin);
+                if (root) {
                     if (auto symbol = Context.Lookup(fun.Cast()->Name, currentScope)) {
                         markFunctionReachable(symbol->Id);
                     }
@@ -2353,8 +2357,7 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(const NAst::TExprPtr
         for (auto& s : block->Stmts) {
             if (auto maybeFun = NAst::TMaybeNode<NAst::TFunDecl>(s)) {
                 if (auto symbol = Context.Lookup(maybeFun.Cast()->Name, scope.Id)) {
-                    if (s->Origin && !reachableFunctions.contains(symbol->Id)
-                        && !maybeFun.Cast()->Used) {
+                    if ((entries || s->Origin) && !reachableFunctions.contains(symbol->Id)) {
                         continue;
                     }
                 }
