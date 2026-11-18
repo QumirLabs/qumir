@@ -780,8 +780,10 @@ struct TCompilerA64
     SymRef cur_personality_func() const {
         return {};
     }
-    bool try_force_fixed_assignment(IRValueRef) const {
-        return false;
+    // A phi is assigned in the preheader, where TPDE's heuristic counts the
+    // loop's own definitions and gives up: loop counters would stay on the stack.
+    bool try_force_fixed_assignment(IRValueRef v) const {
+        return A->val_is_phi(v);
     }
     void define_func_idx(IRFuncRef, u32) {}
     void setup_var_ref_assignments() {}
