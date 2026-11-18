@@ -15,6 +15,7 @@
 #include <dlfcn.h>
 #include <setjmp.h>
 
+#include <bit>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -1433,6 +1434,18 @@ struct TCompilerA64
                 }
                 default:
                     break;
+            }
+        }
+        // x * 2^k as a shift: index arithmetic would otherwise load the
+        // constant and queue on the single integer multiply pipeline.
+        if (op == "*"_op && l.is_const() && !r.is_const()) {
+            std::swap(l, r);
+        }
+        if (op == "*"_op && r.is_const()) {
+            u64 c = r.const_data()[0] & (w64 ? ~u64(0) : 0xffff'ffffu);
+            if (c != 0 && (c & (c - 1)) == 0) {
+                auto amount = Const(std::countr_zero(c), 8, TConfig::GP_BANK);
+                return w64 ? this->encode_shli64(std::move(l), std::move(amount), out) : this->encode_shli32(std::move(l), std::move(amount), out);
             }
         }
         switch (op) {
