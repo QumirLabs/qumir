@@ -33,6 +33,42 @@ constexpr const char* WordHashSource = R"(
           (= index (+ index (: 1 i64)))))
       (return (cast hash i64))))))";
 
+// kernel is the entry; keep is `used`; dead is reachable from neither.
+constexpr const char* RootsSource = R"(
+(block
+  (fun kernel ((var x i64)) -> i64 (block (return (+ x 1))))
+  (fun helper ((var x i64)) -> i64 (block (return (* x 3))))
+  (fun keep ((var x i64)) -> i64 (attrs used) (block (return (call helper x))))
+  (fun dead ((var x i64)) -> i64 (block (return (* x 5)))))
+)";
+
+// Compiles source to a kernel object with entry "kernel" and returns the final LLVM IR.
+std::string CompileKernelObjectIr(const char* source, int optLevel)
+{
+    std::istringstream input(source);
+    NQumir::NAst::NCore::TTokenStream tokens(input);
+    NQumir::NAst::NCore::TParser parser;
+    auto parsed = parser.Parse(tokens);
+    EXPECT_TRUE(parsed) << parsed.error().ToString();
+    if (!parsed) {
+        return {};
+    }
+    NQumir::TLLVMRunner runner({
+        .PrintLlvm = true,
+        .NativeCode = true,
+        .CoreInput = true,
+        .ResolveCoreInput = true,
+        .AllowOverloads = true,
+        .OptLevel = optLevel,
+    });
+    std::string error;
+    testing::internal::CaptureStderr();
+    auto object = runner.CompileKernelAstToObject(*parsed, {"kernel"}, &error);
+    auto ir = testing::internal::GetCapturedStderr();
+    EXPECT_TRUE(object && !object->empty()) << error;
+    return ir;
+}
+
 } // namespace
 
 TEST(KernelAst, LoadsU64FromPointerIndex) {
@@ -62,6 +98,18 @@ TEST(KernelAst, LoadsU64FromPointerIndex) {
 
     EXPECT_EQ(wordHash(data.data(), static_cast<int64_t>(data.size())),
         INT64_C(5922767304251906895));
+}
+
+TEST(KernelAst, UsedFunctionStaysExportedAfterO3) {
+    auto ir = CompileKernelObjectIr(RootsSource, 3);
+    EXPECT_NE(ir.find("define i64 @kernel("), std::string::npos) << ir;
+    EXPECT_NE(ir.find("define i64 @keep("), std::string::npos) << ir;
+}
+
+TEST(KernelAst, LowersOnlyFunctionsReachableFromEntriesAndUsed) {
+    auto ir = CompileKernelObjectIr(RootsSource, 0);
+    EXPECT_NE(ir.find("define internal i64 @helper("), std::string::npos) << ir;
+    EXPECT_EQ(ir.find("@dead("), std::string::npos) << ir;
 }
 
 int main(int argc, char** argv) {

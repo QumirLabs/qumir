@@ -347,8 +347,8 @@ bool TLLVMRunner::LowerKernelAst(
 
     // Contract: an entrypoint is looked up by its source name, so its emit symbol
     // must equal that name - never mangle/cache it, whatever flags it carries.
+    std::unordered_set<std::string> entrySet(entryNames.begin(), entryNames.end());
     if (auto block = NAst::TMaybeNode<NAst::TBlockExpr>(ast)) {
-        std::unordered_set<std::string> entrySet(entryNames.begin(), entryNames.end());
         for (auto& stmt : block.Cast()->Stmts) {
             if (auto fd = NAst::TMaybeNode<NAst::TFunDecl>(stmt);
                 fd && entrySet.count(fd.Cast()->Name)) {
@@ -383,7 +383,7 @@ bool TLLVMRunner::LowerKernelAst(
         return false;
     }
 
-    auto lowerRes = Lowerer.LowerTop(ast);
+    auto lowerRes = Lowerer.LowerTop(ast, &entrySet);
     if (!lowerRes) {
         if (error) {
             *error = lowerRes.error().ToString();

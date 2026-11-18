@@ -8,8 +8,10 @@
 
 #include <qumir/optional.h>
 
+#include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace NQumir {
 namespace NIR {
@@ -27,7 +29,9 @@ public:
         Module.DebugOptions = options;
     }
 
-    std::expected<std::monostate, TError> LowerTop(const NAst::TExprPtr& expr);
+    // With entries, only functions reachable from them or from `used` functions are lowered.
+    std::expected<std::monostate, TError> LowerTop(
+        const NAst::TExprPtr& expr, const std::unordered_set<std::string>* entries = nullptr);
 
 private:
     TInstrDebugInfo InstDebugInfo(const TLocation& location, int32_t scopeId) const;
