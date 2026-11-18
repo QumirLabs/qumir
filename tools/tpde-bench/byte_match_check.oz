@@ -1,0 +1,33 @@
+(block
+  (fun <main> ()
+    (block
+      (var buf <ptr u8>)
+      (= buf (cast (call array_create (: 64 i64)) <ptr u8>))
+      (var i i64)
+      (= i (: 0 i64))
+      (while (< i (: 64 i64))
+        (block
+          (= buf [i] (cast (% (* i (: 37 i64)) (: 7 i64)) u8))
+          (= i (+ i (: 1 i64)))))
+      (= buf [5] (cast (: 255 i64) u8))
+      (= buf [9] (cast (: 128 i64) u8))
+      (var acc u64)
+      (= acc (: 0 u64))
+      (var off i64)
+      (= off (: 0 i64))
+      (while (< off (: 40 i64))
+        (block
+          (var needle i64)
+          (= needle (: 0 i64))
+          (while (< needle (: 10 i64))
+            (block
+              (var b u8)
+              (= b (cast needle u8))
+              (if (== needle (: 8 i64)) (block (= b (cast (: 255 i64) u8))))
+              (if (== needle (: 9 i64)) (block (= b (cast (: 128 i64) u8))))
+              (var m8 = (call builtin::byte_match8 (cast (+ (cast buf i64) off) <ptr u8>) b))
+              (var m16 = (call builtin::byte_match16 (cast (+ (cast buf i64) off) <ptr u8>) b))
+              (output (cast m8 i64) " " (cast m16 i64) "\n")
+              (= needle (+ needle (: 1 i64)))))
+          (= off (+ off (: 3 i64)))))
+      (output (call builtin::byte_match_backend) "\n"))))

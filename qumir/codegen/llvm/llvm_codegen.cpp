@@ -6,6 +6,7 @@
 #include <qumir/ir/debug_data.h>
 #include <qumir/align.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <iostream>
@@ -1197,11 +1198,13 @@ std::unique_ptr<ILLVMModuleArtifacts> TLLVMCodeGen::Emit(TModule& module, int op
     if (optLevel > 0 || hasCoroutines) {
         VerifyModule(*LModule);
     }
+    auto optimizeStart = std::chrono::steady_clock::now();
     if (optLevel > 0) {
         Optimize(optLevel);
     } else if (hasCoroutines) {
         RunCoroutinePasses();
     }
+    OptimizeMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - optimizeStart).count();
 
     VerifyModule(*LModule);
 

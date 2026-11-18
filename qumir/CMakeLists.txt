@@ -115,6 +115,10 @@ target_compile_features(qumir PUBLIC cxx_std_23)
 target_link_libraries(qumir PUBLIC ${CMAKE_DL_LIBS})
 add_subdirectory(runtime)
 add_subdirectory(codegen/llvm)
+if(QUMIR_ENABLE_TPDE)
+    add_subdirectory(codegen/tpde)
+    target_link_libraries(qumir PUBLIC qumir_codegen_tpde)
+endif()
 
 # Modules written in oz are read at compile time, next to the binaries that use them.
 install(FILES

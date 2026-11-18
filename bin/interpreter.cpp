@@ -416,6 +416,9 @@ int main(int argc, char ** argv) {
     bool printAsm = false;
     bool printByteCode = false;
     bool coreInput = false;
+    bool useTpde = false;
+    bool compileOnly = false;
+    bool printTimings = false;
     int optLevel = 0;
     std::string inputFile; // stdin by default if empty
     std::vector<std::string> modulePaths;
@@ -427,6 +430,14 @@ int main(int argc, char ** argv) {
             runnerType = RunnerType::LLVM;
         } else if (!std::strcmp(argv[i], "--time-us")) {
             printEvalTimeUs = true;
+        } else if (!std::strcmp(argv[i], "--tpde")) {
+            runnerType = RunnerType::LLVM;
+            useTpde = true;
+        } else if (!std::strcmp(argv[i], "--compile-only")) {
+            runnerType = RunnerType::LLVM;
+            compileOnly = true;
+        } else if (!std::strcmp(argv[i], "--timings")) {
+            printTimings = true;
         } else if (!std::strcmp(argv[i], "--print-ast")) {
             printAst = true;
         } else if (!std::strcmp(argv[i], "--print-transformed-ast")) {
@@ -488,6 +499,9 @@ int main(int argc, char ** argv) {
                          "Options:\n"
                          "  --jit                Enable llvm jit\n"
                          "  --time-us            Print evaluation time in microseconds\n"
+                         "  --tpde               JIT with the experimental TPDE backend (falls back to LLVM)\n"
+                         "  --compile-only       Compile to an object file in memory, do not run\n"
+                         "  --timings            Print compilation phase timings to stderr\n"
                          "  --print-ast          Print AST after parsing\n"
                          "  --print-transformed-ast Print AST after semantic transforms\n"
                          "  --print-ir           Print IR after lowering\n"
@@ -562,6 +576,7 @@ int main(int argc, char ** argv) {
         }
     );
 
+    TCompileTimings timings;
     TLLVMRunner llvmRunner(TLLVMRunnerOptions {
         .PrintAst = printAst,
         .PrintTransformedAst = printTransformedAst,
@@ -577,6 +592,9 @@ int main(int argc, char ** argv) {
             ? ""
             : inputFile,
         .EmitDebugInfo = debugger != nullptr,
+        .Tpde = useTpde,
+        .CompileOnly = compileOnly,
+        .Timings = &timings,
     });
 
     long long lastEvalUs = 0;
@@ -603,6 +621,26 @@ int main(int argc, char ** argv) {
     value = std::move(result.value());
 
     PrintResultIR(value);
+    if (printTimings && runnerType == RunnerType::LLVM) {
+        std::cerr << "timings backend=" << timings.Backend
+            << " frontend_ms=" << timings.FrontendMs
+            << " ir_pipeline_ms=" << timings.IrPipelineMs
+            << " llvm_ir_ms=" << timings.LlvmIrMs
+            << " llvm_opt_ms=" << timings.LlvmOptMs
+            << " codegen_ms=" << timings.CodegenMs
+            << " object_ms=" << timings.ObjectMs
+            << " jit_ms=" << timings.JitMs
+            << " entry_ms=" << timings.EntryMs
+            << " ir_functions=" << timings.IrFunctions
+            << " ir_instructions=" << timings.IrInstructions
+            << " object_bytes=" << timings.ObjectBytes
+            << " text_bytes=" << timings.TextBytes
+            << " total_ms=" << lastEvalUs / 1000.0;
+        for (const auto& [what, count] : timings.Unsupported) {
+            std::cerr << " unsupported[" << what << "]=" << count;
+        }
+        std::cerr << "\n";
+    }
     if (printEvalTimeUs) {
         std::cout << lastEvalUs << " us" << std::endl;
     }

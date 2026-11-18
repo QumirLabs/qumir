@@ -100,7 +100,10 @@ void TLLVMModuleArtifacts::Generate(std::ostream& os, bool generateAsm, bool gen
             opt,
             RM,
             std::nullopt,
-            DebugPoints ? llvm::CodeGenOptLevel::None : llvm::CodeGenOptLevel::Default)
+            // QUMIR_LLVM_CODEGEN_NONE: benchmark knob (TPDE draft) for a FastISel -O0 baseline.
+            DebugPoints || std::getenv("QUMIR_LLVM_CODEGEN_NONE")
+                ? llvm::CodeGenOptLevel::None
+                : llvm::CodeGenOptLevel::Default)
     };
     if (!TM) {
         throw std::runtime_error("createTargetMachine failed");

@@ -18,7 +18,9 @@
 #include <llvm/TargetParser/Host.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <iomanip>
 #include <optional>
 #include <vector>
@@ -162,6 +164,14 @@ std::unique_ptr<llvm::orc::LLJIT> CreateOrcJit(
         jtmb = std::move(*nativeJtmb);
     }
     jtmb.setRelocationModel(llvm::Reloc::PIC_);
+    // QUMIR_LLVM_CODEGEN_NONE: benchmark knob (TPDE draft) for a FastISel baseline.
+    if (std::getenv("QUMIR_LLVM_CODEGEN_NONE")) {
+        jtmb.setCodeGenOptLevel(llvm::CodeGenOptLevel::None);
+    }
+    // QUMIR_LLVM_FEATURES (e.g. -neon): benchmark knob for code without SIMD.
+    if (const char* features = std::getenv("QUMIR_LLVM_FEATURES")) {
+        jtmb.addFeatures({features});
+    }
 
     llvm::orc::LLJITBuilder builder;
     builder.setJITTargetMachineBuilder(std::move(jtmb));
@@ -568,7 +578,11 @@ std::optional<std::string> TLlvmRunner::Run(
         return result;
     }
 
+    // The first lookup compiles the module; keep that out of the entry timing.
+    (void)LookupFunction<void (*)()>(*jit, entry->Name, nullptr);
+    auto entryStart = std::chrono::steady_clock::now();
     auto result = RunEntryFunction(*jit, *entry, returnTypeIsString, runError);
+    LastEntryMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - entryStart).count();
     if (!runError->empty()) {
         return std::nullopt;
     }

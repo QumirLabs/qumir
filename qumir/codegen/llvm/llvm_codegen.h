@@ -96,6 +96,9 @@ public:
 
     void PrintFunction(int symId, std::ostream& os) const;
 
+    // Time spent in the LLVM optimization pipeline by the last Emit().
+    double OptimizeMs = 0;
+
 private:
     llvm::Function* LowerFunction(
         const NIR::TFunction& fun,

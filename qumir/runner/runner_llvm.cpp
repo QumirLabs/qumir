@@ -17,9 +17,14 @@
 #include <qumir/ir/passes/transforms/pipeline.h>
 #include <qumir/frontend/compose.h>
 #include <qumir/frontend/source_module_loader.h>
+#ifdef QUMIR_ENABLE_TPDE
+#include <qumir/codegen/tpde/tpde_codegen.h>
+#endif
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <cassert>
 #include <sstream>
@@ -32,6 +37,10 @@ namespace {
 
 bool IsKnown32BitTarget(const std::string& targetTriple) {
     return targetTriple.starts_with("wasm32-");
+}
+
+double MsSince(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
 
 } // namespace
@@ -105,6 +114,10 @@ void TLLVMRunner::RegisterModule(std::shared_ptr<NRegistry::IModule> module, boo
 }
 
 std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream& input) {
+    TCompileTimings unusedTimings;
+    auto& timings = Options.Timings ? *Options.Timings : unusedTimings;
+    timings = {};
+    auto runStart = std::chrono::steady_clock::now();
     NFrontend::TSourceModuleLoader loader;
     for (const auto& dir : Options.ModuleSearchPaths) {
         loader.AddSearchPath(dir);
@@ -191,9 +204,20 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
     if (!lowerRes) {
         return std::unexpected(lowerRes.error());
     }
+    timings.FrontendMs = MsSince(runStart);
 
+    auto pipelineStart = std::chrono::steady_clock::now();
     if (Options.OptLevel > 0) {
         NIR::NPasses::Pipeline(Module);
+    }
+    timings.IrPipelineMs = MsSince(pipelineStart);
+    for (const auto& function : Module.Functions) {
+        if (!function.Blocks.empty()) {
+            ++timings.IrFunctions;
+        }
+        for (const auto& block : function.Blocks) {
+            timings.IrInstructions += block.Instrs.size() + block.Phis.size();
+        }
     }
 
     if (Options.PrintIr) {
@@ -208,16 +232,43 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
         std::cerr << "============================\n\n";
     }
 
+    if (Options.Tpde) {
+#ifdef QUMIR_ENABLE_TPDE
+        if (auto res = RunTpde(timings)) {
+            return *res;
+        }
+        // RunTpde reported why; continue with LLVM.
+#else
+        return std::unexpected(TError({}, "qumir was built without QUMIR_ENABLE_TPDE"));
+#endif
+    }
+    timings.Backend = Options.Tpde ? "llvm (tpde fallback)" : "llvm";
+
     NCodeGen::TLLVMCodeGen cg({
         .NativeCode = Options.NativeCode,
         .TargetTriple = Options.TargetTriple,
     });
     std::string err;
     std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> artifacts;
+    auto emitStart = std::chrono::steady_clock::now();
     try {
         artifacts = cg.Emit(Module, Options.OptLevel);
     } catch (const std::exception& e) {
         return std::unexpected(TError({}, std::string("llvm codegen error: ") + e.what()));
+    }
+    timings.LlvmOptMs = cg.OptimizeMs;
+    timings.LlvmIrMs = MsSince(emitStart) - cg.OptimizeMs;
+
+    if (Options.CompileOnly) {
+        std::ostringstream obj;
+        auto codegenStart = std::chrono::steady_clock::now();
+        artifacts->Generate(obj, /*generateAsm=*/false, /*generateObj=*/true);
+        timings.CodegenMs = MsSince(codegenStart);
+        timings.ObjectBytes = obj.str().size();
+        if (const char* path = std::getenv("QUMIR_LLVM_DUMP_OBJECT")) {
+            std::ofstream(path, std::ios::binary) << obj.str();
+        }
+        return std::optional<std::string>{};
     }
 
     if (Options.PrintLlvm) {
@@ -264,12 +315,15 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
                 return out.str();
             };
         }();
+        auto jitStart = std::chrono::steady_clock::now();
         auto res = runner.Run(
             std::move(artifacts),
             mainFun->Name,
             &runErr,
             mainFun->ReturnTypeIsString,
             std::move(coroutineResultFormatter));
+        timings.EntryMs = runner.LastEntryMs;
+        timings.JitMs = MsSince(jitStart) - runner.LastEntryMs;
         if (!runErr.empty()) {
             return std::unexpected(TError({}, std::string("llvm run error: ") + runErr));
         }
@@ -279,6 +333,62 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
         return std::unexpected(TError(std::string("runtime error: ") + e.what()));
     }
 }
+
+#ifdef QUMIR_ENABLE_TPDE
+std::optional<std::expected<std::optional<std::string>, TError>> TLLVMRunner::RunTpde(TCompileTimings& timings) {
+    using TResult = std::expected<std::optional<std::string>, TError>;
+    auto fallback = [&](const std::string& why) -> std::optional<TResult> {
+        std::cerr << "tpde: falling back to LLVM: " << why << "\n";
+        return std::nullopt;
+    };
+    NCodeGen::TTpdeUnsupported unsupported;
+    if (!NCodeGen::TpdeCheckModule(Module, &unsupported)) {
+        timings.Unsupported = unsupported;
+        std::string why;
+        for (const auto& [what, count] : unsupported) {
+            why += (why.empty() ? "" : ", ") + what + " x" + std::to_string(count);
+        }
+        return fallback(why);
+    }
+    auto* mainFun = Module.GetEntryPoint();
+    if (!mainFun) {
+        return TResult(std::unexpected(TError({}, std::string("entry point not found"))));
+    }
+    NCodeGen::TTpdeStats stats;
+    std::string err;
+    auto record = [&] {
+        timings.Backend = "tpde";
+        timings.CodegenMs = stats.CompileMs;
+        timings.ObjectMs = stats.ObjectMs;
+        timings.JitMs = stats.MapMs;
+        timings.ObjectBytes = stats.ObjectBytes;
+        timings.TextBytes = stats.TextBytes;
+    };
+    if (Options.CompileOnly) {
+        if (!NCodeGen::TpdeCompileObject(Module, &stats, &err)) {
+            timings.Unsupported[err] = 1;
+            return fallback(err);
+        }
+        record();
+        return TResult(std::optional<std::string>{});
+    }
+    auto compiled = NCodeGen::TpdeCompileAndMap(Module, &stats, &err);
+    if (!compiled) {
+        timings.Unsupported[err] = 1;
+        return fallback(err);
+    }
+    record();
+    try {
+        auto res = NCodeGen::TpdeRunEntry(*compiled, Module, *mainFun, &timings.EntryMs, &err);
+        if (!err.empty()) {
+            return TResult(std::unexpected(TError({}, "tpde run error: " + err)));
+        }
+        return TResult(std::move(res));
+    } catch (const std::exception& e) {
+        return TResult(std::unexpected(TError(std::string("runtime error: ") + e.what())));
+    }
+}
+#endif
 
 void* TLLVMRunner::CompileKernelAst(
     NAst::TExprPtr ast, const std::string& entryName, std::string* error)
