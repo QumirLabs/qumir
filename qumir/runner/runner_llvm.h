@@ -161,7 +161,8 @@ private:
         const std::unordered_set<std::string>* emitAsExternal,
         std::string* error,
         const std::vector<std::string>* llvmBitcode = nullptr,
-        const std::unordered_set<std::string>* inlineDefinitions = nullptr);
+        const std::unordered_set<std::string>* inlineDefinitions = nullptr,
+        const std::unordered_set<std::string>* exports = nullptr);
 
     // Shared frontend for both CompileKernelAst overloads: lower then emit.
     std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> EmitKernelArtifacts(

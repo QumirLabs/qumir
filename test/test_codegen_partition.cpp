@@ -495,6 +495,21 @@ TEST(CodegenPartition, ImportedBodyIsAvailableButDoesNotOwnAnExport) {
     EXPECT_NE(ir.str().find("define available_externally void @B("), std::string::npos);
 }
 
+TEST(CodegenPartition, ExportsInternalizeOtherDefinitionsExceptUsed) {
+    for (bool used : {false, true}) {
+        NIR::TModule module;
+        BuildTwoFuns(module);
+        module.Functions[1].Used = used;
+        std::unordered_set<std::string> exports{"A"};
+        NCodeGen::TLLVMCodeGen codegen({.Exports = &exports});
+        auto artifacts = codegen.Emit(module, 0);
+        std::ostringstream ir;
+        artifacts->PrintModule(ir);
+        EXPECT_NE(ir.str().find("define void @A("), std::string::npos);
+        EXPECT_EQ(ir.str().find("define internal void @B(") != std::string::npos, !used);
+    }
+}
+
 TEST(LLVMVector, DynamicArithmeticCopiesZerosAndBroadcasts) {
     CheckVectorKernels<int8_t>(EKind::I8);
     CheckVectorKernels<uint8_t>(EKind::U8);

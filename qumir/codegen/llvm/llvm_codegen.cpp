@@ -1086,6 +1086,10 @@ std::unique_ptr<ILLVMModuleArtifacts> TLLVMCodeGen::Emit(TModule& module, int op
         auto* function = LowerFunction(f, module, debugInfo.get());
         if (!shouldDefine(f.Name) && !function->isDeclaration()) {
             function->setLinkage(llvm::Function::AvailableExternallyLinkage);
+        } else if (
+            Opts.Exports && !function->isDeclaration() && !f.Used && !Opts.Exports->count(f.Name))
+        {
+            function->setLinkage(llvm::Function::InternalLinkage);
         }
         if (funcIdx == module.ModuleConstructorFunctionId && !f.IsCoroutine) {
             function->setLinkage(llvm::Function::InternalLinkage);
