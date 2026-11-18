@@ -64,6 +64,9 @@ public:
         const std::vector<std::string>& names,
         std::string* error = nullptr);
 
+    // Wall time of the entry function in the last Run(), in milliseconds.
+    double LastEntryMs = 0;
+
 private:
     TLlvmRunnerOptions Options_;
     std::string LastError; // currently unused (kept for future diagnostics)

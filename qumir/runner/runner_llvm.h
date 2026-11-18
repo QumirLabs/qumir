@@ -14,11 +14,30 @@
 
 #include <expected>
 #include <istream>
+#include <map>
 #include <optional>
 #include <unordered_set>
 #include <unordered_map>
 
 namespace NQumir {
+
+// Phase timings of TLLVMRunner::Run, in milliseconds.
+struct TCompileTimings {
+    std::string Backend;       // "llvm", "tpde" or "llvm (tpde fallback)"
+    double FrontendMs = 0;     // parse, resolve, transform, lower to IR
+    double IrPipelineMs = 0;   // Qumir IR passes (locals2ssa, const_fold, ...)
+    double LlvmIrMs = 0;       // Qumir IR -> LLVM IR
+    double LlvmOptMs = 0;      // LLVM optimization pipeline
+    double CodegenMs = 0;      // LLVM: object emission; TPDE: compile()
+    double ObjectMs = 0;       // TPDE: ELF serialization (compile-only)
+    double JitMs = 0;          // LLVM: ORC compile+link; TPDE: mapping
+    double EntryMs = 0;        // execution of the entry function
+    size_t IrFunctions = 0;    // Qumir IR handed to the backend
+    size_t IrInstructions = 0;
+    size_t ObjectBytes = 0;    // compile-only: object file size
+    size_t TextBytes = 0;      // TPDE: .text size
+    std::map<std::string, int> Unsupported; // TPDE fallback reasons
+};
 
 struct TLLVMRunnerOptions {
     bool PrintAst = false;
@@ -45,6 +64,12 @@ struct TLLVMRunnerOptions {
     std::string TargetTriple;
     std::string SourceFilePath;
     bool EmitDebugInfo = false;
+    // Experimental: compile with the TPDE backend (QUMIR_ENABLE_TPDE), falling
+    // back to LLVM for modules with unsupported IR.
+    bool Tpde = false;
+    // Stop after emitting an object file (for compile-time benchmarks).
+    bool CompileOnly = false;
+    TCompileTimings* Timings = nullptr;
 };
 
 // A single compilation session: holds persistent frontend state (Module,
@@ -124,6 +149,11 @@ public:
         std::string* error);
 
 private:
+#ifdef QUMIR_ENABLE_TPDE
+    // Compiles and runs Module with TPDE; nullopt means "fall back to LLVM".
+    std::optional<std::expected<std::optional<std::string>, TError>> RunTpde(TCompileTimings& timings);
+#endif
+
     struct TPreparedCachedCompilation {
         std::vector<std::string> ObjectFiles;
         std::vector<std::string> ObjectBlobs;

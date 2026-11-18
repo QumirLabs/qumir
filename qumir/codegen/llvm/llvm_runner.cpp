@@ -18,6 +18,7 @@
 #include <llvm/TargetParser/Host.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <iomanip>
 #include <optional>
@@ -568,7 +569,11 @@ std::optional<std::string> TLlvmRunner::Run(
         return result;
     }
 
+    // The first lookup compiles the module; keep that out of the entry timing.
+    (void)LookupFunction<void (*)()>(*jit, entry->Name, nullptr);
+    auto entryStart = std::chrono::steady_clock::now();
     auto result = RunEntryFunction(*jit, *entry, returnTypeIsString, runError);
+    LastEntryMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - entryStart).count();
     if (!runError->empty()) {
         return std::nullopt;
     }
