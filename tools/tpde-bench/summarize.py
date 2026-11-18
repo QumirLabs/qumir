@@ -34,54 +34,72 @@ def med(vals):
     return statistics.median(vals)
 
 ccfgs = ['llvm-O0', 'llvm-O0-fastisel', 'llvm-O2', 'llvm-O3', 'tpde-O0', 'tpde-O2']
-print('### Compile time: Qumir IR -> object in memory, ms, median (min) of runs\n')
-print('| program | IR fn/instr | frontend | IR passes | LLVM O0 | LLVM O0 FastISel | LLVM O2 | LLVM O3 | TPDE (O0 IR) | TPDE (O2 IR) | LLVM O0 / TPDE | LLVM O2 / TPDE |')
-print('|---|---|---|---|---|---|---|---|---|---|---|---|')
-for p in progs:
-    row = [p]
-    base = get(p, 'compile', 'tpde-O2')
-    if not base:
-        continue
-    t0 = base['runs'][0]
-    row.append(f"{int(t0['ir_functions'])}/{int(t0['ir_instructions'])}")
-    row.append(fmt([t['frontend_ms'] for t in base['runs']]))
-    row.append(fmt([t['ir_pipeline_ms'] for t in base['runs']]))
-    meds = {}
-    for c in ccfgs:
-        r = get(p, 'compile', c)
-        vals = [backend_ms(t) for t in r['runs']]
-        meds[c] = med(vals)
-        cell = fmt(vals)
-        if c.startswith('tpde') and not str(r['runs'][0].get('backend')).startswith('tpde'):
-            cell += ' fallback'
-        row.append(cell)
-    row.append(f"{meds['llvm-O0'] / meds['tpde-O2']:.0f}x")
-    row.append(f"{meds['llvm-O2'] / meds['tpde-O2']:.0f}x")
-    print('| ' + ' | '.join(row) + ' |')
 
-print('\nLLVM column = Qumir IR -> LLVM IR + LLVM passes + object emission; TPDE column = TPDE compile() (adaptor + analysis + codegen into memory). "O0 IR"/"O2 IR": Qumir IR with/without the Qumir IR pipeline (locals2ssa, const_fold, inline).\n')
+def compile_tables():
+    print('### Compile time: Qumir IR -> object in memory, ms, median (min) of runs\n')
+    print('| program | IR fn/instr | frontend | IR passes | LLVM O0 | LLVM O0 FastISel | LLVM O2 | LLVM O3 | TPDE (O0 IR) | TPDE (O2 IR) | LLVM O0 / TPDE | LLVM O2 / TPDE |')
+    print('|---|---|---|---|---|---|---|---|---|---|---|---|')
+    for p in progs:
+        row = [p]
+        base = get(p, 'compile', 'tpde-O2')
+        if not base:
+            continue
+        t0 = base['runs'][0]
+        row.append(f"{int(t0['ir_functions'])}/{int(t0['ir_instructions'])}")
+        row.append(fmt([t['frontend_ms'] for t in base['runs']]))
+        row.append(fmt([t['ir_pipeline_ms'] for t in base['runs']]))
+        meds = {}
+        for c in ccfgs:
+            r = get(p, 'compile', c)
+            vals = [backend_ms(t) for t in r['runs']]
+            meds[c] = med(vals)
+            cell = fmt(vals)
+            if c.startswith('tpde') and not str(r['runs'][0].get('backend')).startswith('tpde'):
+                cell += ' fallback'
+            row.append(cell)
+        row.append(f"{meds['llvm-O0'] / meds['tpde-O2']:.0f}x")
+        row.append(f"{meds['llvm-O2'] / meds['tpde-O2']:.0f}x")
+        print('| ' + ' | '.join(row) + ' |')
 
-print('### Code size: .text bytes\n')
-print('| program | ' + ' | '.join(ccfgs) + ' |')
-print('|---|' + '---|' * len(ccfgs))
-for p in progs:
-    if not get(p, 'compile', 'tpde-O2'):
-        continue
-    print('| ' + p + ' | ' + ' | '.join(str(get(p, 'compile', c)['text_size']) for c in ccfgs) + ' |')
+    print('\nLLVM column = Qumir IR -> LLVM IR + LLVM passes + object emission; TPDE column = TPDE compile() (adaptor + analysis + codegen into memory). "O0 IR"/"O2 IR": Qumir IR with/without the Qumir IR pipeline (locals2ssa, const_fold, inline).\n')
 
-ecfgs = ['llvm-O0', 'llvm-O2', 'llvm-O3', 'tpde-O0', 'tpde-O2']
+    print('### Code size: .text bytes\n')
+    print('| program | ' + ' | '.join(ccfgs) + ' |')
+    print('|---|' + '---|' * len(ccfgs))
+    for p in progs:
+        if not get(p, 'compile', 'tpde-O2'):
+            continue
+        print('| ' + p + ' | ' + ' | '.join(str(get(p, 'compile', c)['text_size']) for c in ccfgs) + ' |')
+
+if any(r['kind'] == 'compile' for r in res):
+    compile_tables()
+
+ecfgs = [c for c in ['llvm-O0', 'llvm-O0-noneon', 'llvm-O0-fastisel', 'llvm-O0-fastisel-noneon', 'llvm-O1-noneon',
+                     'llvm-O2', 'llvm-O2-noneon', 'llvm-O2-fastisel', 'llvm-O3', 'tpde-O0', 'tpde-O2']
+         if any(r['kind'] == 'exec' and r['cfg'] == c for r in res)]
 print('\n### Execution of the entry function, ms, median (min)\n')
-print('| program | ' + ' | '.join(ecfgs) + ' | output |')
-print('|---|' + '---|' * (len(ecfgs) + 1))
+print('| program | ' + ' | '.join(ecfgs) + ' | TPDE O2 / LLVM O0 | output |')
+print('|---|' + '---|' * (len(ecfgs) + 2))
 for p in progs:
-    if not get(p, 'exec', 'llvm-O0'):
+    if not get(p, 'exec', ecfgs[0]):
         continue
     row = [p]
     hashes = set()
     for c in ecfgs:
         r = get(p, 'exec', c)
-        row.append(fmt([t['entry_ms'] for t in r['runs']]))
+        if not r:
+            row.append('failed')
+            continue
+        cell = fmt([t['entry_ms'] for t in r['runs']])
+        if c.startswith('tpde') and not str(r['runs'][0].get('backend')).startswith('tpde'):
+            cell += ' fallback'
+        row.append(cell)
         hashes.update(t['stdout_md5'] for t in r['runs'])
+    if get(p, 'exec', 'tpde-O2') and get(p, 'exec', 'llvm-O0'):
+        ratio = med([t['entry_ms'] for t in get(p, 'exec', 'tpde-O2')['runs']]) / med([t['entry_ms'] for t in get(p, 'exec', 'llvm-O0')['runs']])
+        row.append(f'{ratio:.2f}')
+    else:
+        row.append('')
     row.append('identical' if len(hashes) == 1 else f'{len(hashes)} variants')
     print('| ' + ' | '.join(row) + ' |')
 
@@ -89,6 +107,6 @@ print('\n### JIT path latency (no frontend): backend + JIT/map, ms, median\n')
 print('| program | ' + ' | '.join(ecfgs) + ' |')
 print('|---|' + '---|' * len(ecfgs))
 for p in progs:
-    if not get(p, 'exec', 'llvm-O0'):
+    if not get(p, 'exec', ecfgs[0]):
         continue
-    print('| ' + p + ' | ' + ' | '.join(fmt([jit_ms(t) for t in get(p, 'exec', c)['runs']]) for c in ecfgs) + ' |')
+    print('| ' + p + ' | ' + ' | '.join(fmt([jit_ms(t) for t in get(p, 'exec', c)['runs']]) if get(p, 'exec', c) else 'failed' for c in ecfgs) + ' |')

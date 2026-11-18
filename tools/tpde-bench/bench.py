@@ -3,9 +3,14 @@
 import hashlib, json, os, re, statistics, subprocess, sys
 
 HOME = os.environ.get('TPDE_BENCH_ROOT', os.path.expanduser('~/tpde-draft'))
-QUMIRI = os.path.join(HOME, 'qumir/build/bin/qumiri')
+QUMIRI = os.environ.get('QUMIRI', os.path.join(HOME, 'qumir/build/bin/qumiri'))
 QDB_MOD = ['--module', os.path.join(HOME, 'qdb-oz/modules/qumirdb.oz')]
+# qumirdb.oz with qdb_alloc/qdb_free bound to malloc/free (prepare.sh)
+QDB_STUB = ['--module', os.path.join(HOME, 'qdb-oz/modules-stub/qumirdb.oz')]
 RUNS = int(os.environ.get('RUNS', '9'))
+KINDS = os.environ.get('KINDS', 'compile,exec').split(',')
+CFGS = [c for c in os.environ.get('CFGS', '').split(',') if c]
+OUT = os.environ.get('OUT', os.path.join(HOME, 'bench_results.json'))
 PIN = ['taskset', '-c', '3']
 
 PROGS = [
@@ -25,6 +30,15 @@ PROGS = [
     ('qdb_all.oz', 'progs/qdb_all.oz', True, False, QDB_MOD),
     ('qdb_sort_strings.oz', 'progs/k_sort_strings.oz', True, False, QDB_MOD),
     ('qdb_row_table.oz', 'progs/k_row_table.oz', True, False, QDB_MOD),
+    # qdb kernels with a driver main (prepare.sh)
+    ('q_rh_agg.oz', 'progs/q_rh_agg.oz', True, True, QDB_STUB),
+    ('q_row_agg.oz', 'progs/q_row_agg.oz', True, True, QDB_STUB),
+    ('q_decimal.oz', 'progs/q_decimal.oz', True, True, QDB_STUB),
+    ('q_radix.oz', 'progs/q_radix.oz', True, True, QDB_STUB),
+    # explicit qdb vectors: <vec u8 16> case mapping, <vec u64 4> Bloom probe
+    ('q_upper.oz', 'progs/q_upper.oz', True, True, QDB_STUB),
+    ('q_bloom_scalar.oz', 'progs/q_bloom_scalar.oz', True, True, QDB_STUB),
+    ('q_bloom_vector.oz', 'progs/q_bloom_vector.oz', True, True, QDB_STUB),
 ]
 
 COMPILE_CFGS = [
@@ -37,10 +51,18 @@ COMPILE_CFGS = [
 ]
 EXEC_CFGS = [
     ('llvm-O0', ['--jit', '-O0'], {}),
+    ('llvm-O0-fastisel', ['--jit', '-O0'], {'QUMIR_LLVM_CODEGEN_NONE': '1'}),
     ('llvm-O2', ['--jit', '-O2'], {}),
-    ('llvm-O3', ['--jit', '-O3'], {}),
+    ('llvm-O2-fastisel', ['--jit', '-O2'], {'QUMIR_LLVM_CODEGEN_NONE': '1'}),
     ('tpde-O0', ['--tpde', '-O0'], {}),
     ('tpde-O2', ['--tpde', '-O2'], {}),
+]
+# Run only when named in CFGS: LLVM without Advanced SIMD (vectors scalarized).
+EXTRA_EXEC_CFGS = [
+    ('llvm-O0-noneon', ['--jit', '-O0'], {'QUMIR_LLVM_FEATURES': '-neon'}),
+    ('llvm-O0-fastisel-noneon', ['--jit', '-O0'], {'QUMIR_LLVM_CODEGEN_NONE': '1', 'QUMIR_LLVM_FEATURES': '-neon'}),
+    ('llvm-O1-noneon', ['--jit', '-O1'], {'QUMIR_LLVM_FEATURES': '-neon'}),
+    ('llvm-O2-noneon', ['--jit', '-O2'], {'QUMIR_LLVM_FEATURES': '-neon'}),
 ]
 
 def run(prog, args, env_extra):
@@ -78,7 +100,9 @@ only = sys.argv[1:]
 for prog in PROGS:
     if only and prog[0] not in only:
         continue
-    for cfg, args, env in COMPILE_CFGS:
+    for cfg, args, env in COMPILE_CFGS if 'compile' in KINDS else []:
+        if CFGS and cfg not in CFGS:
+            continue
         runs = [run(prog, ['--compile-only'] + args, env) for _ in range(RUNS)]
         obj = f'/tmp/bench_{prog[0]}_{cfg}.o'
         dump = dict(env, QUMIR_LLVM_DUMP_OBJECT=obj, QUMIR_TPDE_DUMP_OBJECT=obj)
@@ -86,13 +110,19 @@ for prog in PROGS:
         rec = {'prog': prog[0], 'kind': 'compile', 'cfg': cfg, 'runs': runs, 'text_size': text_size(obj)}
         results.append(rec)
         print(json.dumps({k: v for k, v in rec.items() if k != 'runs'}), runs[0].get('backend'), flush=True)
-    if not prog[3]:
+    if not prog[3] or 'exec' not in KINDS:
         continue
-    for cfg, args, env in EXEC_CFGS:
-        runs = [run(prog, args, env) for _ in range(max(7, RUNS - 2))]
+    for cfg, args, env in EXEC_CFGS + [c for c in EXTRA_EXEC_CFGS if c[0] in CFGS]:
+        if CFGS and cfg not in CFGS:
+            continue
+        try:
+            runs = [run(prog, args, env) for _ in range(max(7, RUNS - 2))]
+        except RuntimeError as e:
+            print(prog[0], cfg, 'failed:', str(e)[-200:], flush=True)
+            continue
         rec = {'prog': prog[0], 'kind': 'exec', 'cfg': cfg, 'runs': runs}
         results.append(rec)
         print(prog[0], cfg, runs[0].get('backend'), runs[0]['stdout_md5'], flush=True)
 
-with open(os.path.join(HOME, 'bench_results.json'), 'w') as f:
+with open(OUT, 'w') as f:
     json.dump(results, f)

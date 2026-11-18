@@ -25,4 +25,18 @@ if [ -n "$QDB_SRC" ]; then
     python3 $HERE/wrap_kernel.py $ROOT/qdb-oz/kernel/sort/sort_strings.oz > $P/k_sort_strings.oz
     python3 $HERE/wrap_kernel.py $ROOT/qdb-oz/kernel/row_table.oz > $P/k_row_table.oz
     bash $HERE/greedy_qdb.sh
+    # Kernels with a driver main; qdb_alloc/qdb_free become malloc/free.
+    mkdir -p $ROOT/qdb-oz/modules-stub
+    sed -e '/(fun qdb_alloc /s/(attrs extern)/(attrs (extern malloc))/' \
+        -e '/(fun qdb_free /s/(attrs extern)/(attrs (extern free))/' \
+        $ROOT/qdb-oz/modules/qumirdb.oz > $ROOT/qdb-oz/modules-stub/qumirdb.oz
+    K=$ROOT/qdb-oz/kernel
+    python3 $HERE/wrap_kernel.py $HERE/qdb_rh_agg.oz $K/aggregation/insert_fixed.oz $K/aggregation/lookup.oz > $P/q_rh_agg.oz
+    python3 $HERE/wrap_kernel.py $HERE/qdb_row_agg.oz $K/aggregation/i64_hash.oz $K/row_table.oz > $P/q_row_agg.oz
+    python3 $HERE/wrap_kernel.py $HERE/qdb_decimal.oz > $P/q_decimal.oz
+    python3 $HERE/wrap_kernel.py $HERE/qdb_radix.oz $K/sort/radix.oz > $P/q_radix.oz
+    python3 $HERE/wrap_kernel.py $HERE/qdb_upper.oz > $P/q_upper.oz
+    RF=rf_mix,rf_selected,rf_bloom_base,rf_bloom_bits,rf_bloom_bit,rf_bloom_block_mask,rf_bloom_contains,rf_bloom_add,rf_bloom_probe_scalar
+    python3 $HERE/wrap_kernel.py --keep $RF $HERE/qdb_bloom_scalar.oz $K/join/runtime_filter.oz > $P/q_bloom_scalar.oz
+    python3 $HERE/wrap_kernel.py --keep $RF,rf_bloom_probe_dense $HERE/qdb_bloom_vector.oz $K/join/runtime_filter.oz > $P/q_bloom_vector.oz
 fi

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <iomanip>
 #include <optional>
 #include <vector>
@@ -163,6 +164,14 @@ std::unique_ptr<llvm::orc::LLJIT> CreateOrcJit(
         jtmb = std::move(*nativeJtmb);
     }
     jtmb.setRelocationModel(llvm::Reloc::PIC_);
+    // QUMIR_LLVM_CODEGEN_NONE: benchmark knob (TPDE draft) for a FastISel baseline.
+    if (std::getenv("QUMIR_LLVM_CODEGEN_NONE")) {
+        jtmb.setCodeGenOptLevel(llvm::CodeGenOptLevel::None);
+    }
+    // QUMIR_LLVM_FEATURES (e.g. -neon): benchmark knob for code without SIMD.
+    if (const char* features = std::getenv("QUMIR_LLVM_FEATURES")) {
+        jtmb.addFeatures({features});
+    }
 
     llvm::orc::LLJITBuilder builder;
     builder.setJITTargetMachineBuilder(std::move(jtmb));
