@@ -304,6 +304,15 @@ The LLVM JIT runner compiles the IR module through the LLVM backend and runs
 it in-process via LLVM ORC JIT.  External functions are resolved to their
 `Ptr` addresses at link time.
 
+`TJitRunner` (`qumir/runner/runner_jit.h`) owns the frontend session up to
+the IR passes and hands the module to an `ICodegenBackend`
+(`qumir/runner/backend.h`): `Compile()` produces machine code loaded into the
+process, `Run()` executes the entry point.  `TLlvmBackend` is the LLVM
+implementation; `TLLVMRunner` is `TJitRunner` with it plus the LLVM-only
+kernel APIs used by QumirDB.  A new code generator implements
+`ICodegenBackend` and is selected in `qumiri`, without changes to the LLVM
+code.
+
 ---
 
 ## 7. LLVM backend

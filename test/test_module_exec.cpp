@@ -411,6 +411,40 @@ TEST_F(ModuleExecTest, Integer128DivisionHasDefinedResults) {
         "0 0 -9223372036854775808 0 0 0\n");
 }
 
+class TFakeCompiledModule : public ICompiledModule {
+public:
+    explicit TFakeCompiledModule(std::string entry)
+        : Entry_(std::move(entry))
+    {}
+
+    std::expected<std::optional<std::string>, TError> Run() override {
+        return "ran " + Entry_;
+    }
+
+private:
+    std::string Entry_;
+};
+
+// Stands in for a second code generator: TJitRunner needs only the interface.
+class TFakeBackend : public ICodegenBackend {
+public:
+    std::expected<std::unique_ptr<ICompiledModule>, TError> Compile(NIR::TModule& module) override {
+        auto* entry = module.GetEntryPoint();
+        if (!entry) {
+            return std::unexpected(TError("fake backend: entry point not found"));
+        }
+        return std::make_unique<TFakeCompiledModule>(entry->Name);
+    }
+};
+
+TEST(JitRunnerTest, RunsTheEntryPointThroughThePluggedBackend) {
+    TJitRunner runner(TJitRunnerOptions{.CoreInput = true}, std::make_unique<TFakeBackend>());
+    std::istringstream src("(block (fun <main> () -> i64 (block (return (: 7 i64)))))");
+    auto res = runner.Run(src);
+    ASSERT_TRUE(res) << res.error().ToString();
+    EXPECT_EQ(res->value_or(""), "ran <main>");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {

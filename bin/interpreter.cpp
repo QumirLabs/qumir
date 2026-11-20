@@ -1,6 +1,7 @@
 #include <istream>
 #include <qumir/runner/runner_ir.h>
-#include <qumir/runner/runner_llvm.h>
+#include <qumir/runner/runner_jit.h>
+#include <qumir/runner/backend_llvm.h>
 #include <qumir/codegen/llvm/llvm_initializer.h>
 
 #include <iostream>
@@ -406,7 +407,7 @@ private:
 int main(int argc, char ** argv) {
     NQumir::NCodeGen::TLLVMInitializer llvmInit;
 
-    enum class RunnerType { IR, LLVM };
+    enum class RunnerType { IR, Jit };
     RunnerType runnerType = RunnerType::IR; // default
     bool printEvalTimeUs = false;
     bool printAst = false;
@@ -424,7 +425,7 @@ int main(int argc, char ** argv) {
 
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--jit")) {
-            runnerType = RunnerType::LLVM;
+            runnerType = RunnerType::Jit;
         } else if (!std::strcmp(argv[i], "--time-us")) {
             printEvalTimeUs = true;
         } else if (!std::strcmp(argv[i], "--print-ast")) {
@@ -562,28 +563,32 @@ int main(int argc, char ** argv) {
         }
     );
 
-    TLLVMRunner llvmRunner(TLLVMRunnerOptions {
-        .PrintAst = printAst,
-        .PrintTransformedAst = printTransformedAst,
-        .PrintIr = printIr,
-        .PrintLlvm = printLlvm,
-        .PrintAsm = printAsm,
-        .CoreInput = coreInput,
-        .OptLevel = optLevel,
-        .Prelude = corePrelude,
-        .ModuleSearchPaths = modulePaths,
-        .ModuleFiles = moduleFiles,
-        .SourceFilePath = inputFile == "-"
-            ? ""
-            : inputFile,
-        .EmitDebugInfo = debugger != nullptr,
-    });
+    TJitRunner jitRunner(
+        TJitRunnerOptions {
+            .PrintAst = printAst,
+            .PrintTransformedAst = printTransformedAst,
+            .PrintIr = printIr,
+            .CoreInput = coreInput,
+            .OptLevel = optLevel,
+            .Prelude = corePrelude,
+            .ModuleSearchPaths = modulePaths,
+            .ModuleFiles = moduleFiles,
+            .SourceFilePath = inputFile == "-"
+                ? ""
+                : inputFile,
+            .EmitDebugInfo = debugger != nullptr,
+        },
+        std::make_unique<TLlvmBackend>(TLlvmBackendOptions {
+            .PrintLlvm = printLlvm,
+            .PrintAsm = printAsm,
+            .OptLevel = optLevel,
+        }));
 
     long long lastEvalUs = 0;
     std::expected<std::optional<std::string>, TError> result;
-    if (runnerType == RunnerType::LLVM) {
+    if (runnerType == RunnerType::Jit) {
         auto t0 = std::chrono::steady_clock::now();
-        result = llvmRunner.Run(*in);
+        result = jitRunner.Run(*in);
         auto t1 = std::chrono::steady_clock::now();
         lastEvalUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
     } else {

@@ -1,25 +1,15 @@
 #include "runner_llvm.h"
 
-#include <qumir/parser/lexer.h>
+#include <qumir/runner/backend_llvm.h>
 #include <qumir/semantics/kumir/pipeline.h>
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/core/printer.h>
 #include <qumir/semantics/transform/transform.h>
-#include <qumir/modules/system/system.h>
-#include <qumir/modules/builtins/builtins.h>
-#include <qumir/modules/turtle/turtle.h>
-#include <qumir/modules/robot/robot.h>
-#include <qumir/modules/drawer/drawer.h>
-#include <qumir/modules/painter/painter.h>
-#include <qumir/modules/colors/colors.h>
-#include <qumir/modules/keyboard/keyboard.h>
-#include <qumir/ir/passes/transforms/pipeline.h>
 #include <qumir/frontend/compose.h>
 #include <qumir/frontend/source_module_loader.h>
 
 #include <algorithm>
-#include <cstring>
 #include <iostream>
 #include <cassert>
 #include <sstream>
@@ -30,255 +20,47 @@ using namespace NIR;
 
 namespace {
 
-bool IsKnown32BitTarget(const std::string& targetTriple) {
-    return targetTriple.starts_with("wasm32-");
+TJitRunnerOptions JitRunnerOptions(const TLLVMRunnerOptions& options) {
+    return {
+        .PrintAst = options.PrintAst,
+        .PrintTransformedAst = options.PrintTransformedAst,
+        .PrintIr = options.PrintIr,
+        .CoreInput = options.CoreInput,
+        .ResolveCoreInput = options.ResolveCoreInput,
+        .AllowOverloads = options.AllowOverloads,
+        .RunDefiniteAssignment = options.RunDefiniteAssignment,
+        .OptLevel = options.OptLevel,
+        .Prelude = options.Prelude,
+        .ModuleSearchPaths = options.ModuleSearchPaths,
+        .ModuleFiles = options.ModuleFiles,
+        .TargetTriple = options.TargetTriple,
+        .SourceFilePath = options.SourceFilePath,
+        .EmitDebugInfo = options.EmitDebugInfo,
+    };
+}
+
+TLlvmBackendOptions LlvmBackendOptions(const TLLVMRunnerOptions& options) {
+    return {
+        .PrintLlvm = options.PrintLlvm,
+        .PrintAsm = options.PrintAsm,
+        .NativeCode = options.NativeCode,
+        .EnablePerfJitEventListener = options.EnablePerfJitEventListener,
+        .OptLevel = options.OptLevel,
+        .TargetTriple = options.TargetTriple,
+    };
 }
 
 } // namespace
 
 TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options)
-    : Options(std::move(options))
-    , Module{.SourceFilePath = Options.SourceFilePath}
-    , Builder(Module)
-    , Lowerer(Module, Builder, Resolver, {.EmitDebugInfo = Options.EmitDebugInfo && Options.OptLevel == 0})
+    : TJitRunner(
+        JitRunnerOptions(options),
+        std::make_unique<TLlvmBackend>(LlvmBackendOptions(options)))
+    , Options(std::move(options))
     , LlvmRunner_({
         .EnablePerfJitEventListener = Options.EnablePerfJitEventListener,
     })
-{
-    if (IsKnown32BitTarget(Options.TargetTriple)) {
-        Module.Types.SetPointerSize(4);
-    }
-    if (Options.AllowOverloads) {
-        Resolver.ApplyPragmas({NAst::TPragma{"language", {"overloads"}, {}}});
-    }
-
-    RegisterModule(std::make_shared<NRegistry::SystemModule>(), /*import=*/false);
-    // Byte primitives (memcpy/memmove/memcmp) every host needs; always
-    // imported, independent of CoreInput/Prelude (qumir/modules/builtins).
-    RegisterModule(std::make_shared<NRegistry::BuiltinsModule>(), /*import=*/true);
-    // TODO: register other modules
-
-    AvailableModules.push_back(std::make_shared<NRegistry::TurtleModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::RobotModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::DrawerModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::PainterModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::ColorsModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::KeyboardModule>());
-
-    for (const auto& mod : AvailableModules) {
-        Resolver.RegisterModule(mod.get());
-    }
-
-    if (!Options.CoreInput) {
-        // Kumir prelude: standard runtime modules plus legacy module aliases.
-        for (const auto& mod : RegisteredModules) {
-            (void)Resolver.ImportModule(mod->Name());
-        }
-        for (const auto& [alias, canonical] : NSemantics::NKumir::ModuleAliases()) {
-            Resolver.RegisterModuleAlias(alias, canonical);
-        }
-    } else {
-        // Core has no implicit prelude; the host imports what it needs.
-        for (const auto& name : Options.Prelude) {
-            (void)Resolver.ImportModule(name);
-        }
-    }
-}
-
-void TLLVMRunner::RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import) {
-    if (!module) {
-        return;
-    }
-    auto name = module->Name();
-    if (RegisteredModuleNames.count(name)) {
-        if (import) {
-            (void)Resolver.ImportModule(name);
-        }
-        return;
-    }
-    Resolver.RegisterModule(module.get());
-    RegisteredModuleNames.insert(name);
-    RegisteredModules.push_back(std::move(module));
-    if (import) {
-        (void)Resolver.ImportModule(name);
-    }
-}
-
-std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream& input) {
-    NFrontend::TSourceModuleLoader loader;
-    for (const auto& dir : Options.ModuleSearchPaths) {
-        loader.AddSearchPath(dir);
-    }
-    for (const auto& file : Options.ModuleFiles) {
-        if (auto reg = loader.RegisterSourceModule(file); !reg) {
-            return std::unexpected(reg.error());
-        }
-    }
-
-    // Parse source into AST
-    std::expected<NAst::TExprPtr, TError> parsed;
-    std::vector<NAst::TPragma> mainPragmas;
-    if (Options.CoreInput) {
-        NAst::NCore::TTokenStream ts(input);
-        NAst::NCore::TParser p;
-        parsed = p.Parse(ts);
-        if (parsed) {
-            mainPragmas = std::move(p.Pragmas);
-        }
-    } else {
-        NAst::TTokenStream ts(input);
-        NAst::TParser p;
-        parsed = p.parse(ts, &Resolver, &loader);
-        if (parsed) {
-            mainPragmas = ts.GetContext()->GetPragmas();
-        }
-    }
-    if (!parsed) {
-        return std::unexpected(parsed.error());
-    }
-    auto ast = std::move(parsed.value());
-
-    {
-        auto composed = NFrontend::LoadAndCompose(loader, ast, mainPragmas);
-        if (!composed) {
-            return std::unexpected(composed.error());
-        }
-        ast = std::move(composed->Ast);
-        Resolver.ApplyPragmas(composed->Pragmas);
-    }
-
-    // Name resolution
-    auto scope = Resolver.GetOrCreateRootScope();
-    // scope->AllowsRedeclare = true; // TODO: move to options?
-    scope->RootLevel = false;
-
-    if (Options.CoreInput && Options.ResolveCoreInput) {
-        if (auto err = Resolver.Resolve(ast)) {
-            return std::unexpected(*err);
-        }
-    }
-
-    if (Options.PrintAst) {
-        std::cerr << "=========== AST: ===========\n";
-        std::cerr << ast << std::endl;
-        std::cerr << "============================\n\n";
-    }
-
-    NTransform::TPipelineExtensions extensions;
-    if (Options.CoreInput) {
-        extensions.AfterTypeAnnotation.push_back(
-            NTransform::CoroutineAnnotationTransform);
-    } else {
-        extensions = NSemantics::NKumir::PipelineExtensions();
-    }
-    auto pipelineOptions = NTransform::TPipelineOptions{
-        .Extensions = std::move(extensions),
-        .RunDefiniteAssignment = Options.RunDefiniteAssignment,
-    };
-    auto error = NTransform::Pipeline(ast, Resolver, std::move(pipelineOptions));
-    if (!error) {
-        return std::unexpected(error.error());
-    }
-
-    if (Options.PrintTransformedAst) {
-        std::cerr << "===== TRANSFORMED AST: =====\n";
-        std::cerr << ast << std::endl;
-        std::cerr << "============================\n\n";
-    }
-
-    // Lower to IR: we build a fresh __repl function chunk per call
-    auto lowerRes = Lowerer.LowerTop(ast);
-    if (!lowerRes) {
-        return std::unexpected(lowerRes.error());
-    }
-
-    if (Options.OptLevel > 0) {
-        NIR::NPasses::Pipeline(Module);
-    }
-
-    if (Options.PrintIr) {
-        std::cerr << "=========== IR: ============\n";
-        for (const auto& function : Module.Functions) {
-            if (PrintedChunks.insert(function.UniqueId).second) {
-                std::ostringstream oss;
-                function.Print(oss, Module);
-                std::cerr << oss.str() << std::endl;
-            }
-        }
-        std::cerr << "============================\n\n";
-    }
-
-    NCodeGen::TLLVMCodeGen cg({
-        .NativeCode = Options.NativeCode,
-        .TargetTriple = Options.TargetTriple,
-    });
-    std::string err;
-    std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> artifacts;
-    try {
-        artifacts = cg.Emit(Module, Options.OptLevel);
-    } catch (const std::exception& e) {
-        return std::unexpected(TError({}, std::string("llvm codegen error: ") + e.what()));
-    }
-
-    if (Options.PrintLlvm) {
-        std::cerr << "=========== LLVM: ==========\n";
-        for (const auto& function : Module.Functions) {
-            if (PrintedLLVMChunks.insert(function.UniqueId).second) {
-                cg.PrintFunction(function.SymId, std::cerr);
-            }
-        }
-        std::cerr << "============================\n\n";
-    }
-
-    if (Options.PrintAsm) {
-        std::cerr << "=========== ASM: ===========\n";
-        artifacts->Generate(std::cerr, /*generateAsm=*/true, /*generateObj=*/false);
-        std::cerr << "============================\n\n";
-    }
-
-    auto* mainFun = Module.GetEntryPoint();
-    if (!mainFun) {
-        return std::unexpected(TError({}, std::string("entry point not found")));
-    }
-
-    // Run via LLVM JIT
-    NCodeGen::TLlvmRunner runner({
-        .EnablePerfJitEventListener = Options.EnablePerfJitEventListener,
-    });
-    try {
-        std::string runErr;
-        auto coroutineResultFormatter = [&]() -> std::function<std::optional<std::string>(const void*)> {
-            if (!mainFun->IsCoroutine || mainFun->CoroutineResultTypeId < 0
-                || Module.Types.IsVoid(mainFun->CoroutineResultTypeId)) {
-                return {};
-            }
-            return [&](const void* promisePtr) -> std::optional<std::string> {
-                if (!promisePtr) {
-                    return std::nullopt;
-                }
-                uint64_t bitRepr = 0;
-                std::memcpy(&bitRepr, promisePtr,
-                    std::min<int>(sizeof(bitRepr), Module.Types.SizeInBytes(mainFun->CoroutineResultTypeId)));
-                std::ostringstream out;
-                Module.Types.Format(out, bitRepr, mainFun->CoroutineResultTypeId);
-                return out.str();
-            };
-        }();
-        auto res = runner.Run(
-            std::move(artifacts),
-            mainFun->Name,
-            &runErr,
-            mainFun->ReturnTypeIsString,
-            std::move(coroutineResultFormatter));
-        if (!runErr.empty()) {
-            return std::unexpected(TError({}, std::string("llvm run error: ") + runErr));
-        }
-        return res;
-    } catch (const std::exception& e) {
-        // TODO: free resources?
-        return std::unexpected(TError(std::string("runtime error: ") + e.what()));
-    }
-}
+{}
 
 void* TLLVMRunner::CompileKernelAst(
     NAst::TExprPtr ast, const std::string& entryName, std::string* error)

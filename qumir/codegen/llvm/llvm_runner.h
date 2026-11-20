@@ -32,6 +32,20 @@ public:
         bool returnTypeIsString = false /* TODO: remove me, clutch: support string returnType */,
         std::function<std::optional<std::string>(const void*)> coroutineResultFormatter = {});
 
+    // Run() in two steps: Load() JIT-compiles the module and resolves the entry,
+    // RunLoaded() only executes code. The handle keeps the JIT alive.
+    struct TLoadedModule;
+    std::shared_ptr<TLoadedModule> Load(
+        std::unique_ptr<ILLVMModuleArtifacts> artifacts,
+        const std::string& entryPoint,
+        std::string* error = nullptr);
+
+    static std::optional<std::string> RunLoaded(
+        TLoadedModule& module,
+        std::string* error = nullptr,
+        bool returnTypeIsString = false,
+        std::function<std::optional<std::string>(const void*)> coroutineResultFormatter = {});
+
     // Compiles the module via JIT and returns a function pointer by name.
     // The pointer is valid for the lifetime of this TLlvmRunner.
     void* Lookup(

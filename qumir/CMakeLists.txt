@@ -46,8 +46,13 @@ add_library(qumir
     frontend/source_module_loader.cpp
     frontend/compose.h
     frontend/compose.cpp
+    runner/backend.h
+    runner/backend_llvm.h
+    runner/backend_llvm.cpp
     runner/runner_ir.h
     runner/runner_ir.cpp
+    runner/runner_jit.h
+    runner/runner_jit.cpp
     runner/runner_llvm.h
     runner/runner_llvm.cpp
     ir/lowering/lower_ast.h

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <qumir/runner/runner_jit.h>
+
 #include <qumir/parser/ast.h>
 #include <qumir/parser/parser.h>
 #include <qumir/semantics/name_resolution/name_resolver.h>
@@ -50,7 +52,8 @@ struct TLLVMRunnerOptions {
 // A single compilation session: holds persistent frontend state (Module,
 // Resolver, Builder) that accumulates across calls, so it is not thread-safe.
 // Use a fresh runner per independent compilation (e.g. one per query).
-class TLLVMRunner {
+// Run() is TJitRunner with the LLVM backend; the kernel APIs are LLVM-only.
+class TLLVMRunner : public TJitRunner {
 public:
     struct TCachedObjectModule {
         std::vector<std::string> ObjectFiles;
@@ -59,12 +62,6 @@ public:
     };
 
     TLLVMRunner(TLLVMRunnerOptions options = {});
-
-    void RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import = false);
-
-    // Parses, resolves, lowers to IR and executes via LLVM JIT.
-    // Returns numeric result (if any) produced by the compiled chunk.
-    std::expected<std::optional<std::string>, TError> Run(std::istream& input);
 
     // Compiles a core-lang kernel source string and returns a JIT function pointer.
     // The pointer is valid for the lifetime of this TLLVMRunner.
@@ -173,19 +170,6 @@ private:
         const std::vector<std::string>* llvmBitcode = nullptr);
 
     TLLVMRunnerOptions Options;
-    // Persistent compiler state across Run() calls (REPL-style session)
-    NIR::TModule Module;
-    NIR::TBuilder Builder;
-    NIR::TAstLowerer Lowerer;
-
-    NSemantics::TNameResolver Resolver;
-
-    std::unordered_set<int> PrintedChunks;
-    std::unordered_set<int> PrintedLLVMChunks;
-    std::unordered_set<std::string> RegisteredModuleNames;
-
-    std::vector<std::shared_ptr<NRegistry::IModule>> RegisteredModules;
-    std::vector<std::shared_ptr<NRegistry::IModule>> AvailableModules;
 
     NCodeGen::TLlvmRunner LlvmRunner_; // persistent; keeps compiled kernels alive
 };

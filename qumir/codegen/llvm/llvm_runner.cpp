@@ -473,6 +473,11 @@ static std::optional<void*> RunPromisePtrFunction(
     return result;
 }
 
+struct TLlvmRunner::TLoadedModule {
+    std::unique_ptr<llvm::orc::LLJIT> Jit;
+    TEntryInfo Entry;
+};
+
 TLlvmRunner::TLlvmRunner(TLlvmRunnerOptions options)
     : Options_(std::move(options))
 {
@@ -485,6 +490,18 @@ std::optional<std::string> TLlvmRunner::Run(
     std::string* error,
     bool returnTypeIsString,
     std::function<std::optional<std::string>(const void*)> coroutineResultFormatter) {
+    auto loaded = Load(std::move(iartifacts), entryPoint, error);
+    if (!loaded) {
+        return std::nullopt;
+    }
+    return RunLoaded(*loaded, error, returnTypeIsString, std::move(coroutineResultFormatter));
+}
+
+std::shared_ptr<TLlvmRunner::TLoadedModule> TLlvmRunner::Load(
+    std::unique_ptr<ILLVMModuleArtifacts> iartifacts,
+    const std::string& entryPoint,
+    std::string* error)
+{
     if (error) {
         error->clear();
     }
@@ -494,11 +511,11 @@ std::optional<std::string> TLlvmRunner::Run(
     auto* artifacts = static_cast<TLLVMModuleArtifacts*>(iartifacts.get());
     if (!artifacts || !artifacts->Module) {
         *runError = "null artifacts";
-        return std::nullopt;
+        return nullptr;
     }
     auto entry = PrepareRunEntry(*artifacts->Module, entryPoint, runError);
     if (!entry) {
-        return std::nullopt;
+        return nullptr;
     }
 
     InitializeNativeJitTarget();
@@ -512,11 +529,35 @@ std::optional<std::string> TLlvmRunner::Run(
         Options_.EnablePerfJitEventListener,
         runError);
     if (!jit) {
-        return std::nullopt;
+        return nullptr;
     }
     if (!AddArtifactsToJit(*artifacts, *jit, runError)) {
-        return std::nullopt;
+        return nullptr;
     }
+    // The first lookup compiles the whole module.
+    if (!LookupFunction<void (*)()>(*jit, entry->Name, runError)) {
+        return nullptr;
+    }
+
+    auto loaded = std::make_shared<TLoadedModule>();
+    loaded->Jit = std::move(jit);
+    loaded->Entry = std::move(*entry);
+    return loaded;
+}
+
+std::optional<std::string> TLlvmRunner::RunLoaded(
+    TLoadedModule& module,
+    std::string* error,
+    bool returnTypeIsString,
+    std::function<std::optional<std::string>(const void*)> coroutineResultFormatter)
+{
+    if (error) {
+        error->clear();
+    }
+    std::string localError;
+    auto* runError = error ? error : &localError;
+    auto& jit = module.Jit;
+    const auto* entry = &module.Entry;
 
     if (!RunVoidFunctionIfPresent(*jit, entry->ConstructorName, runError)) {
         return std::nullopt;
