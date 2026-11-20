@@ -5,6 +5,7 @@
 #include <qumir/semantics/name_resolution/name_resolver.h>
 #include <qumir/modules/module.h>
 #include <qumir/frontend/compose.h>
+#include <qumir/frontend/frontend.h>
 
 #include <qumir/ir/builder.h>
 #include <qumir/ir/lowering/lower_ast.h>
@@ -50,7 +51,8 @@ struct TLLVMRunnerOptions {
 // A single compilation session: holds persistent frontend state (Module,
 // Resolver, Builder) that accumulates across calls, so it is not thread-safe.
 // Use a fresh runner per independent compilation (e.g. one per query).
-class TLLVMRunner {
+// Run() is the shared frontend followed by LLVM codegen and the JIT.
+class TLLVMRunner : public NFrontend::TFrontend {
 public:
     struct TCachedObjectModule {
         std::vector<std::string> ObjectFiles;
@@ -173,14 +175,7 @@ private:
         const std::vector<std::string>* llvmBitcode = nullptr);
 
     TLLVMRunnerOptions Options;
-    // Persistent compiler state across Run() calls (REPL-style session)
-    NIR::TModule Module;
-    NIR::TBuilder Builder;
-    NIR::TAstLowerer Lowerer;
 
-    NSemantics::TNameResolver Resolver;
-
-    std::unordered_set<int> PrintedChunks;
     std::unordered_set<int> PrintedLLVMChunks;
     std::unordered_set<std::string> RegisteredModuleNames;
 

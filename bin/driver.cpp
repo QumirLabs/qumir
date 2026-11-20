@@ -4,17 +4,10 @@
 #include <fstream>
 #include <cstdlib>
 
-#include <qumir/parser/parser.h>
 #include <qumir/semantics/kumir/pipeline.h>
-#include <qumir/parser/core/lexer.h>
-#include <qumir/parser/core/parser.h>
-#include <qumir/ir/lowering/lower_ast.h>
 #include <qumir/ir/builder.h>
-#include <qumir/ir/passes/transforms/pipeline.h>
 #include <qumir/semantics/name_resolution/name_resolver.h>
-#include <qumir/semantics/transform/transform.h>
-#include <qumir/frontend/compose.h>
-#include <qumir/frontend/source_module_loader.h>
+#include <qumir/frontend/frontend.h>
 #include <qumir/codegen/llvm/llvm_codegen.h>
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/modules/builtins/builtins.h>
@@ -48,70 +41,24 @@ struct TModuleConfig {
     bool IncludeDebugRuntime = false;
 };
 
-std::expected<NAst::TExprPtr, TError> ParseInput(
-    std::istream& in, NSemantics::TNameResolver& r, bool coreInput,
-    const TModuleConfig& modules = {})
+NFrontend::TFrontendOptions FrontendOptions(
+    const std::string& inputFile,
+    bool coreInput,
+    const TModuleConfig& modules,
+    NIR::TDebugOptions debugOptions = {})
 {
-    NFrontend::TSourceModuleLoader loader;
-    for (const auto& dir : modules.Paths) {
-        loader.AddSearchPath(dir);
-    }
-    for (const auto& file : modules.Files) {
-        if (auto reg = loader.RegisterSourceModule(file); !reg) {
-            return std::unexpected(reg.error());
-        }
-    }
-
-    std::expected<NAst::TExprPtr, TError> parsed;
-    std::vector<NAst::TPragma> mainPragmas;
-    if (coreInput) {
-        NAst::NCore::TTokenStream ts(in);
-        NAst::NCore::TParser p;
-        parsed = p.Parse(ts);
-        if (parsed) {
-            mainPragmas = std::move(p.Pragmas);
-        }
-    } else {
-        NAst::TTokenStream ts(in);
-        NAst::TParser p;
-        parsed = p.parse(ts, &r, &loader);
-        if (parsed) {
-            mainPragmas = ts.GetContext()->GetPragmas();
-        }
-    }
-    if (!parsed) {
-        return parsed;
-    }
-
-    if (modules.IncludeDebugRuntime) {
-        auto runtime = loader.Load("debug");
-        if (!runtime) {
-            return std::unexpected(runtime.error());
-        }
-        for (auto& stmt : NAst::TMaybeNode<NAst::TBlockExpr>((*runtime)->Ast).Cast()->Stmts) {
-            if (auto function = NAst::TMaybeNode<NAst::TFunDecl>(stmt)) {
-                function.Cast()->Used = true;
-            }
-        }
-    }
-
-    auto composed = NFrontend::LoadAndCompose(loader, *parsed, mainPragmas);
-    if (!composed) {
-        return std::unexpected(composed.error());
-    }
-    r.ApplyPragmas(composed->Pragmas);
-    return composed->Ast;
-}
-
-NTransform::TPipelineOptions PipelineOptions(bool coreInput) {
-    NTransform::TPipelineExtensions extensions;
-    if (coreInput) {
-        extensions.AfterTypeAnnotation.push_back(
-            NTransform::CoroutineAnnotationTransform);
-    } else {
-        extensions = NSemantics::NKumir::PipelineExtensions();
-    }
-    return NTransform::TPipelineOptions{.Extensions = std::move(extensions)};
+    return {
+        .CoreInput = coreInput,
+        // qumirc leaves name resolution to the transforms.
+        .ResolveCoreInput = false,
+        .ModuleSearchPaths = modules.Paths,
+        .ModuleFiles = modules.Files,
+        .IncludeDebugRuntime = modules.IncludeDebugRuntime,
+        .SourceFilePath = inputFile == "-"
+            ? ""
+            : inputFile,
+        .DebugOptions = debugOptions,
+    };
 }
 
 // Registers the standard module set into the resolver and keeps the instances
@@ -146,6 +93,34 @@ std::vector<std::shared_ptr<NRegistry::IModule>> SetupModules(
 
 void ConfigureWasmRuntime(NIR::TModule& module) {
     module.AsyncMode = "coroutine";
+}
+
+// Runs the frontend up to the IR module; prints the error on failure.
+bool LowerInput(NFrontend::TFrontend& frontend, std::istream& in, int targetBits) {
+    auto expected = frontend.Parse(in);
+    if (!expected.has_value()) {
+        std::cerr << expected.error().ToString() << std::endl;
+        return false;
+    }
+    auto ast = std::move(expected.value());
+
+    auto error = frontend.Transform(ast);
+    if (!error) {
+        std::cerr << error.error().ToString() << "\n";
+        return false;
+    }
+
+    // The IR layout depends on the pointer size, so it is set before lowering.
+    if (targetBits != 0) {
+        frontend.GetModule().Types.SetPointerSize(targetBits / 8);
+        ConfigureWasmRuntime(frontend.GetModule());
+    }
+    auto lowerResult = frontend.Lower(ast);
+    if (!lowerResult.has_value()) {
+        std::cerr << lowerResult.error().ToString() << "\n";
+        return false;
+    }
+    return true;
 }
 
 std::shared_ptr<std::istream> OpenInputFile(const std::string& filename) {
@@ -195,17 +170,17 @@ int GenerateAst(const std::string& inputFile, const std::string& outputFile, boo
         return 1;
     }
 
-    NSemantics::TNameResolver r;
-    auto modules = SetupModules(r, coreInput);
+    NFrontend::TFrontend frontend(FrontendOptions(inputFile, coreInput, moduleConfig));
+    auto modules = SetupModules(frontend.GetResolver(), coreInput);
 
-    auto expected = ParseInput(*in, r, coreInput, moduleConfig);
+    auto expected = frontend.Parse(*in);
     if (!expected.has_value()) {
         std::cerr << expected.error().ToString() << std::endl;
         return 1;
     }
     auto ast = std::move(expected.value());
     if (transformed) {
-        auto error = NTransform::Pipeline(ast, r, PipelineOptions(coreInput));
+        auto error = frontend.Transform(ast);
         if (!error) {
             std::cerr << error.error().ToString() << "\n";
             return 1;
@@ -233,41 +208,14 @@ int GenerateIr(const std::string& inputFile, const std::string& outputFile, int 
         return 1;
     }
 
-    NSemantics::TNameResolver r;
-    auto modules = SetupModules(r, coreInput);
-
-    auto expected = ParseInput(*in, r, coreInput, moduleConfig);
-    if (!expected.has_value()) {
-        std::cerr << expected.error().ToString() << std::endl;
+    NFrontend::TFrontend frontend(FrontendOptions(inputFile, coreInput, moduleConfig, debugOptions));
+    auto modules = SetupModules(frontend.GetResolver(), coreInput);
+    if (!LowerInput(frontend, *in, targetBits)) {
         return 1;
     }
-    auto ast = std::move(expected.value());
-
-    auto error = NTransform::Pipeline(ast, r, PipelineOptions(coreInput));
-    if (!error) {
-        std::cerr << error.error().ToString() << "\n";
-        return 1;
-    }
-
-    NIR::TModule module{
-        .SourceFilePath = inputFile == "-"
-            ? ""
-            : inputFile,
-    };
-    if (targetBits != 0) {
-        module.Types.SetPointerSize(targetBits / 8);
-        ConfigureWasmRuntime(module);
-    }
-    NIR::TBuilder builder(module);
-
-    NIR::TAstLowerer lowerer(module, builder, r, debugOptions);
-    auto lowerResult = lowerer.LowerTop(ast);
-    if (!lowerResult.has_value()) {
-        std::cerr << lowerResult.error().ToString() << "\n";
-        return 1;
-    }
+    auto& module = frontend.GetModule();
     if (optLevel > 0) {
-        NIR::NPasses::Pipeline(module);
+        frontend.Optimize();
     }
 
     auto out = OpenOutputFile(outputFile);
@@ -291,39 +239,12 @@ int GenerateLlvm(const std::string& inputFile, const std::string& outputFile, in
         return 1;
     }
 
-    NSemantics::TNameResolver r;
-    auto modules = SetupModules(r, coreInput);
-
-    auto expected = ParseInput(*in, r, coreInput, moduleConfig);
-    if (!expected.has_value()) {
-        std::cerr << expected.error().ToString() << std::endl;
+    NFrontend::TFrontend frontend(FrontendOptions(inputFile, coreInput, moduleConfig, debugOptions));
+    auto modules = SetupModules(frontend.GetResolver(), coreInput);
+    if (!LowerInput(frontend, *in, targetBits)) {
         return 1;
     }
-    auto ast = std::move(expected.value());
-
-    auto error = NTransform::Pipeline(ast, r, PipelineOptions(coreInput));
-    if (!error) {
-        std::cerr << error.error().ToString() << "\n";
-        return 1;
-    }
-
-    NIR::TModule module{
-        .SourceFilePath = inputFile == "-"
-            ? ""
-            : inputFile,
-    };
-    if (targetBits != 0) {
-        module.Types.SetPointerSize(targetBits / 8);
-        ConfigureWasmRuntime(module);
-    }
-    NIR::TBuilder builder(module);
-
-    NIR::TAstLowerer lowerer(module, builder, r, debugOptions);
-    auto lowerResult = lowerer.LowerTop(ast);
-    if (!lowerResult.has_value()) {
-        std::cerr << lowerResult.error().ToString() << "\n";
-        return 1;
-    }
+    auto& module = frontend.GetModule();
 
     NCodeGen::TLLVMCodeGenOptions cgOptions;
     if (targetBits != 0) {
@@ -470,46 +391,19 @@ int Generate(const std::string& inputFile, const std::string& outputFile, bool c
         return 1;
     }
 
-    NSemantics::TNameResolver r;
-    auto modules = SetupModules(r, coreInput);
-
-    auto expected = ParseInput(*in, r, coreInput, moduleConfig);
-    if (!expected.has_value()) {
-        std::cerr << expected.error().ToString() << std::endl;
+    NFrontend::TFrontend frontend(FrontendOptions(inputFile, coreInput, moduleConfig, debugOptions));
+    auto modules = SetupModules(frontend.GetResolver(), coreInput);
+    if (!LowerInput(frontend, *in, wasmBits)) {
         return 1;
     }
-    auto ast = std::move(expected.value());
-
-    auto error = NTransform::Pipeline(ast, r, PipelineOptions(coreInput));
-    if (!error) {
-        std::cerr << error.error().ToString() << "\n";
-        return 1;
-    }
-
-    NIR::TModule module{
-        .SourceFilePath = inputFile == "-"
-            ? ""
-            : inputFile,
-    };
-    if (wasmBits != 0) {
-        module.Types.SetPointerSize(wasmBits / 8);
-        ConfigureWasmRuntime(module);
-    }
-    NIR::TBuilder builder(module);
-
-    NIR::TAstLowerer lowerer(module, builder, r, debugOptions);
-    auto lowerResult = lowerer.LowerTop(ast);
-    if (!lowerResult.has_value()) {
-        std::cerr << lowerResult.error().ToString() << "\n";
-        return 1;
-    }
+    auto& module = frontend.GetModule();
     const bool hasCoroutines = std::any_of(module.Functions.begin(), module.Functions.end(),
         [](const NIR::TFunction& function) { return function.IsCoroutine; });
     // coro-split requires at least O1; bump automatically when coroutines are present
     const int effectiveOptLevel = (hasCoroutines && optLevel == 0) ? 1 : optLevel;
 
     if (effectiveOptLevel > 0 && !debugOptions.EmitDebugPoints) {
-        NIR::NPasses::Pipeline(module);
+        frontend.Optimize();
     }
 
     NCodeGen::TLLVMCodeGenOptions cgOpts;
