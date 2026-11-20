@@ -4,6 +4,7 @@
 #include <llvm/Config/llvm-config.h>
 #include <llvm/IR/Module.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/ExecutionEngine/Orc/ObjectFileInterface.h>
 #include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/Support/TargetSelect.h>
@@ -293,6 +294,73 @@ std::optional<TEntryInfo> PrepareRunEntry(llvm::Module& module, const std::strin
     return info;
 }
 
+// PrepareRunEntry for an object: the entry signature as the codegen lowers its IR types.
+std::optional<TEntryInfo> PrepareObjectEntry(
+    const NIR::TModule& module,
+    const NIR::TFunction& entry,
+    std::string* error)
+{
+    if (!entry.ArgLocals.empty()) {
+        if (error) {
+            *error = "function requires arguments (unsupported)";
+        }
+        return std::nullopt;
+    }
+    TEntryInfo info;
+    info.Name = entry.Name;
+    // Untyped is i64.
+    auto kind = entry.ReturnTypeId < 0
+        ? EKind::I64
+        : module.Types.GetKind(entry.ReturnTypeId);
+    switch (kind) {
+        case EKind::Void:
+            info.ReturnKind = EReturnKind::Void;
+            break;
+        case EKind::I1:
+            info.ReturnKind = EReturnKind::Bool;
+            break;
+        case EKind::I8:
+        case EKind::U8:
+            info.ReturnKind = EReturnKind::Integer;
+            info.IntegerBits = 8;
+            break;
+        case EKind::I16:
+        case EKind::U16:
+            info.ReturnKind = EReturnKind::Integer;
+            info.IntegerBits = 16;
+            break;
+        case EKind::I32:
+        case EKind::U32:
+            info.ReturnKind = EReturnKind::Integer;
+            info.IntegerBits = 32;
+            break;
+        case EKind::I64:
+        case EKind::U64:
+        case EKind::Func:
+            info.ReturnKind = EReturnKind::Integer;
+            info.IntegerBits = 64;
+            break;
+        case EKind::I128:
+        case EKind::U128:
+            info.ReturnKind = EReturnKind::Integer;
+            info.IntegerBits = 128;
+            break;
+        case EKind::F32:
+            info.ReturnKind = EReturnKind::Float;
+            break;
+        case EKind::F64:
+            info.ReturnKind = EReturnKind::Double;
+            break;
+        case EKind::Ptr:
+            info.ReturnKind = EReturnKind::Pointer;
+            break;
+        default:
+            info.ReturnKind = EReturnKind::Unsupported;
+            break;
+    }
+    return info;
+}
+
 } // namespace
 
 #ifdef __APPLE__
@@ -473,6 +541,74 @@ static std::optional<void*> RunPromisePtrFunction(
     return result;
 }
 
+// Runs the module constructor, the entry and the module destructor of loaded code.
+static std::optional<std::string> RunLoadedEntry(
+    llvm::orc::LLJIT& jit,
+    const TEntryInfo& entry,
+    bool returnTypeIsString,
+    const std::function<std::optional<std::string>(const void*)>& coroutineResultFormatter,
+    std::string* runError)
+{
+    if (!RunVoidFunctionIfPresent(jit, entry.ConstructorName, runError)) {
+        return std::nullopt;
+    }
+
+    auto processEvents = [&]() {
+        size_t processed = 0;
+        processed += NRuntime::robot_process_events();
+        processed += NRuntime::turtle_process_events();
+        processed += NRuntime::drawer_process_events();
+        processed += NRuntime::painter_process_events();
+        processed += NRuntime::io_process_events();
+        return processed;
+    };
+
+    if (entry.IsCoroutineModule) {
+        void* handle = RunCoroutineEntry(jit, entry.Name, runError);
+        if (!handle) {
+            return std::nullopt;
+        }
+        // Wrap the raw coro frame in ITypeErasedFuture* and use the public
+        // __qumir_future_* API for the event loop. This avoids any dependency
+        // on the __qumir_coro_* LLVM-intrinsic wrappers.
+        ITypeErasedFuture* future = __qumir_wrap_coro(handle, 0);
+
+        while (!__qumir_future_done(future)) {
+            size_t processed = processEvents();
+            assert(processed > 0 && "coroutine suspended with no pending async events");
+            if (!__qumir_future_done(future)) {
+                __qumir_future_resume(future);
+            }
+        }
+        // Flush any remaining batched calls (e.g. painter drawing commands).
+        processEvents();
+
+        std::optional<std::string> result;
+        if (coroutineResultFormatter && !entry.CoroutinePromisePtrName.empty()) {
+            auto promisePtr = RunPromisePtrFunction(jit, entry.CoroutinePromisePtrName, handle, runError);
+            if (promisePtr) {
+                result = coroutineResultFormatter(*promisePtr);
+            }
+        }
+
+        __qumir_future_destroy(future);
+
+        if (!RunVoidFunctionIfPresent(jit, entry.DestructorName, runError)) {
+            return std::nullopt;
+        }
+        return result;
+    }
+
+    auto result = RunEntryFunction(jit, entry, returnTypeIsString, runError);
+    if (!runError->empty()) {
+        return std::nullopt;
+    }
+    if (!RunVoidFunctionIfPresent(jit, entry.DestructorName, runError)) {
+        return std::nullopt;
+    }
+    return result;
+}
+
 TLlvmRunner::TLlvmRunner(TLlvmRunnerOptions options)
     : Options_(std::move(options))
 {
@@ -518,64 +654,66 @@ std::optional<std::string> TLlvmRunner::Run(
         return std::nullopt;
     }
 
-    if (!RunVoidFunctionIfPresent(*jit, entry->ConstructorName, runError)) {
+    return RunLoadedEntry(*jit, *entry, returnTypeIsString, coroutineResultFormatter, runError);
+}
+
+std::optional<std::string> TLlvmRunner::RunObject(
+    const std::string& object,
+    const NIR::TModule& module,
+    const NIR::TFunction& entry,
+    std::string* error,
+    std::function<std::optional<std::string>(const void*)> coroutineResultFormatter)
+{
+    if (error) {
+        error->clear();
+    }
+    std::string localError;
+    auto* runError = error ? error : &localError;
+
+    auto info = PrepareObjectEntry(module, entry, runError);
+    if (!info) {
         return std::nullopt;
     }
 
-    auto processEvents = [&]() {
-        size_t processed = 0;
-        processed += NRuntime::robot_process_events();
-        processed += NRuntime::turtle_process_events();
-        processed += NRuntime::drawer_process_events();
-        processed += NRuntime::painter_process_events();
-        processed += NRuntime::io_process_events();
-        return processed;
+    InitializeNativeJitTarget();
+
+    // Make symbols from the current process available to the JIT. On Linux,
+    // this requires the executable to be linked with -rdynamic as well.
+    llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+
+    // The JIT only links the object, so its target machine settings do not matter.
+    auto jit = CreateOrcJit(/*nativeCode=*/false, Options_.EnablePerfJitEventListener, runError);
+    if (!jit) {
+        return std::nullopt;
+    }
+    auto buffer = llvm::MemoryBuffer::getMemBufferCopy(object, "qumir-module");
+    auto symbols = TakeExpected(
+        llvm::orc::getObjectFileInterface(jit->getExecutionSession(), buffer->getMemBufferRef()),
+        runError);
+    if (!symbols) {
+        return std::nullopt;
+    }
+    if (auto err = jit->addObjectFile(std::move(buffer))) {
+        *runError = ToString(std::move(err));
+        return std::nullopt;
+    }
+
+    // The symbol table is read without linking, so link errors still come
+    // from the first lookup, as in Run().
+    auto defines = [&](const std::string& name) {
+        return symbols->SymbolFlags.count(jit->mangleAndIntern(name)) != 0;
     };
-
-    if (entry->IsCoroutineModule) {
-        void* handle = RunCoroutineEntry(*jit, entry->Name, runError);
-        if (!handle) {
-            return std::nullopt;
-        }
-        // Wrap the raw coro frame in ITypeErasedFuture* and use the public
-        // __qumir_future_* API for the event loop. This avoids any dependency
-        // on the __qumir_coro_* LLVM-intrinsic wrappers.
-        ITypeErasedFuture* future = __qumir_wrap_coro(handle, 0);
-
-        while (!__qumir_future_done(future)) {
-            size_t processed = processEvents();
-            assert(processed > 0 && "coroutine suspended with no pending async events");
-            if (!__qumir_future_done(future)) {
-                __qumir_future_resume(future);
-            }
-        }
-        // Flush any remaining batched calls (e.g. painter drawing commands).
-        processEvents();
-
-        std::optional<std::string> result;
-        if (coroutineResultFormatter && !entry->CoroutinePromisePtrName.empty()) {
-            auto promisePtr = RunPromisePtrFunction(*jit, entry->CoroutinePromisePtrName, handle, runError);
-            if (promisePtr) {
-                result = coroutineResultFormatter(*promisePtr);
-            }
-        }
-
-        __qumir_future_destroy(future);
-
-        if (!RunVoidFunctionIfPresent(*jit, entry->DestructorName, runError)) {
-            return std::nullopt;
-        }
-        return result;
+    if (defines("$$module_constructor")) {
+        info->ConstructorName = "$$module_constructor";
     }
-
-    auto result = RunEntryFunction(*jit, *entry, returnTypeIsString, runError);
-    if (!runError->empty()) {
-        return std::nullopt;
+    if (defines("$$module_destructor")) {
+        info->DestructorName = "$$module_destructor";
     }
-    if (!RunVoidFunctionIfPresent(*jit, entry->DestructorName, runError)) {
-        return std::nullopt;
+    if (defines("__qumir_coro_promise_ptr")) {
+        info->CoroutinePromisePtrName = "__qumir_coro_promise_ptr";
     }
-    return result;
+    info->IsCoroutineModule = defines("__qumir_is_coroutine");
+    return RunLoadedEntry(*jit, *info, entry.ReturnTypeIsString, coroutineResultFormatter, runError);
 }
 
 void* TLlvmRunner::Lookup(

@@ -32,6 +32,15 @@ public:
         bool returnTypeIsString = false /* TODO: remove me, clutch: support string returnType */,
         std::function<std::optional<std::string>(const void*)> coroutineResultFormatter = {});
 
+    // Run() for a relocatable object of the host from any backend: the entry
+    // signature comes from the IR, the module hooks from the object symbols.
+    std::optional<std::string> RunObject(
+        const std::string& object,
+        const NIR::TModule& module,
+        const NIR::TFunction& entry,
+        std::string* error = nullptr,
+        std::function<std::optional<std::string>(const void*)> coroutineResultFormatter = {});
+
     // Compiles the module via JIT and returns a function pointer by name.
     // The pointer is valid for the lifetime of this TLlvmRunner.
     void* Lookup(

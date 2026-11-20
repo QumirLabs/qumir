@@ -52,6 +52,7 @@ add_library(qumir
     runner/runner_ir.cpp
     runner/runner_llvm.h
     runner/runner_llvm.cpp
+    codegen/backend.h
     ir/lowering/lower_ast.h
     ir/lowering/lower_ast.cpp
     ir/lowering/debug_point_emitter.cpp

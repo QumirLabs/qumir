@@ -15,6 +15,7 @@
 #include <qumir/modules/keyboard/keyboard.h>
 #include <qumir/frontend/compose.h>
 #include <qumir/frontend/source_module_loader.h>
+#include <qumir/codegen/llvm/llvm_backend.h>
 
 #include <algorithm>
 #include <cstring>
@@ -53,6 +54,14 @@ NFrontend::TFrontendOptions FrontendOptions(const TLLVMRunnerOptions& options) {
 TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options)
     : TFrontend(FrontendOptions(options))
     , Options(std::move(options))
+    // Run() loads the object into this process, so it targets the host
+    // whatever TargetTriple says; TargetTriple is for the kernel objects.
+    , Backend_(std::make_unique<NCodeGen::TLLVMBackend>(NCodeGen::TLLVMBackendOptions{
+        .NativeCode = Options.NativeCode,
+        .OptLevel = Options.OptLevel,
+        .PrintLlvm = Options.PrintLlvm,
+        .PrintAsm = Options.PrintAsm,
+    }))
     , LlvmRunner_({
         .EnablePerfJitEventListener = Options.EnablePerfJitEventListener,
     })
@@ -121,32 +130,9 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
         return std::unexpected(compiled.error());
     }
 
-    NCodeGen::TLLVMCodeGen cg({
-        .NativeCode = Options.NativeCode,
-        .TargetTriple = Options.TargetTriple,
-    });
-    std::string err;
-    std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> artifacts;
-    try {
-        artifacts = cg.Emit(Module, Options.OptLevel);
-    } catch (const std::exception& e) {
-        return std::unexpected(TError({}, std::string("llvm codegen error: ") + e.what()));
-    }
-
-    if (Options.PrintLlvm) {
-        std::cerr << "=========== LLVM: ==========\n";
-        for (const auto& function : Module.Functions) {
-            if (PrintedLLVMChunks.insert(function.UniqueId).second) {
-                cg.PrintFunction(function.SymId, std::cerr);
-            }
-        }
-        std::cerr << "============================\n\n";
-    }
-
-    if (Options.PrintAsm) {
-        std::cerr << "=========== ASM: ===========\n";
-        artifacts->Generate(std::cerr, /*generateAsm=*/true, /*generateObj=*/false);
-        std::cerr << "============================\n\n";
+    auto object = Backend_->EmitObject(Module, NCodeGen::EObjectUse::Load);
+    if (!object) {
+        return std::unexpected(object.error());
     }
 
     auto* mainFun = Module.GetEntryPoint();
@@ -154,7 +140,7 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
         return std::unexpected(TError({}, std::string("entry point not found")));
     }
 
-    // Run via LLVM JIT
+    // Link the object into this process with the ORC JIT and run it
     NCodeGen::TLlvmRunner runner({
         .EnablePerfJitEventListener = Options.EnablePerfJitEventListener,
     });
@@ -177,11 +163,11 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
                 return out.str();
             };
         }();
-        auto res = runner.Run(
-            std::move(artifacts),
-            mainFun->Name,
+        auto res = runner.RunObject(
+            *object,
+            Module,
+            *mainFun,
             &runErr,
-            mainFun->ReturnTypeIsString,
             std::move(coroutineResultFormatter));
         if (!runErr.empty()) {
             return std::unexpected(TError({}, std::string("llvm run error: ") + runErr));

@@ -8,6 +8,8 @@
 #include <qumir/ir/builder.h>
 #include <qumir/semantics/name_resolution/name_resolver.h>
 #include <qumir/frontend/frontend.h>
+#include <qumir/codegen/llvm/llvm_asm_printer.h>
+#include <qumir/codegen/llvm/llvm_backend.h>
 #include <qumir/codegen/llvm/llvm_codegen.h>
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/modules/builtins/builtins.h>
@@ -406,22 +408,25 @@ int Generate(const std::string& inputFile, const std::string& outputFile, bool c
         frontend.Optimize();
     }
 
-    NCodeGen::TLLVMCodeGenOptions cgOpts;
+    NCodeGen::TLLVMBackendOptions backendOptions{
+        .OptLevel = effectiveOptLevel,
+    };
     if (wasmBits == 32) {
-        cgOpts.TargetTriple = "wasm32-unknown-unknown";
+        backendOptions.TargetTriple = "wasm32-unknown-unknown";
     } else if (wasmBits == 64) {
-        cgOpts.TargetTriple = "wasm64-unknown-unknown";
+        backendOptions.TargetTriple = "wasm64-unknown-unknown";
     }
-    NCodeGen::TLLVMCodeGen cg(cgOpts);
-    auto artifacts = cg.Emit(module, effectiveOptLevel);
-    if (!artifacts) {
-        std::cerr << "Codegen error " << "\n";
+    NCodeGen::TLLVMBackend backend(backendOptions);
+    auto code = generateAsm
+        ? backend.EmitAsm(module)
+        : backend.EmitObject(module, NCodeGen::EObjectUse::Link);
+    if (!code) {
+        std::cerr << code.error().ToString() << "\n";
         return 1;
     }
 
     // Special path: when targeting wasm and linking, produce a final .wasm via wasm-ld
     if (wasmBits != 0 && !generateAsm && !compileOnly) {
-        // TODO: move to ->Generate
         const std::string objTmp = outputFile + ".tmp.o";
         {
             std::ofstream objFile(objTmp, std::ios::binary);
@@ -429,7 +434,7 @@ int Generate(const std::string& inputFile, const std::string& outputFile, bool c
                 std::cerr << "Failed to open temp object file: " << objTmp << "\n";
                 return 1;
             }
-            artifacts->Generate(objFile, /*asm*/false, /*obj*/true);
+            objFile.write(code->data(), static_cast<std::streamsize>(code->size()));
         }
         std::string cmd = std::string("wasm-ld --no-entry --export-all --allow-undefined ")
             + (wasmBits == 64 ? "-mwasm64 " : "") + "-o " + outputFile + " " + objTmp;
@@ -447,7 +452,12 @@ int Generate(const std::string& inputFile, const std::string& outputFile, bool c
         std::cerr << "Failed to open output file: " << outputFile << "\n";
         return 1;
     }
-    artifacts->Generate(*outFile, generateAsm, compileOnly && !generateAsm);
+    if (compileOnly) {
+        outFile->write(code->data(), static_cast<std::streamsize>(code->size()));
+        outFile->flush();
+    } else {
+        NCodeGen::LinkExecutable(*code, *outFile);
+    }
     return 0;
 }
 
