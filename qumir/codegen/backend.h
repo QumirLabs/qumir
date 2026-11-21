@@ -23,10 +23,9 @@ enum class EObjectUse {
     Load,
 };
 
-// Code generator from a Qumir IR module to machine code for one target. The
-// object defines the functions of the module and leaves runtime and registry
-// module symbols undefined; with coroutines it also defines
-// `__qumir_is_coroutine` and `__qumir_coro_promise_ptr`.
+// Qumir IR module to machine code for one target. The object leaves runtime
+// and registry symbols undefined; with coroutines it defines the two
+// `__qumir_*` coroutine helpers.
 class ICodegenBackend {
 public:
     virtual ~ICodegenBackend() = default;
