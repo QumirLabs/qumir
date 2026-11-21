@@ -295,6 +295,10 @@ bool ReadsBackAs(const std::string& text, size_t prefix, const std::string& name
 // True if the tokenizer reads `name` back as one identifier both right after "(" and in a
 // non-head position (the lexer reads "<<", "<=", ">=", ">>" differently in the two).
 bool IsSingleIdentifier(const std::string& name) {
+    // Reading back runs the tokenizer twice per printed name; plain names do not need it.
+    if (IsPlainIdentifier(name)) {
+        return true;
+    }
     return ReadsBackAs("(" + name + ")", 0, name) && ReadsBackAs("(x " + name + ")", 1, name);
 }
 

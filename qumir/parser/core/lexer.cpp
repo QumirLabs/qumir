@@ -233,6 +233,7 @@ Escapes:
 
 #include <qumir/parser/operator.h>
 
+#include <algorithm>
 #include <cctype>
 #include <optional>
 #include <stdexcept>
@@ -288,6 +289,11 @@ bool IsIdentContinue(char ch) {
 }
 
 } // namespace
+
+bool IsPlainIdentifier(std::string_view name) {
+    return !name.empty() && IsIdentStart(name.front())
+        && std::ranges::all_of(name.substr(1), IsIdentContinue);
+}
 
 TTokenStream::TTokenStream(std::istream& in)
     : ITokenStream(in)
