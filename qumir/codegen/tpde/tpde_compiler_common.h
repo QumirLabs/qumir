@@ -1249,6 +1249,29 @@ struct TCompilerCommon
             : this->encode_bitcasti32tof32(std::move(p), out);
     }
 
+    // A vector part holds one lane, so a bitcast of a vector goes through a
+    // frame slot: the lanes of one width are stored and the parts of the other
+    // type are loaded, little-endian. Bool lanes are stored as bytes 0 and 1.
+    bool BitcastInMemory(ValueRef& ar, int from, int to, ValueRef& res) {
+        int size = Module.Types.SizeInBytes(to);
+        if (IsAgg(from) || IsAgg(to) || Module.Types.SizeInBytes(from) != size) {
+            return false;
+        }
+        u32 slotSize = std::max(8, (size + 7) & ~7);
+        i32 slot = this->allocate_stack_slot(slotSize);
+        ValuePartRef base = D().FrameAddress(slot);
+        AsmReg b = base.cur_reg_or_load();
+        const auto& parts = LayoutOf(from).Parts;
+        for (u32 i = 0; i < parts.size(); ++i) {
+            if (!StoreScalar(Expr(b, parts[i].Offset), parts[i].Type, ar.part(i))) {
+                return false;
+            }
+        }
+        bool ok = LoadValue(std::move(base), to, res);
+        this->free_stack_slot(slot, slotSize);
+        return ok;
+    }
+
     // mov, i2f and bitcast.
     bool CompileConvert(const TInstRec& rec) {
         const auto op = rec.Instr->Op;
@@ -1267,6 +1290,9 @@ struct TCompilerCommon
                 res.part(i).set_value(ar.part(i));
             }
             return true;
+        }
+        if (op == "bitcast"_op && (IsVec(from) || IsVec(to))) {
+            return BitcastInMemory(ar, from, to, res);
         }
         if (IsVec(to) && IsVec(from)) {
             // Lane-wise cast with the element signedness.

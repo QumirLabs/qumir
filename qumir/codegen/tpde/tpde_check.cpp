@@ -47,6 +47,9 @@ struct TChecker {
     bool IsAggregate(int type) const {
         return Layout(type).Kind == TLayout::Aggregate;
     }
+    bool SameSize(int a, int b) const {
+        return Info.Module.Types.SizeInBytes(a) == Info.Module.Types.SizeInBytes(b);
+    }
 
     bool HasVector(int type) const {
         const auto& tt = Info.Module.Types;
@@ -257,6 +260,7 @@ struct TChecker {
                 if (
                     (aggRes || vecRes || IsAggregate(opType(0)) || IsVector(opType(0))) &&
                     !(vecRes && IsVector(opType(0)) && instr.Op == "mov"_op) &&
+                    !(instr.Op == "bitcast"_op && !aggRes && !IsAggregate(opType(0)) && SameSize(res, opType(0))) &&
                     opType(0) != res)
                 {
                     Bad(name + " of " + TypeKind(aggRes || vecRes ? res : opType(0)));
