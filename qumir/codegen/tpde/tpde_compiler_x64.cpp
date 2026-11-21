@@ -9,6 +9,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <bit>
 #include "tpde_backend.h"
 #include "tpde_check.h"
 #include "tpde_compiler_common.h"
@@ -33,14 +34,53 @@ struct TConfig : tpde::x64::PlatformConfig {
     static constexpr bool DEFAULT_VAR_REF_HANDLING = false;
 };
 
+// System V: a struct that does not fit in the registers left goes to the
+// stack whole, while the registers stay free for the arguments after it.
+// CCAssignerSysV takes the pieces one by one, so BeginCStruct tells it
+// how many registers of each file the next struct needs.
+class TAssignerX64 : public tpde::x64::CCAssignerSysV {
+public:
+    void reset() override {
+        CCAssignerSysV::reset();
+        GpUsed = FpUsed = StackPieces = 0;
+    }
+
+    void BeginCStruct(u32 gp, u32 fp) {
+        if (GpUsed + gp > GpArgRegs || FpUsed + fp > FpArgRegs) {
+            StackPieces = gp + fp;
+        }
+    }
+
+    void assign_arg(tpde::CCAssignment& arg) override {
+        auto bank = arg.bank;
+        if (StackPieces) {
+            // A bank without registers: the base class puts the piece on the stack.
+            --StackPieces;
+            arg.bank = tpde::RegBank{2};
+        }
+        CCAssignerSysV::assign_arg(arg);
+        arg.bank = bank;
+        if (arg.reg.valid()) {
+            ++(bank == TConfig::GP_BANK ? GpUsed : FpUsed);
+        }
+    }
+
+private:
+    // The argument registers of the base assigner: the general ones are the
+    // low 16 bits of the mask, the XMM ones start at bit 32.
+    static constexpr u32 GpArgRegs = std::popcount(Info.arg_regs & 0xFFFF);
+    static constexpr u32 FpArgRegs = std::popcount(Info.arg_regs >> 32);
+    u32 GpUsed = 0, FpUsed = 0, StackPieces = 0;
+};
+
 struct TCompilerX64;
 using TBaseX64 = tpde::x64::CompilerX64<TAdaptor, TCompilerX64, tpde::CompilerBase, TConfig>;
 using TEncodeX64 = tpde_encodegen::EncodeCompiler<TAdaptor, TCompilerX64, tpde::CompilerBase, TConfig>;
 
 struct TCompilerX64
-    : TCompilerCommon<TCompilerX64, TBaseX64, TEncodeX64, TConfig, tpde::x64::CCAssignerSysV>
+    : TCompilerCommon<TCompilerX64, TBaseX64, TEncodeX64, TConfig, TAssignerX64>
 {
-    using TCommon = TCompilerCommon<TCompilerX64, TBaseX64, TEncodeX64, TConfig, tpde::x64::CCAssignerSysV>;
+    using TCommon = TCompilerCommon<TCompilerX64, TBaseX64, TEncodeX64, TConfig, TAssignerX64>;
 
     explicit TCompilerX64(TAdaptor* adaptor)
         : TCommon(adaptor)
@@ -50,8 +90,7 @@ struct TCompilerX64
     // System V returns values in up to 2 general and 2 FP registers.
     static constexpr TReturnLimits ReturnLimits{.Gp = 2, .Fp = 2};
     static constexpr u64 ByteMatchBackend = 2; // SSE2
-    // TODO: classify structs for external calls by System V.
-    static constexpr bool CStructs = false;
+    static constexpr bool CStructs = true;
 
     static Jump CondEq() {
         return Jump::je;
@@ -158,8 +197,8 @@ struct TCompilerX64
     // Zero-fills [BP + off, BP + off + size).
     void ZeroFrame(u32 off, u32 size) {
         if (size > InlineMemoryBytes) {
-            ValuePartRef addr(this, TConfig::GP_BANK);
-            AsmReg r = addr.alloc_reg();
+            AsmReg r;
+            auto addr = SizedTemp(8, TConfig::GP_BANK, r);
             ASM(LEA64rm, r, FE_MEM(FE_BP, 0, FE_NOREG, i32(off)));
             tpde::x64::CCAssignerSysV assigner;
             CallBuilder cb(*this, assigner);
@@ -196,6 +235,53 @@ struct TCompilerX64
         this->StoreOff(AsmReg{AsmReg::BP}, i32(frameOff), reg, size);
     }
 
+    ValuePartRef FrameAddress(u32 frameOff) {
+        AsmReg r;
+        auto addr = SizedTemp(8, TConfig::GP_BANK, r);
+        ASM(LEA64rm, r, FE_MEM(FE_BP, 0, FE_NOREG, i32(frameOff)));
+        return addr;
+    }
+
+    // Copies the frame slot to the next place in the stack argument area. The
+    // area is addressed from SP, so it is written before the call.
+    void PassByval(TAssignerX64& assigner, i32 frameOff, u32 size, u32 align) {
+        tpde::CCAssignment cca{.byval = true, .align = u8(std::max(align, 8u)), .size = size};
+        assigner.assign_arg(cca);
+        ScratchReg tmp(this);
+        AsmReg t = tmp.alloc_gp();
+        for (u32 pos = 0; pos < size; pos += 8) {
+            this->LoadOff(t, AsmReg{AsmReg::BP}, frameOff + i32(pos), 8);
+            this->StoreOff(AsmReg{AsmReg::SP}, i32(cca.stack_off + pos), t, 8);
+        }
+    }
+
+    // System V: a struct of up to 16 bytes goes by eightbytes, in an FP
+    // register if all fields in the eightbyte are floats or doubles and in a
+    // general one otherwise, a larger struct in memory.
+    TCStruct ClassifyCStruct(int type) const {
+        const auto& parts = LayoutOf(type).Parts;
+        int size = Module.Types.SizeInBytes(type);
+        TCStruct abi{.Align = u32(Module.Types.AlignInBytes(type))};
+        if (size > 16) {
+            abi.Memory = abi.Byval = true;
+            return abi;
+        }
+        for (int off = 0; off < size; off += 8) {
+            const TPartDesc* first = nullptr;
+            bool fp = true;
+            for (const auto& p : parts) {
+                if (p.Offset < off + 8 && p.Offset + p.Size > off) {
+                    first = first ? first : &p;
+                    fp = fp && p.Fp;
+                }
+            }
+            if (first) {
+                abi.Pieces.push_back({u32(off), u8(fp ? std::min(8, size - off) : 8), fp, fp ? first->Type : Info.I64});
+            }
+        }
+        return abi;
+    }
+
     // Calls fn with each part of the struct `vr` points to.
     template <typename TFn>
     void ForEachAggPart(ValueRef& vr, const TLayout& layout, TFn&& fn) {
@@ -206,8 +292,11 @@ struct TCompilerX64
                 : TConfig::GP_BANK;
             auto p = SizedTemp(d.Size, bank, reg);
             // Passing the previous part may have moved the pointer: read it again.
-            auto ptr = vr.part_unowned(0);
-            this->LoadOff(reg, ptr.cur_reg_or_load(), d.Offset, d.Size);
+            {
+                // Unlocked before fn: the part may go to the register that holds the pointer.
+                auto ptr = vr.part_unowned(0);
+                this->LoadOff(reg, ptr.cur_reg_or_load(), d.Offset, d.Size);
+            }
             fn(std::move(p));
         }
     }

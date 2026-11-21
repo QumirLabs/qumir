@@ -39,11 +39,16 @@ namespace NTpde {
 // and, where CStructs holds:
 //   TCStruct ClassifyCStruct(int type)
 //   ValuePartRef FrameAddress(u32 frameOff)
+//   void PassByval(TAssigner&, i32 frameOff, u32 size, u32 align)  (for TCStruct::Byval)
+// A platform whose assigner has BeginCStruct(gp, fp) is told how many general
+// and FP registers the pieces of a struct take, before the pieces.
 
 // How the C ABI passes a struct: one register per piece, or in memory (a
 // pointer to a copy as an argument, a buffer the caller passes as a result).
 struct TCStruct {
     bool Memory = false;
+    // In memory as an argument: the callee gets the copy on the stack, not a pointer.
+    bool Byval = false;
     // Alignment of the first piece: 16 takes an even register pair.
     u32 Align = 0;
     std::vector<TPartDesc> Pieces;
@@ -1466,18 +1471,30 @@ struct TCompilerCommon
         return StoreValue(D().FrameAddress(c.Slot), v, type, true);
     }
 
-    bool AddCArg(CallBuilder& cb, EValueRef v, int type, const TCValue& c) {
+    bool AddCArg(CallBuilder& cb, TAssigner& assigner, EValueRef v, int type, const TCValue& c) {
         const auto& abi = c.Abi;
+        // Only a platform that has PassByval can classify a struct as Byval.
+        if constexpr (requires { D().PassByval(assigner, c.Slot, u32(0), abi.Align); }) {
+            if (abi.Byval) {
+                D().PassByval(assigner, c.Slot, Module.Types.SizeInBytes(type), abi.Align);
+                return true;
+            }
+        }
         if (abi.Memory) {
             cb.add_arg(D().FrameAddress(c.Slot), tpde::CCAssignment{});
             return true;
+        }
+        constexpr bool counted = requires { assigner.BeginCStruct(0, 0); };
+        if constexpr (counted) {
+            u32 fp = std::ranges::count_if(abi.Pieces, [](const TPartDesc& p) { return p.Fp; });
+            assigner.BeginCStruct(abi.Pieces.size() - fp, fp);
         }
         // The pieces go to consecutive registers or all to the stack.
         u32 n = abi.Pieces.size();
         u32 k = 0;
         auto add = [&](ValuePartRef&& p) {
             cb.add_arg(std::move(p), tpde::CCAssignment{
-                .consecutive = u8(n - 1 - k),
+                .consecutive = u8(counted ? 0 : n - 1 - k),
                 .align = u8(k == 0 ? abi.Align : 0),
             });
             ++k;
@@ -1597,7 +1614,7 @@ struct TCompilerCommon
             int to = params[i];
             if constexpr (TDerived::CStructs) {
                 if (cArgs[i]) {
-                    if (!AddCArg(cb, args[i], to, *cArgs[i])) {
+                    if (!AddCArg(cb, assigner, args[i], to, *cArgs[i])) {
                         return false;
                     }
                     continue;
