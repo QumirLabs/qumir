@@ -20,6 +20,7 @@
 #include <bit>
 #include <exception>
 #include <optional>
+#include <set>
 #include <unordered_set>
 
 namespace NQumir {
@@ -39,11 +40,14 @@ bool IsTerminator(TOp op) {
 struct TChecker {
     TModuleInfo& Info;
     std::optional<std::string> Error;
+    // Experiment: every distinct construct of the module, to rank what to support first.
+    std::set<std::string> All;
 
     void Bad(const std::string& what) {
         if (!Error) {
             Error = what;
         }
+        All.insert(what);
     }
 
     const TTypeShape& Shape(int type) const {
@@ -2102,14 +2106,18 @@ struct TCompilerA64
 };
 
 std::optional<std::string> FindUnsupported(TModuleInfo& info) {
-    TChecker checker{info, std::nullopt};
+    TChecker checker{info, std::nullopt, {}};
     for (const auto& fun : info.Module.Functions) {
         checker.Function(fun);
-        if (checker.Error) {
-            break;
-        }
     }
-    return checker.Error;
+    if (!checker.Error) {
+        return std::nullopt;
+    }
+    std::string all;
+    for (const auto& what : checker.All) {
+        all += all.empty() ? what : " | " + what;
+    }
+    return all;
 }
 
 } // namespace
