@@ -51,12 +51,12 @@ NFrontend::TFrontendOptions FrontendOptions(const TLLVMRunnerOptions& options) {
 
 } // namespace
 
-TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options)
+TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options, std::unique_ptr<NCodeGen::ICodegenBackend> backend)
     : TFrontend(FrontendOptions(options))
     , Options(std::move(options))
-    // Run() loads the object into this process, so it targets the host
-    // whatever TargetTriple says; TargetTriple is for the kernel objects.
-    , Backend_(std::make_unique<NCodeGen::TLLVMBackend>(NCodeGen::TLLVMBackendOptions{
+    // Run() loads the object into this process, so the default targets the
+    // host whatever TargetTriple says; TargetTriple is for the kernel objects.
+    , Backend_(backend ? std::move(backend) : std::make_unique<NCodeGen::TLLVMBackend>(NCodeGen::TLLVMBackendOptions{
         .NativeCode = Options.NativeCode,
         .OptLevel = Options.OptLevel,
         .PrintLlvm = Options.PrintLlvm,

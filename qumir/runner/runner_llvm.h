@@ -61,7 +61,8 @@ public:
         std::string KernelObject;
     };
 
-    TLLVMRunner(TLLVMRunnerOptions options = {});
+    // The host picks the codegen backend of Run(); null means TLLVMBackend.
+    TLLVMRunner(TLLVMRunnerOptions options = {}, std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr);
 
     void RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import = false);
 
