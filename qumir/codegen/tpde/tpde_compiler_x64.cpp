@@ -9,6 +9,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <bit>
 #include "tpde_backend.h"
 #include "tpde_check.h"
 #include "tpde_compiler_common.h"
@@ -45,7 +46,7 @@ public:
     }
 
     void BeginCStruct(u32 gp, u32 fp) {
-        if (GpUsed + gp > 6 || FpUsed + fp > 8) {
+        if (GpUsed + gp > GpArgRegs || FpUsed + fp > FpArgRegs) {
             StackPieces = gp + fp;
         }
     }
@@ -65,6 +66,10 @@ public:
     }
 
 private:
+    // The argument registers of the base assigner: the general ones are the
+    // low 16 bits of the mask, the XMM ones start at bit 32.
+    static constexpr u32 GpArgRegs = std::popcount(Info.arg_regs & 0xFFFF);
+    static constexpr u32 FpArgRegs = std::popcount(Info.arg_regs >> 32);
     u32 GpUsed = 0, FpUsed = 0, StackPieces = 0;
 };
 
