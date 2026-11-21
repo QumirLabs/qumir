@@ -98,15 +98,9 @@ struct TCompilerA64
     // Zero-fills [FP + off, FP + off + size).
     void ZeroFrame(u32 off, u32 size) {
         if (size > InlineMemoryBytes) {
-            ValuePartRef addr(this, TConfig::GP_BANK);
-            AsmReg r = addr.alloc_reg();
-            if (!ASMIF(ADDxi, r, AsmReg{AsmReg::FP}, off)) {
-                this->materialize_constant(u64(off), TConfig::GP_BANK, 8, r);
-                ASM(ADDx, r, r, AsmReg{AsmReg::FP});
-            }
             tpde::a64::CCAssignerAAPCS assigner;
             CallBuilder cb(*this, assigner);
-            cb.add_arg(std::move(addr), tpde::CCAssignment{});
+            cb.add_arg(FrameAddress(off), tpde::CCAssignment{});
             cb.add_arg(ValuePart(u64(0), 4, TConfig::GP_BANK), tpde::CCAssignment{});
             cb.add_arg(ValuePart(u64(size), 8, TConfig::GP_BANK), tpde::CCAssignment{});
             cb.call(MemsetSym);
