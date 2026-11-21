@@ -53,7 +53,6 @@ struct TPartDesc {
 struct TLayout {
     enum EKind : u8 { Scalar, Aggregate, Vector, Void, Unsupported };
     EKind Kind = Unsupported;
-    u32 Size = 0;
     int Elem = -1; // vector lane type
     std::vector<TPartDesc> Parts;
     u32 GpParts = 0;
@@ -71,9 +70,7 @@ struct TModuleInfo {
     std::vector<TTypeShape> Shapes;
     std::vector<TLayout> Layouts;
     TTypeShape I64Shape{TTypeShape::Int, 64, true};
-    int I1 = -1;
     int I64 = -1;
-    int F64 = -1;
     int Str = -1;
     // By external function index.
     std::vector<std::string> ExternalLinkNames;

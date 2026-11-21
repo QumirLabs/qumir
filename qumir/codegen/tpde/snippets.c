@@ -33,9 +33,6 @@ u64 loadi32_zext(u32* p) {
 u64 loadi64(u64* p) {
     return *p;
 }
-u128 loadi128(u128* p) {
-    return *p;
-}
 float loadf32(float* p) {
     return *p;
 }
@@ -53,9 +50,6 @@ void storei32(u32* p, u32 v) {
     *p = v;
 }
 void storei64(u64* p, u64 v) {
-    *p = v;
-}
-void storei128(u128* p, u128 v) {
     *p = v;
 }
 void storef32(float* p, float v) {

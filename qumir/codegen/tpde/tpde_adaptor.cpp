@@ -69,9 +69,7 @@ TModuleInfo::TModuleInfo(TModule& module)
     : Module(module)
 {
     auto& tt = module.Types;
-    I1 = tt.I(EKind::I1);
     I64 = tt.I(EKind::I64);
-    F64 = tt.I(EKind::F64);
     Str = tt.Ptr(tt.I(EKind::I8));
     // After Ptr() above, which may add a type; TTypeTable has no size accessor.
     for (int id = 0;; ++id) {
@@ -136,7 +134,6 @@ TModuleInfo::TModuleInfo(TModule& module)
             l.Kind = TLayout::Void;
             continue;
         }
-        l.Size = std::max(0, tt.SizeInBytes(id));
         bool ok = flatten(id, 0, l);
         if (!ok || l.Parts.empty() || l.Parts.size() > MaxParts) {
             l.Kind = TLayout::Unsupported;
