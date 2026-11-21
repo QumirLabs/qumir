@@ -525,6 +525,30 @@ TEST(CoreIdentifierQuotingTest, PlainNamesStayBare) {
     }
 }
 
+TEST(CoreIdentifierQuotingTest, PlainIdentifiersMatchTheLexer) {
+    for (const auto* name : {"foo", "my_var", "$x", "x1", "a:b", "_", "\xD0\xB6"}) {
+        SCOPED_TRACE(name);
+        EXPECT_TRUE(IsPlainIdentifier(name));
+    }
+    for (const auto* name : {"", "1x", "a b", "+", "->", "<main>", "<<", "|", "a-b", ":a"}) {
+        SCOPED_TRACE(name);
+        EXPECT_FALSE(IsPlainIdentifier(name));
+    }
+    for (const auto& name : TrickyIdentifiers()) {
+        if (!IsPlainIdentifier(name)) {
+            continue;
+        }
+        SCOPED_TRACE(name);
+        std::istringstream input("(x " + name + ")");
+        TTokenStream tokens(input);
+        tokens.Next();
+        tokens.Next();
+        auto ident = tokens.Next();
+        EXPECT_TRUE(ident.Type == TToken::Identifier && ident.Name == name);
+        EXPECT_EQ(tokens.Next().RawValue, ")");
+    }
+}
+
 TEST(CoreIdentifierQuotingTest, StructFieldNamesRoundTrip) {
     for (const auto& name : TrickyIdentifiers()) {
         SCOPED_TRACE(name);
