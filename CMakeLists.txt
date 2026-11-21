@@ -5,7 +5,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(QUMIR_BUILD_TESTS "Build Qumir tests" OFF)
 option(QUMIR_USE_CCACHE "Compile through ccache when it is installed" ON)
 option(QUMIR_LLVM_LINK_SHARED "Link the shared libLLVM instead of static LLVM archives" OFF)
-option(QUMIR_ENABLE_TPDE "Provide the TPDE library and tpde_encodegen (ELF x86-64/AArch64, LLVM 22.1/23.1)" OFF)
+option(QUMIR_ENABLE_TPDE "Build the TPDE codegen backend, qumiri --tpde (AArch64 Linux, LLVM 22.1/23.1)" OFF)
 set(QUMIR_BUILD_NUMBER "0" CACHE STRING "Build number, becomes the Debian revision after the hyphen")
 
 # The upstream version is bumped by hand above; the build number rides along as the

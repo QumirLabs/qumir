@@ -1,0 +1,17 @@
+(block
+  (use Vector)
+  (fun <main> ()
+    (block
+      (var a = (vec #t #f #f #t))
+      (var b = (vec #f #f #t #t))
+      (var lt = (< a b))
+      (var le = (<= a b))
+      (var gt = (> a b))
+      (var ge = (>= a b))
+      (output (index lt 0) " " (index lt 1) " " (index lt 2) " " (index lt 3) "\n")
+      (output (index le 0) " " (index le 1) " " (index le 2) " " (index le 3) "\n")
+      (output (index gt 0) " " (index gt 1) " " (index gt 2) " " (index gt 3) "\n")
+      (output (index ge 0) " " (index ge 1) " " (index ge 2) " " (index ge 3) "\n")
+      (var lt1 = (< a #t))
+      (var ge0 = (>= #f a))
+      (output (index lt1 0) " " (index lt1 1) " " (index ge0 0) " " (index ge0 1) "\n"))))

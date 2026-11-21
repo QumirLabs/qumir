@@ -3,6 +3,10 @@ pkg_check_modules(READLINE IMPORTED_TARGET QUIET readline)
 
 add_executable(qumiri interpreter.cpp)
 add_executable(qumirc driver.cpp)
+if(QUMIR_ENABLE_TPDE)
+    # Ahead of the link group below, which resolves its qumir symbols.
+    target_link_libraries(qumiri PUBLIC qumir_codegen_tpde)
+endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(qumiri PUBLIC
         "$<LINK_GROUP:RESCAN,qumir,qumir_runtime,qumir_codegen_llvm>")
