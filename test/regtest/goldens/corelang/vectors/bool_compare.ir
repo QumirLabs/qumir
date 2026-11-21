@@ -1,0 +1,172 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    lea tmp(0,ptr to i1) = local(8,vec<i1, 4>) 
+    ste tmp(0,ptr to i1) imm(1,i1) 
+    + tmp(1,ptr to i1) = tmp(0,ptr to i1) imm(1,i64) 
+    ste tmp(1,ptr to i1) imm(0,i1) 
+    + tmp(2,ptr to i1) = tmp(0,ptr to i1) imm(2,i64) 
+    ste tmp(2,ptr to i1) imm(0,i1) 
+    + tmp(3,ptr to i1) = tmp(0,ptr to i1) imm(3,i64) 
+    ste tmp(3,ptr to i1) imm(1,i1) 
+    load tmp(4,vec<i1, 4>) = local(8,vec<i1, 4>) 
+    stre local(0,vec<i1, 4>) tmp(4,vec<i1, 4>) 
+    lea tmp(5,ptr to i1) = local(9,vec<i1, 4>) 
+    ste tmp(5,ptr to i1) imm(0,i1) 
+    + tmp(6,ptr to i1) = tmp(5,ptr to i1) imm(1,i64) 
+    ste tmp(6,ptr to i1) imm(0,i1) 
+    + tmp(7,ptr to i1) = tmp(5,ptr to i1) imm(2,i64) 
+    ste tmp(7,ptr to i1) imm(1,i1) 
+    + tmp(8,ptr to i1) = tmp(5,ptr to i1) imm(3,i64) 
+    ste tmp(8,ptr to i1) imm(1,i1) 
+    load tmp(9,vec<i1, 4>) = local(9,vec<i1, 4>) 
+    stre local(1,vec<i1, 4>) tmp(9,vec<i1, 4>) 
+    load tmp(10,vec<i1, 4>) = local(0,vec<i1, 4>) 
+    load tmp(11,vec<i1, 4>) = local(1,vec<i1, 4>) 
+    < tmp(12,vec<i1, 4>) = tmp(10,vec<i1, 4>) tmp(11,vec<i1, 4>) 
+    stre local(2,vec<i1, 4>) tmp(12,vec<i1, 4>) 
+    load tmp(13,vec<i1, 4>) = local(0,vec<i1, 4>) 
+    load tmp(14,vec<i1, 4>) = local(1,vec<i1, 4>) 
+    <= tmp(15,vec<i1, 4>) = tmp(13,vec<i1, 4>) tmp(14,vec<i1, 4>) 
+    stre local(3,vec<i1, 4>) tmp(15,vec<i1, 4>) 
+    load tmp(16,vec<i1, 4>) = local(0,vec<i1, 4>) 
+    load tmp(17,vec<i1, 4>) = local(1,vec<i1, 4>) 
+    > tmp(18,vec<i1, 4>) = tmp(16,vec<i1, 4>) tmp(17,vec<i1, 4>) 
+    stre local(4,vec<i1, 4>) tmp(18,vec<i1, 4>) 
+    load tmp(19,vec<i1, 4>) = local(0,vec<i1, 4>) 
+    load tmp(20,vec<i1, 4>) = local(1,vec<i1, 4>) 
+    >= tmp(21,vec<i1, 4>) = tmp(19,vec<i1, 4>) tmp(20,vec<i1, 4>) 
+    stre local(5,vec<i1, 4>) tmp(21,vec<i1, 4>) 
+    load tmp(22,vec<i1, 4>) = local(2,vec<i1, 4>) 
+    index tmp(23,i1) = tmp(22,vec<i1, 4>) imm(0,i64) 
+    arg tmp(23,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(24,vec<i1, 4>) = local(2,vec<i1, 4>) 
+    index tmp(25,i1) = tmp(24,vec<i1, 4>) imm(1,i64) 
+    arg tmp(25,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(26,vec<i1, 4>) = local(2,vec<i1, 4>) 
+    index tmp(27,i1) = tmp(26,vec<i1, 4>) imm(2,i64) 
+    arg tmp(27,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(28,vec<i1, 4>) = local(2,vec<i1, 4>) 
+    index tmp(29,i1) = tmp(28,vec<i1, 4>) imm(3,i64) 
+    arg tmp(29,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(30,vec<i1, 4>) = local(3,vec<i1, 4>) 
+    index tmp(31,i1) = tmp(30,vec<i1, 4>) imm(0,i64) 
+    arg tmp(31,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(32,vec<i1, 4>) = local(3,vec<i1, 4>) 
+    index tmp(33,i1) = tmp(32,vec<i1, 4>) imm(1,i64) 
+    arg tmp(33,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(34,vec<i1, 4>) = local(3,vec<i1, 4>) 
+    index tmp(35,i1) = tmp(34,vec<i1, 4>) imm(2,i64) 
+    arg tmp(35,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(36,vec<i1, 4>) = local(3,vec<i1, 4>) 
+    index tmp(37,i1) = tmp(36,vec<i1, 4>) imm(3,i64) 
+    arg tmp(37,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(38,vec<i1, 4>) = local(4,vec<i1, 4>) 
+    index tmp(39,i1) = tmp(38,vec<i1, 4>) imm(0,i64) 
+    arg tmp(39,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(40,vec<i1, 4>) = local(4,vec<i1, 4>) 
+    index tmp(41,i1) = tmp(40,vec<i1, 4>) imm(1,i64) 
+    arg tmp(41,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(42,vec<i1, 4>) = local(4,vec<i1, 4>) 
+    index tmp(43,i1) = tmp(42,vec<i1, 4>) imm(2,i64) 
+    arg tmp(43,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(44,vec<i1, 4>) = local(4,vec<i1, 4>) 
+    index tmp(45,i1) = tmp(44,vec<i1, 4>) imm(3,i64) 
+    arg tmp(45,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(46,vec<i1, 4>) = local(5,vec<i1, 4>) 
+    index tmp(47,i1) = tmp(46,vec<i1, 4>) imm(0,i64) 
+    arg tmp(47,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(48,vec<i1, 4>) = local(5,vec<i1, 4>) 
+    index tmp(49,i1) = tmp(48,vec<i1, 4>) imm(1,i64) 
+    arg tmp(49,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(50,vec<i1, 4>) = local(5,vec<i1, 4>) 
+    index tmp(51,i1) = tmp(50,vec<i1, 4>) imm(2,i64) 
+    arg tmp(51,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(52,vec<i1, 4>) = local(5,vec<i1, 4>) 
+    index tmp(53,i1) = tmp(52,vec<i1, 4>) imm(3,i64) 
+    arg tmp(53,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(54,vec<i1, 4>) = local(0,vec<i1, 4>) 
+    < tmp(55,vec<i1, 4>) = tmp(54,vec<i1, 4>) imm(1,i1) 
+    stre local(6,vec<i1, 4>) tmp(55,vec<i1, 4>) 
+    load tmp(56,vec<i1, 4>) = local(0,vec<i1, 4>) 
+    >= tmp(57,vec<i1, 4>) = imm(0,i1) tmp(56,vec<i1, 4>) 
+    stre local(7,vec<i1, 4>) tmp(57,vec<i1, 4>) 
+    load tmp(58,vec<i1, 4>) = local(6,vec<i1, 4>) 
+    index tmp(59,i1) = tmp(58,vec<i1, 4>) imm(0,i64) 
+    arg tmp(59,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(60,vec<i1, 4>) = local(6,vec<i1, 4>) 
+    index tmp(61,i1) = tmp(60,vec<i1, 4>) imm(1,i64) 
+    arg tmp(61,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(62,vec<i1, 4>) = local(7,vec<i1, 4>) 
+    index tmp(63,i1) = tmp(62,vec<i1, 4>) imm(0,i64) 
+    arg tmp(63,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(64,vec<i1, 4>) = local(7,vec<i1, 4>) 
+    index tmp(65,i1) = tmp(64,vec<i1, 4>) imm(1,i64) 
+    arg tmp(65,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}

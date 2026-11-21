@@ -1330,7 +1330,8 @@ struct TCompilerA64
             }
             return Jump(CondFor(op, true, false));
         }
-        bool sign = s.Class == TTypeShape::Int && s.Signed;
+        // false < true: bools compare unsigned.
+        bool sign = s.Class == TTypeShape::Int && s.Signed && s.Bits != 1;
         Jump j(CondFor(op, false, sign));
         if (l.is_const() && !r.is_const()) {
             std::swap(l, r);
