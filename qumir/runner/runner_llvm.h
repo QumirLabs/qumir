@@ -61,7 +61,8 @@ public:
         std::string KernelObject;
     };
 
-    // The host picks the codegen backend of Run(); null means TLLVMBackend.
+    // The host picks the codegen backend of Run() and CompileKernelAst; null
+    // means TLLVMBackend. The object and cache kernel APIs always use LLVM.
     TLLVMRunner(TLLVMRunnerOptions options = {}, std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr);
 
     void RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import = false);
@@ -83,6 +84,8 @@ public:
         NFrontend::TComposeResult composed,
         const std::string& entryName,
         std::string* error);
+    // A backend other than TLLVMBackend compiles all entries into one object,
+    // which cannot link the LLVM bitcode of source modules.
     std::unordered_map<std::string, void*> CompileKernelAst(
         NAst::TExprPtr ast,
         const std::vector<std::string>& entryNames,
@@ -168,6 +171,14 @@ private:
         const std::unordered_set<std::string>* inlineDefinitions = nullptr,
         const std::unordered_set<std::string>* exports = nullptr);
 
+    // True unless Backend_ is TLLVMBackend, whose kernels keep the partitioned
+    // LLVM codegen (entry exports, bitcode linking, the object cache).
+    bool KernelsUseBackend() const;
+    // Emits the lowered Module with Backend_ and links it with ORC JITLink.
+    std::unordered_map<std::string, void*> LinkBackendKernels(
+        const std::vector<std::string>& entryNames,
+        std::string* error);
+
     // Shared frontend for both CompileKernelAst overloads: lower then emit.
     std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> EmitKernelArtifacts(
         NAst::TExprPtr ast,
@@ -183,8 +194,9 @@ private:
     std::vector<std::shared_ptr<NRegistry::IModule>> RegisteredModules;
     std::vector<std::shared_ptr<NRegistry::IModule>> AvailableModules;
 
-    std::unique_ptr<NCodeGen::ICodegenBackend> Backend_; // Run() only; the kernel APIs use LLVM directly
+    std::unique_ptr<NCodeGen::ICodegenBackend> Backend_; // Run(), and CompileKernelAst unless TLLVMBackend
     NCodeGen::TLlvmRunner LlvmRunner_; // persistent; keeps compiled kernels alive
+    std::vector<std::shared_ptr<void>> BackendKernels_; // JITs of LinkBackendKernels
 };
 
 } // namespace NQumir
