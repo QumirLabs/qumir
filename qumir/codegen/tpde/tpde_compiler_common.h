@@ -598,6 +598,8 @@ struct TCompilerCommon
             case "shuffle"_op:
             case "index"_op:
                 return CompileShuffle(rec);
+            case "gather"_op:
+                return CompileGather(rec);
             default:
                 return false;
         }
@@ -1324,6 +1326,39 @@ struct TCompilerCommon
                 return false;
             }
             res.part(i).set_value(vr.part_unowned(mask[i]));
+        }
+        return true;
+    }
+
+    // One load per lane at ptr + index * element size, without a mask or
+    // bounds check, as in the LLVM backend.
+    bool CompileGather(const TInstRec& rec) {
+        int type = TypeOf(rec.Result);
+        EValueRef indices = rec.Pos[1];
+        int indexType = TypeOf(indices);
+        if (
+            !IsVec(type) ||
+            !IsVec(indexType) ||
+            Shape(LaneType(indexType)).Bits != 64 ||
+            LayoutOf(indexType).Parts.size() != LayoutOf(type).Parts.size())
+        {
+            return false;
+        }
+        int lane = LayoutOf(type).Elem;
+        ValueRef ptr = this->val_ref(rec.Pos[0]);
+        ValueRef ir = this->val_ref(indices);
+        ValueRef res = this->result_ref(rec.Result);
+        ValuePartRef base = ptr.part(0);
+        AsmReg b = base.cur_reg_or_load();
+        for (u32 i = 0; i < LayoutOf(type).Parts.size(); ++i) {
+            ValuePartRef index = ir.part(i);
+            Expr addr(b);
+            addr.index = index.cur_reg_or_load();
+            addr.scale = Module.Types.SizeInBytes(lane);
+            auto out = res.part(i);
+            if (!LoadScalar(std::move(addr), lane, out)) {
+                return false;
+            }
         }
         return true;
     }
