@@ -36,10 +36,8 @@ struct TFrontendOptions {
     NIR::TDebugOptions DebugOptions;
 };
 
-// Source to Qumir IR: parsing, composition with the `.oz` source modules,
-// semantic transforms and lowering into Module. The host registers registry
-// modules in the resolver. The state accumulates across calls (a REPL
-// session), so a frontend is not thread-safe.
+// The state accumulates across calls (a REPL session), so a frontend is not
+// thread-safe; the host registers the registry modules.
 class TFrontend {
 public:
     explicit TFrontend(TFrontendOptions options);
