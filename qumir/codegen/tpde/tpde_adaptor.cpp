@@ -378,6 +378,14 @@ bool TAdaptor::switch_func(EFuncRef f) {
             {
                 HasCalls_ = true;
             }
+            // i128 division and float conversions are libcalls.
+            if (instr.Op == "/"_op || instr.Op == "%"_op || instr.Op == "f2i"_op || instr.Op == "i2f"_op) {
+                int type = instr.Op == "i2f"_op
+                    ? OperandType(fun, Info.Module, instr.Operands[0])
+                    : fun.GetTmpType(instr.Dest.Idx);
+                const auto& s = Info.Shape(type);
+                HasCalls_ |= s.Class == TTypeShape::Int && s.Bits == 128;
+            }
             if (instr.Op == "stre"_op) {
                 const auto& dst = instr.Operands[0];
                 int type = dst.Type == TOperand::EType::Local

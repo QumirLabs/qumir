@@ -14,6 +14,8 @@
 #include <array>
 #include <bit>
 #include <optional>
+#include <string_view>
+#include <unordered_map>
 
 namespace NQumir {
 namespace NCodeGen {
@@ -122,6 +124,8 @@ struct TCompilerCommon
     std::vector<SymRef> SlotSyms;
     SymRef MemsetSym;
     SymRef MemcpySym;
+    // Compiler runtime functions, added on first use.
+    std::unordered_map<std::string_view, SymRef> LibSyms;
     // Op of the first instruction that codegen gave up on.
     std::string FailedOp;
 
@@ -218,6 +222,7 @@ struct TCompilerCommon
         }
         MemsetSym = this->assembler.sym_add_undef("memset", tpde::Assembler::SymBinding::GLOBAL);
         MemcpySym = this->assembler.sym_add_undef("memcpy", tpde::Assembler::SymBinding::GLOBAL);
+        LibSyms.clear();
         if (Ir->Link) {
             AddStructor(Module.ModuleConstructorFunctionId, /*init=*/true);
             AddStructor(Module.ModuleDestructorFunctionId, /*init=*/false);
@@ -886,8 +891,60 @@ struct TCompilerCommon
             case "&"_op: return this->encode_landi128(ar.part(0), ar.part(1), br.part(0), br.part(1), res.part(0), res.part(1));
             case "|"_op: return this->encode_lori128(ar.part(0), ar.part(1), br.part(0), br.part(1), res.part(0), res.part(1));
             case "^"_op: return this->encode_lxori128(ar.part(0), ar.part(1), br.part(0), br.part(1), res.part(0), res.part(1));
+            case "/"_op:
+            case "%"_op: return Int128DivRem(op == "/"_op, isSigned, ar, br, res);
             default: return false;
         }
+    }
+
+    // The i128 division and float conversions call the compiler runtime
+    // (libgcc or compiler-rt), as the code of the LLVM backend does.
+    SymRef LibSym(std::string_view name) {
+        auto& sym = LibSyms[name];
+        if (!sym.valid()) {
+            sym = this->assembler.sym_add_undef(name, tpde::Assembler::SymBinding::GLOBAL);
+        }
+        return sym;
+    }
+
+    // x / 0 == 0, x % 0 == 0, MIN / -1 == MIN and MIN % -1 == 0, as in the LLVM
+    // backend. The operands are read more than once, so their parts are unowned.
+    bool Int128DivRem(bool div, bool isSigned, ValueRef& ar, ValueRef& br, ValueRef& res) {
+        ValuePartRef q0(this, TConfig::GP_BANK);
+        ValuePartRef q1(this, TConfig::GP_BANK);
+        {
+            TAssigner assigner;
+            CallBuilder cb(D(), assigner);
+            cb.add_arg(ar.part_unowned(0), tpde::CCAssignment{.consecutive = 1, .align = 16});
+            cb.add_arg(ar.part_unowned(1), tpde::CCAssignment{});
+            ValuePartRef lo(this, TConfig::GP_BANK);
+            bool ok = isSigned
+                ? this->encode_sdivisorlo128(ar.part_unowned(0), ar.part_unowned(1), br.part_unowned(0), br.part_unowned(1), lo)
+                : this->encode_udivisorlo128(br.part_unowned(0), br.part_unowned(1), lo);
+            if (!ok) {
+                return false;
+            }
+            cb.add_arg(WithSize(std::move(lo), 8), tpde::CCAssignment{.consecutive = 1, .align = 16});
+            if (isSigned) {
+                ValuePartRef hi(this, TConfig::GP_BANK);
+                if (!this->encode_sdivisorhi128(ar.part_unowned(0), ar.part_unowned(1), br.part_unowned(0), br.part_unowned(1), hi)) {
+                    return false;
+                }
+                cb.add_arg(WithSize(std::move(hi), 8), tpde::CCAssignment{});
+            } else {
+                cb.add_arg(br.part_unowned(1), tpde::CCAssignment{});
+            }
+            if (div) {
+                cb.call(LibSym(isSigned ? "__divti3" : "__udivti3"));
+                cb.add_ret(q0, tpde::CCAssignment{});
+                cb.add_ret(q1, tpde::CCAssignment{});
+            } else {
+                cb.call(LibSym(isSigned ? "__modti3" : "__umodti3"));
+                cb.add_ret(res);
+                return true;
+            }
+        }
+        return this->encode_divresi128(std::move(q0), std::move(q1), br.part_unowned(0), br.part_unowned(1), res.part(0), res.part(1));
     }
 
     bool CompileBinary(const TInstRec& rec) {
@@ -1232,6 +1289,9 @@ struct TCompilerCommon
         }
 
         if (f.Bits == 128 || t.Bits == 128) {
+            if (op == "i2f"_op && f.Class == TTypeShape::Int && t.Class == TTypeShape::Float) {
+                return Int128ToFloat(ar, f.Signed, t.Bits == 64, res);
+            }
             if (!(fInt && tInt)) {
                 return false;
             }
@@ -1265,6 +1325,44 @@ struct TCompilerCommon
         }
         res.part(0).set_value(std::move(p));
         return true;
+    }
+
+    bool Int128ToFloat(ValueRef& ar, bool srcSigned, bool toDouble, ValueRef& res) {
+        TAssigner assigner;
+        CallBuilder cb(D(), assigner);
+        cb.add_arg(ar.part(0), tpde::CCAssignment{.consecutive = 1, .align = 16});
+        cb.add_arg(ar.part(1), tpde::CCAssignment{});
+        if (toDouble) {
+            cb.call(LibSym(srcSigned ? "__floattidf" : "__floatuntidf"));
+        } else {
+            cb.call(LibSym(srcSigned ? "__floattisf" : "__floatuntisf"));
+        }
+        cb.add_ret(res);
+        return true;
+    }
+
+    // Signed results saturate as llvm.fptosi.sat in the LLVM backend; unsigned
+    // ones are plain fptoui there, which is this libcall.
+    bool FloatToInt128(ValueRef& ar, bool fromDouble, bool isSigned, ValueRef& res) {
+        ValuePartRef r0(this, TConfig::GP_BANK);
+        ValuePartRef r1(this, TConfig::GP_BANK);
+        {
+            TAssigner assigner;
+            CallBuilder cb(D(), assigner);
+            // Unowned: the saturation reads the argument again.
+            cb.add_arg(ar.part_unowned(0), tpde::CCAssignment{});
+            if (!isSigned) {
+                cb.call(LibSym(fromDouble ? "__fixunsdfti" : "__fixunssfti"));
+                cb.add_ret(res);
+                return true;
+            }
+            cb.call(LibSym(fromDouble ? "__fixdfti" : "__fixsfti"));
+            cb.add_ret(r0, tpde::CCAssignment{});
+            cb.add_ret(r1, tpde::CCAssignment{});
+        }
+        return fromDouble
+            ? this->encode_satf64toi128(ar.part(0), std::move(r0), std::move(r1), res.part(0), res.part(1))
+            : this->encode_satf32toi128(ar.part(0), std::move(r0), std::move(r1), res.part(0), res.part(1));
     }
 
     bool F2IPart(int from, int to, ValuePartRef&& in, ValuePart& out) {
@@ -1313,6 +1411,12 @@ struct TCompilerCommon
                 }
             }
             return true;
+        }
+        if (Shape(to).Class == TTypeShape::Int && Shape(to).Bits == 128) {
+            if (Shape(from).Class != TTypeShape::Float) {
+                return false;
+            }
+            return FloatToInt128(ar, Shape(from).Bits == 64, Shape(to).Signed, res);
         }
         auto out = res.part(0);
         return F2IPart(from, to, ar.part(0), out);
