@@ -4,12 +4,22 @@
 find_program(QUMIR_TPDE_CLANG NAMES clang-${LLVM_VERSION_MAJOR} clang
     HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 
-set(SNIPPETS_BC ${CMAKE_CURRENT_BINARY_DIR}/snippets_a64.bc)
-set(SNIPPETS_HPP ${CMAKE_CURRENT_BINARY_DIR}/snippets_a64.hpp)
+# The platform follows the build host: the snippets are compiled for it and
+# tpde_compiler_<arch>.cpp is built.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(QUMIR_TPDE_ARCH x64)
+    set(QUMIR_TPDE_SNIPPETS_TARGET --target=x86_64-linux -march=x86-64)
+else()
+    set(QUMIR_TPDE_ARCH a64)
+    set(QUMIR_TPDE_SNIPPETS_TARGET --target=aarch64-linux -march=armv8.1-a)
+endif()
+
+set(SNIPPETS_BC ${CMAKE_CURRENT_BINARY_DIR}/snippets_${QUMIR_TPDE_ARCH}.bc)
+set(SNIPPETS_HPP ${CMAKE_CURRENT_BINARY_DIR}/snippets_${QUMIR_TPDE_ARCH}.hpp)
 add_custom_command(
     OUTPUT ${SNIPPETS_BC}
     COMMAND ${QUMIR_TPDE_CLANG} -c -emit-llvm -ffreestanding -fcf-protection=none
-        -O3 -fomit-frame-pointer -fno-math-errno --target=aarch64-linux -march=armv8.1-a
+        -O3 -fomit-frame-pointer -fno-math-errno ${QUMIR_TPDE_SNIPPETS_TARGET}
         -o ${SNIPPETS_BC} ${CMAKE_CURRENT_SOURCE_DIR}/snippets.c
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/snippets.c)
 add_custom_command(
@@ -22,7 +32,10 @@ add_library(qumir_codegen_tpde
     tpde_adaptor.cpp
     tpde_adaptor.h
     tpde_backend.h
-    tpde_compiler_a64.cpp
+    tpde_check.cpp
+    tpde_check.h
+    tpde_compiler_common.h
+    tpde_compiler_${QUMIR_TPDE_ARCH}.cpp
     ${SNIPPETS_HPP})
 target_include_directories(qumir_codegen_tpde PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}

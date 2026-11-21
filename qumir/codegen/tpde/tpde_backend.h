@@ -6,7 +6,7 @@ namespace NQumir {
 namespace NCodeGen {
 
 // TPDE (https://github.com/tpde2/tpde) compiles Qumir IR straight to an
-// AArch64 ELF object, without LLVM.
+// AArch64 or x86-64 (System V) ELF object, without LLVM.
 class TTpdeBackend : public ICodegenBackend {
 public:
     std::expected<std::string, TError> EmitObject(NIR::TModule& module, EObjectUse use) override;

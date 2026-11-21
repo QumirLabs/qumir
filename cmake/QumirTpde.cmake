@@ -7,8 +7,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "QUMIR_ENABLE_TPDE: TPDE emits ELF objects and supports Linux only, "
         "found ${CMAKE_SYSTEM_NAME}")
 endif()
-if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
-    message(FATAL_ERROR "QUMIR_ENABLE_TPDE: TPDE backend implements AArch64 only, "
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|x86_64|AMD64)$")
+    message(FATAL_ERROR "QUMIR_ENABLE_TPDE: TPDE backend implements AArch64 and x86-64 only, "
         "found ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
