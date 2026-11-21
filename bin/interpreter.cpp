@@ -420,7 +420,9 @@ int main(int argc, char ** argv) {
     bool printAsm = false;
     bool printByteCode = false;
     bool coreInput = false;
+#ifdef QUMIR_ENABLE_TPDE
     bool useTpde = false;
+#endif
     int optLevel = 0;
     std::string inputFile; // stdin by default if empty
     std::vector<std::string> modulePaths;
@@ -430,9 +432,11 @@ int main(int argc, char ** argv) {
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--jit")) {
             runnerType = RunnerType::LLVM;
+#ifdef QUMIR_ENABLE_TPDE
         } else if (!std::strcmp(argv[i], "--tpde")) {
             runnerType = RunnerType::LLVM;
             useTpde = true;
+#endif
         } else if (!std::strcmp(argv[i], "--time-us")) {
             printEvalTimeUs = true;
         } else if (!std::strcmp(argv[i], "--print-ast")) {
@@ -495,7 +499,9 @@ int main(int argc, char ** argv) {
             std::cout << "qumiri [options]\n"
                          "Options:\n"
                          "  --jit                Enable llvm jit\n"
-                         "  --tpde               JIT with the TPDE backend (AArch64 Linux, QUMIR_ENABLE_TPDE)\n"
+#ifdef QUMIR_ENABLE_TPDE
+                         "  --tpde               JIT with the TPDE backend instead of LLVM\n"
+#endif
                          "  --time-us            Print evaluation time in microseconds\n"
                          "  --print-ast          Print AST after parsing\n"
                          "  --print-transformed-ast Print AST after semantic transforms\n"
@@ -526,14 +532,16 @@ int main(int argc, char ** argv) {
     }
 
     std::unique_ptr<NCodeGen::ICodegenBackend> backend;
-    if (useTpde) {
 #ifdef QUMIR_ENABLE_TPDE
+    if (useTpde) {
+        if (printLlvm || printAsm) {
+            std::cerr << "--tpde: no LLVM IR or assembly to print, --print-llvm and --print-asm need --jit\n";
+            return 1;
+        }
         backend = std::make_unique<NCodeGen::TTpdeBackend>();
-#else
-        std::cerr << "--tpde: qumiri is built without QUMIR_ENABLE_TPDE\n";
-        return 1;
+    }
 #endif
-    } else {
+    if (!backend) {
         backend = std::make_unique<NCodeGen::TLLVMBackend>(NCodeGen::TLLVMBackendOptions{
             .OptLevel = optLevel,
             .PrintLlvm = printLlvm,
