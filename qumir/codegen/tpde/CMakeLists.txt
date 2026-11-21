@@ -28,6 +28,6 @@ target_include_directories(qumir_codegen_tpde PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
 target_compile_features(qumir_codegen_tpde PUBLIC cxx_std_23)
-# Not linked to qumir: qumiri puts this library ahead of its qumir link group.
+# Not linked to qumir: qumiri and qumirc put this library ahead of their qumir link group.
 target_link_libraries(qumir_codegen_tpde PRIVATE tpde)
 target_compile_definitions(qumir_codegen_tpde PUBLIC QUMIR_ENABLE_TPDE)

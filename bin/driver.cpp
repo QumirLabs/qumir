@@ -12,6 +12,9 @@
 #include <qumir/codegen/llvm/llvm_backend.h>
 #include <qumir/codegen/llvm/llvm_codegen.h>
 #include <qumir/codegen/llvm/llvm_initializer.h>
+#ifdef QUMIR_ENABLE_TPDE
+#include <qumir/codegen/tpde/tpde_backend.h>
+#endif
 #include <qumir/modules/builtins/builtins.h>
 #include <qumir/modules/system/system.h>
 #include <qumir/modules/turtle/turtle.h>
@@ -382,7 +385,8 @@ void GenerateObjFromAsm(const std::string& asmCode, std::ostream& objOut) {
 }
 #endif
 
-int Generate(const std::string& inputFile, const std::string& outputFile, bool compileOnly, bool generateAsm, int optLevel, int wasmBits, bool coreInput, bool verbose, const TModuleConfig& moduleConfig, NIR::TDebugOptions debugOptions) {
+// A null backend means the LLVM one.
+int Generate(const std::string& inputFile, const std::string& outputFile, bool compileOnly, bool generateAsm, int optLevel, int wasmBits, bool coreInput, bool verbose, const TModuleConfig& moduleConfig, NIR::TDebugOptions debugOptions, std::unique_ptr<NCodeGen::ICodegenBackend> backend) {
     if (verbose) {
         std::cerr << "Compiling " << inputFile << " to " << outputFile << "\n";
     }
@@ -416,10 +420,12 @@ int Generate(const std::string& inputFile, const std::string& outputFile, bool c
     } else if (wasmBits == 64) {
         backendOptions.TargetTriple = "wasm64-unknown-unknown";
     }
-    NCodeGen::TLLVMBackend backend(backendOptions);
+    if (!backend) {
+        backend = std::make_unique<NCodeGen::TLLVMBackend>(backendOptions);
+    }
     auto code = generateAsm
-        ? backend.EmitAsm(module)
-        : backend.EmitObject(module, NCodeGen::EObjectUse::Link);
+        ? backend->EmitAsm(module)
+        : backend->EmitObject(module, NCodeGen::EObjectUse::Link);
     if (!code) {
         std::cerr << code.error().ToString() << "\n";
         return 1;
@@ -488,6 +494,9 @@ int main(int argc, char** argv) {
     int wasmBits = 0; // 0 = native, 32, 64
     bool coreInput = false;
     bool verbose = false;
+#ifdef QUMIR_ENABLE_TPDE
+    bool useTpde = false;
+#endif
     NIR::TDebugOptions debugOptions;
     TModuleConfig moduleConfig;
     for (int i = 1; i < argc; ++i) {
@@ -518,6 +527,9 @@ int main(int argc, char** argv) {
                          "  --wasm        Target WebAssembly, 32-bit (alias for --wasm32)\n"
                          "  --wasm32      Target wasm32-unknown-unknown\n"
                          "  --wasm64      Target wasm64-unknown-unknown\n"
+#ifdef QUMIR_ENABLE_TPDE
+                         "  --tpde        Compile with the TPDE backend instead of LLVM\n"
+#endif
                          "  --core        Parse input as core language\n"
                          "  --module-path <dir>  Add a search directory for .oz modules (repeatable)\n"
                          "  --module <file.oz>   Register an explicit .oz module (repeatable)\n"
@@ -586,6 +598,10 @@ int main(int argc, char** argv) {
             }
         } else if (!std::strcmp(argv[i], "--verbose")) {
             verbose = true;
+#ifdef QUMIR_ENABLE_TPDE
+        } else if (!std::strcmp(argv[i], "--tpde")) {
+            useTpde = true;
+#endif
         } else if (argv[i][0] == '-' && argv[i][1] != '\0') {
             std::cerr << "Unknown option: " << argv[i] << "\n";
             return 1;
@@ -597,6 +613,17 @@ int main(int argc, char** argv) {
         std::cerr << "No input file\n";
         return 1;
     }
+
+    std::unique_ptr<NCodeGen::ICodegenBackend> backend;
+#ifdef QUMIR_ENABLE_TPDE
+    if (useTpde) {
+        if (generateAsm || generateLlvm || wasmBits != 0) {
+            std::cerr << "--tpde: no assembly, LLVM IR or wasm output, -S, --llvm and --wasm need the LLVM backend\n";
+            return 1;
+        }
+        backend = std::make_unique<NCodeGen::TTpdeBackend>();
+    }
+#endif
 
     debugOptions.EmitDebugInfo = debugOptions.EmitDebugInfo && optLevel == 0;
     if (debugOptions.EmitDebugPoints && (optLevel != 0 || (!generateIr && !generateLlvm && wasmBits != 32))) {
@@ -645,5 +672,5 @@ int main(int argc, char** argv) {
             : outputFile;
     }
 
-    return Generate(inputFile, finalOutput, compileOnly, generateAsm, optLevel, wasmBits, coreInput, verbose, moduleConfig, debugOptions);
+    return Generate(inputFile, finalOutput, compileOnly, generateAsm, optLevel, wasmBits, coreInput, verbose, moduleConfig, debugOptions, std::move(backend));
 }

@@ -174,10 +174,11 @@ const TLayout& TModuleInfo::Layout(int typeId) const {
         : Layouts[typeId];
 }
 
-TAdaptor::TAdaptor(TModuleInfo& info)
+TAdaptor::TAdaptor(TModuleInfo& info, bool link)
     : Info(info)
     , NFunc(info.Module.Functions.size())
     , NExt(info.Module.ExternalFunctions.size())
+    , Link(link)
 {
     SlotRefs_.assign(info.Module.GlobalTypes.size(), -1);
     StrRefs_.assign(info.Module.StringLiterals.size(), -1);
