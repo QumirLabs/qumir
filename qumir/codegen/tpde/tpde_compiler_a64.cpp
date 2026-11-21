@@ -1560,7 +1560,12 @@ struct TCompilerA64
             return true;
         }
         if (Ir->IsImm(rec.Pos[0])) {
-            this->generate_uncond_branch(Ir->Imm(rec.Pos[0]).Value != 0 ? t : f);
+            // Still a two-way branch: TPDE frees a phi only after every incoming
+            // edge has moved its value, so a folded edge leaks the assignment.
+            AsmReg tmp = this->permanent_scratch_reg;
+            this->materialize_constant(u64(Ir->Imm(rec.Pos[0]).Value != 0), TConfig::GP_BANK, 8, tmp);
+            ASM(CMPxi, tmp, 0);
+            this->generate_cond_branch(Jump::Jne, t, f);
             return true;
         }
         if (!EmitTest(rec.Pos[0])) {

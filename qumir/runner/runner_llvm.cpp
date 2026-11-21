@@ -416,6 +416,15 @@ std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
     // gets the Qumir IR passes, as Run() does.
     if (Options.OptLevel > 0) {
         Optimize();
+        if (Options.PrintIr) {
+            std::cerr << "=========== OPTIMIZED IR: ============\n";
+            for (const auto& function : Module.Functions) {
+                std::ostringstream oss;
+                function.Print(oss, Module);
+                std::cerr << oss.str() << std::endl;
+            }
+            std::cerr << "============================\n\n";
+        }
     }
     double optMs = MsSince(point);
     auto object = Backend_->EmitObject(Module, NCodeGen::EObjectUse::Load);
