@@ -10,6 +10,7 @@
 #include <qumir/ir/builder.h>
 #include <qumir/ir/lowering/lower_ast.h>
 
+#include <qumir/codegen/backend.h>
 #include <qumir/codegen/llvm/llvm_codegen.h>
 #include <qumir/codegen/llvm/llvm_runner.h>
 
@@ -51,7 +52,7 @@ struct TLLVMRunnerOptions {
 // A single compilation session: holds persistent frontend state (Module,
 // Resolver, Builder) that accumulates across calls, so it is not thread-safe.
 // Use a fresh runner per independent compilation (e.g. one per query).
-// Run() is the shared frontend followed by LLVM codegen and the JIT.
+// Run() is the shared frontend, the codegen backend and the ORC JIT linker.
 class TLLVMRunner : public NFrontend::TFrontend {
 public:
     struct TCachedObjectModule {
@@ -60,7 +61,8 @@ public:
         std::string KernelObject;
     };
 
-    TLLVMRunner(TLLVMRunnerOptions options = {});
+    // The host picks the codegen backend of Run(); null means TLLVMBackend.
+    TLLVMRunner(TLLVMRunnerOptions options = {}, std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr);
 
     void RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import = false);
 
@@ -176,12 +178,12 @@ private:
 
     TLLVMRunnerOptions Options;
 
-    std::unordered_set<int> PrintedLLVMChunks;
     std::unordered_set<std::string> RegisteredModuleNames;
 
     std::vector<std::shared_ptr<NRegistry::IModule>> RegisteredModules;
     std::vector<std::shared_ptr<NRegistry::IModule>> AvailableModules;
 
+    std::unique_ptr<NCodeGen::ICodegenBackend> Backend_; // Run() only; the kernel APIs use LLVM directly
     NCodeGen::TLlvmRunner LlvmRunner_; // persistent; keeps compiled kernels alive
 };
 

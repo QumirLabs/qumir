@@ -1,6 +1,7 @@
 #include <istream>
 #include <qumir/runner/runner_ir.h>
 #include <qumir/runner/runner_llvm.h>
+#include <qumir/codegen/llvm/llvm_backend.h>
 #include <qumir/codegen/llvm/llvm_initializer.h>
 
 #include <iostream>
@@ -577,7 +578,11 @@ int main(int argc, char ** argv) {
             ? ""
             : inputFile,
         .EmitDebugInfo = debugger != nullptr,
-    });
+    }, std::make_unique<NCodeGen::TLLVMBackend>(NCodeGen::TLLVMBackendOptions{
+        .OptLevel = optLevel,
+        .PrintLlvm = printLlvm,
+        .PrintAsm = printAsm,
+    }));
 
     long long lastEvalUs = 0;
     std::expected<std::optional<std::string>, TError> result;

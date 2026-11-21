@@ -28,6 +28,8 @@ endif()
 add_library(qumir_codegen_llvm
     llvm_asm_printer.cpp
     llvm_asm_printer.h
+    llvm_backend.cpp
+    llvm_backend.h
     llvm_initializer.cpp
     llvm_initializer.h
     llvm_codegen.cpp
