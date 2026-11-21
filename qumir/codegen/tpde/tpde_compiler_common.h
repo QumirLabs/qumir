@@ -1473,9 +1473,12 @@ struct TCompilerCommon
 
     bool AddCArg(CallBuilder& cb, TAssigner& assigner, EValueRef v, int type, const TCValue& c) {
         const auto& abi = c.Abi;
-        if (abi.Byval) {
-            D().PassByval(assigner, c.Slot, Module.Types.SizeInBytes(type), abi.Align);
-            return true;
+        // Only a platform that has PassByval can classify a struct as Byval.
+        if constexpr (requires { D().PassByval(assigner, c.Slot, u32(0), abi.Align); }) {
+            if (abi.Byval) {
+                D().PassByval(assigner, c.Slot, Module.Types.SizeInBytes(type), abi.Align);
+                return true;
+            }
         }
         if (abi.Memory) {
             cb.add_arg(D().FrameAddress(c.Slot), tpde::CCAssignment{});
