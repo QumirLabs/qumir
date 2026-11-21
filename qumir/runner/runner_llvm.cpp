@@ -381,11 +381,46 @@ std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> TLLVMRunner::EmitKernelArtifacts
     return EmitLoweredModule(nullptr, nullptr, error, llvmBitcode, nullptr, &exports);
 }
 
+bool TLLVMRunner::KernelsUseBackend() const {
+    return dynamic_cast<const NCodeGen::TLLVMBackend*>(Backend_.get()) == nullptr;
+}
+
+std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
+    const std::vector<std::string>& entryNames,
+    std::string* error)
+{
+    // The LLVM codegen leaves the IR to LLVM -O; another backend gets the
+    // Qumir IR passes, as Compile() runs them for Run().
+    if (Options.OptLevel > 0) {
+        Optimize();
+    }
+    auto object = Backend_->EmitObject(Module, NCodeGen::EObjectUse::Load);
+    if (!object) {
+        if (error) {
+            *error = object.error().ToString();
+        }
+        return {};
+    }
+    auto linked = LlvmRunner_.LinkAndLookup(
+        {}, {std::move(*object)}, nullptr, Options.NativeCode, entryNames, error);
+    if (linked.Entries.empty()) {
+        return {};
+    }
+    BackendKernels_.push_back(std::move(linked.Lifetime));
+    return std::move(linked.Entries);
+}
+
 std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
     NAst::TExprPtr ast,
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
+    if (KernelsUseBackend()) {
+        if (!LowerKernelAst(std::move(ast), entryNames, error)) {
+            return {};
+        }
+        return LinkBackendKernels(entryNames, error);
+    }
     auto artifacts = EmitKernelArtifacts(std::move(ast), entryNames, error);
     if (!artifacts) {
         return {};
@@ -407,6 +442,18 @@ std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
+    if (KernelsUseBackend()) {
+        if (!composed.LlvmBitcode.empty()) {
+            if (error) {
+                *error = "the LLVM bitcode of source modules needs the LLVM codegen backend";
+            }
+            return {};
+        }
+        if (!LowerKernelAst(std::move(composed.Ast), entryNames, error, std::move(composed.Pragmas))) {
+            return {};
+        }
+        return LinkBackendKernels(entryNames, error);
+    }
     auto llvmBitcode = std::move(composed.LlvmBitcode);
     auto artifacts = EmitKernelArtifacts(
         std::move(composed.Ast),
