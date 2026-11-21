@@ -1,0 +1,116 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    stre local(0,i64) imm(3,i64) 
+    load tmp(0,i64) = local(0,i64) 
+    > tmp(1,i1) = tmp(0,i64) imm(2,i64) 
+    stre local(1,i1) tmp(1,i1) 
+    load tmp(2,i64) = local(0,i64) 
+    > tmp(3,i1) = tmp(2,i64) imm(5,i64) 
+    stre local(2,i1) tmp(3,i1) 
+    load tmp(4,i1) = local(2,i1) 
+    load tmp(5,i1) = local(1,i1) 
+    < tmp(6,i1) = tmp(4,i1) tmp(5,i1) 
+    arg tmp(6,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(7,i1) = local(2,i1) 
+    load tmp(8,i1) = local(1,i1) 
+    <= tmp(9,i1) = tmp(7,i1) tmp(8,i1) 
+    arg tmp(9,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(10,i1) = local(2,i1) 
+    load tmp(11,i1) = local(1,i1) 
+    > tmp(12,i1) = tmp(10,i1) tmp(11,i1) 
+    arg tmp(12,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(13,i1) = local(2,i1) 
+    load tmp(14,i1) = local(1,i1) 
+    >= tmp(15,i1) = tmp(13,i1) tmp(14,i1) 
+    arg tmp(15,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(16,i1) = local(1,i1) 
+    load tmp(17,i1) = local(2,i1) 
+    < tmp(18,i1) = tmp(16,i1) tmp(17,i1) 
+    arg tmp(18,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(19,i1) = local(1,i1) 
+    load tmp(20,i1) = local(2,i1) 
+    <= tmp(21,i1) = tmp(19,i1) tmp(20,i1) 
+    arg tmp(21,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(22,i1) = local(1,i1) 
+    load tmp(23,i1) = local(2,i1) 
+    > tmp(24,i1) = tmp(22,i1) tmp(23,i1) 
+    arg tmp(24,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(25,i1) = local(1,i1) 
+    load tmp(26,i1) = local(2,i1) 
+    >= tmp(27,i1) = tmp(25,i1) tmp(26,i1) 
+    arg tmp(27,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(28,i1) = local(1,i1) 
+    load tmp(29,i1) = local(1,i1) 
+    < tmp(30,i1) = tmp(28,i1) tmp(29,i1) 
+    arg tmp(30,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    load tmp(31,i1) = local(2,i1) 
+    load tmp(32,i1) = local(2,i1) 
+    <= tmp(33,i1) = tmp(31,i1) tmp(32,i1) 
+    arg tmp(33,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    < tmp(34,i1) = imm(0,i1) imm(1,i1) 
+    arg tmp(34,i1) 
+    call output_bool 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    > tmp(35,i1) = imm(1,i1) imm(0,i1) 
+    arg tmp(35,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    load tmp(36,i1) = local(2,i1) 
+    load tmp(37,i1) = local(1,i1) 
+    < tmp(38,i1) = tmp(36,i1) tmp(37,i1) 
+    cmp tmp(38,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    arg imm(3,ptr to i8) 
+    call output_string 
+    jmp label(4) 
+  }
+  block {
+    label: label(3)
+    arg imm(4,ptr to i8) 
+    call output_string 
+    jmp label(4) 
+  }
+  block {
+    label: label(4)
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
