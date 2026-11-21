@@ -174,11 +174,12 @@ const TLayout& TModuleInfo::Layout(int typeId) const {
         : Layouts[typeId];
 }
 
-TAdaptor::TAdaptor(TModuleInfo& info, bool link)
+TAdaptor::TAdaptor(TModuleInfo& info, bool link, TReturnLimits returnLimits)
     : Info(info)
     , NFunc(info.Module.Functions.size())
     , NExt(info.Module.ExternalFunctions.size())
     , Link(link)
+    , ReturnLimits(returnLimits)
 {
     SlotRefs_.assign(info.Module.GlobalTypes.size(), -1);
     StrRefs_.assign(info.Module.StringLiterals.size(), -1);
@@ -230,7 +231,10 @@ int TAdaptor::ValueType(EValueRef v) const {
         return Info.Str; // address of a local
     }
     if (id < VarRefBase_) {
-        return Fun->LocalTypes[Fun->ArgLocals[id - ArgBase_].Idx];
+        u32 arg = id - ArgBase_;
+        return arg < Fun->ArgLocals.size()
+            ? Fun->LocalTypes[Fun->ArgLocals[arg].Idx]
+            : Info.Str; // sret
     }
     return Info.Str;
 }
@@ -297,7 +301,11 @@ bool TAdaptor::switch_func(EFuncRef f) {
     NTmp_ = std::max<u32>(fun.NextTmpIdx, fun.TmpTypes.size());
     LocalBase_ = NTmp_;
     ArgBase_ = LocalBase_ + fun.LocalTypes.size();
-    VarRefBase_ = ArgBase_ + fun.ArgLocals.size();
+    bool sret = InMemory(fun.ReturnTypeId);
+    SretArg_ = sret
+        ? EValueRef(ArgBase_ + fun.ArgLocals.size())
+        : INVALID_VALUE_REF;
+    VarRefBase_ = ArgBase_ + fun.ArgLocals.size() + sret;
     NBlocks_ = fun.Blocks.size();
 
     TmpPhi_.assign(NTmp_, -1);
@@ -314,8 +322,12 @@ bool TAdaptor::switch_func(EFuncRef f) {
     BlockInfo_.assign(NBlocks_, 0);
     BlockInfo2_.assign(NBlocks_, 0);
 
+    // The sret argument comes first, as in the C ABI: x86-64 passes it in RDI.
+    if (sret) {
+        Args_.push_back(SretArg_);
+    }
     for (u32 i = 0; i < fun.ArgLocals.size(); ++i) {
-        Args_.push_back(EValueRef(ArgBase_ + i));
+        Args_.push_back(ArgValue(i));
     }
 
     for (u32 b = 0; b < NBlocks_; ++b) {
@@ -347,10 +359,10 @@ bool TAdaptor::switch_func(EFuncRef f) {
             entry.Pos.fill(INVALID_VALUE_REF);
             entry.Result = INVALID_VALUE_REF;
             entry.OpBegin = Operands_.size();
-            for (auto a : Args_) {
-                Operands_.push_back(a);
+            for (u32 i = 0; i < fun.ArgLocals.size(); ++i) {
+                Operands_.push_back(ArgValue(i));
             }
-            entry.OpCount = Args_.size();
+            entry.OpCount = fun.ArgLocals.size();
             Insts_.push_back(entry);
         }
 
@@ -393,6 +405,12 @@ bool TAdaptor::switch_func(EFuncRef f) {
                     continue;
                 }
                 Operands_.push_back(rec.Pos[i]);
+            }
+            // Every return writes the sret buffer (a large result with memcpy),
+            // so the buffer address stays live up to each of them.
+            if (instr.Op == "ret"_op && sret) {
+                Operands_.push_back(SretArg_);
+                HasCalls_ |= types.SizeInBytes(fun.ReturnTypeId) > (int)InlineMemoryBytes;
             }
             rec.OpCount = Operands_.size() - rec.OpBegin;
             rec.Result = INVALID_VALUE_REF;

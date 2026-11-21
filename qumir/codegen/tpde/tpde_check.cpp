@@ -19,7 +19,6 @@ bool IsTerminator(TOp op) {
 // Finds the first construct that the TPDE compilers do not implement.
 struct TChecker {
     TModuleInfo& Info;
-    TReturnLimits ReturnLimits;
     bool CStructs;
     std::optional<std::string> Error;
 
@@ -47,12 +46,6 @@ struct TChecker {
     }
     bool IsAggregate(int type) const {
         return Layout(type).Kind == TLayout::Aggregate;
-    }
-    // The parts of a returned value go to registers only.
-    bool Returnable(int type) const {
-        const auto& l = Layout(type);
-        return l.Kind == TLayout::Void
-            || (Valued(type) && l.GpParts <= ReturnLimits.Gp && l.FpParts <= ReturnLimits.Fp);
     }
 
     bool HasVector(int type) const {
@@ -95,7 +88,7 @@ struct TChecker {
             Bad("coroutine function");
             return;
         }
-        if (!Returnable(fun.ReturnTypeId)) {
+        if (!Valued(fun.ReturnTypeId) && Layout(fun.ReturnTypeId).Kind != TLayout::Void) {
             Bad("return type " + TypeKind(fun.ReturnTypeId));
         }
         for (const auto& arg : fun.ArgLocals) {
@@ -340,8 +333,8 @@ struct TChecker {
 
 } // namespace
 
-std::optional<std::string> FindUnsupported(TModuleInfo& info, TReturnLimits returnLimits, bool cStructs) {
-    TChecker checker{info, returnLimits, cStructs, std::nullopt};
+std::optional<std::string> FindUnsupported(TModuleInfo& info, bool cStructs) {
+    TChecker checker{info, cStructs, std::nullopt};
     for (const auto& fun : info.Module.Functions) {
         checker.Function(fun);
         if (checker.Error) {

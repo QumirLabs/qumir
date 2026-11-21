@@ -50,6 +50,8 @@ struct TCompilerA64
     static constexpr TReturnLimits ReturnLimits{.Gp = 8, .Fp = 8};
     static constexpr u64 ByteMatchBackend = 1; // NEON
     static constexpr bool CStructs = true;
+    // AAPCS64 does not return the address of the sret buffer (X8).
+    static constexpr bool SretReturned = false;
 
     static Jump CondEq() {
         return Jump::Jeq;
@@ -434,10 +436,10 @@ struct TCompilerA64
 std::expected<std::string, TError> TTpdeBackend::EmitObject(NIR::TModule& module, EObjectUse use) {
     try {
         NTpde::TModuleInfo info(module);
-        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerA64::ReturnLimits, NTpde::TCompilerA64::CStructs)) {
+        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerA64::CStructs)) {
             return std::unexpected(TError("tpde: unsupported " + *unsupported));
         }
-        NTpde::TAdaptor adaptor(info, use == EObjectUse::Link);
+        NTpde::TAdaptor adaptor(info, use == EObjectUse::Link, NTpde::TCompilerA64::ReturnLimits);
         NTpde::TCompilerA64 compiler(&adaptor);
         if (!compiler.compile()) {
             return std::unexpected(TError(compiler.FailedOp.empty()
