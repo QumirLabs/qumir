@@ -50,6 +50,8 @@ struct TCompilerX64
     // System V returns values in up to 2 general and 2 FP registers.
     static constexpr TReturnLimits ReturnLimits{.Gp = 2, .Fp = 2};
     static constexpr u64 ByteMatchBackend = 2; // SSE2
+    // TODO: classify structs for external calls by System V.
+    static constexpr bool CStructs = false;
 
     static Jump CondEq() {
         return Jump::je;
@@ -503,7 +505,7 @@ struct TCompilerX64
 std::expected<std::string, TError> TTpdeBackend::EmitObject(NIR::TModule& module, EObjectUse use) {
     try {
         NTpde::TModuleInfo info(module);
-        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerX64::ReturnLimits)) {
+        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerX64::ReturnLimits, NTpde::TCompilerX64::CStructs)) {
             return std::unexpected(TError("tpde: unsupported " + *unsupported));
         }
         NTpde::TAdaptor adaptor(info, use == EObjectUse::Link);

@@ -20,6 +20,7 @@ bool IsTerminator(TOp op) {
 struct TChecker {
     TModuleInfo& Info;
     TReturnLimits ReturnLimits;
+    bool CStructs;
     std::optional<std::string> Error;
 
     void Bad(const std::string& what) {
@@ -52,6 +53,26 @@ struct TChecker {
         const auto& l = Layout(type);
         return l.Kind == TLayout::Void
             || (Valued(type) && l.GpParts <= ReturnLimits.Gp && l.FpParts <= ReturnLimits.Fp);
+    }
+
+    bool HasVector(int type) const {
+        const auto& tt = Info.Module.Types;
+        auto kind = tt.GetKind(type);
+        if (kind != EKind::Struct) {
+            return kind == EKind::Vec;
+        }
+        return std::ranges::any_of(tt.GetStructFields(type), [&](int field) {
+            return HasVector(field);
+        });
+    }
+    // The C ABI passes a vector field as a short vector, not by its lanes.
+    bool CStruct(int type) const {
+        return CStructs && IsAggregate(type) && !HasVector(type);
+    }
+    std::string VectorNote(int type) const {
+        return IsAggregate(type) && HasVector(type)
+            ? " (vector field)"
+            : "";
     }
 
     std::string TypeKind(int type) const {
@@ -296,15 +317,15 @@ struct TChecker {
                         Bad("call of coroutine");
                     }
                 } else if (auto jt = module.SymIdToExtFuncIdx.find(sym); jt != module.SymIdToExtFuncIdx.end()) {
-                    // No C ABI coercion of structs for external calls.
                     const auto& ext = module.ExternalFunctions[jt->second];
                     for (int t : ext.ArgTypes) {
-                        if (!Scalar(t)) {
-                            Bad("external call with " + TypeKind(t) + " argument");
+                        if (!Scalar(t) && !CStruct(t)) {
+                            Bad("external call with " + TypeKind(t) + " argument" + VectorNote(t));
                         }
                     }
-                    if (Layout(ext.ReturnTypeId).Kind != TLayout::Void && !Scalar(ext.ReturnTypeId)) {
-                        Bad("external call returning " + TypeKind(ext.ReturnTypeId));
+                    int ret = ext.ReturnTypeId;
+                    if (Layout(ret).Kind != TLayout::Void && !Scalar(ret) && !CStruct(ret)) {
+                        Bad("external call returning " + TypeKind(ret) + VectorNote(ret));
                     }
                 } else {
                     Bad("call of unknown symbol");
@@ -319,8 +340,8 @@ struct TChecker {
 
 } // namespace
 
-std::optional<std::string> FindUnsupported(TModuleInfo& info, TReturnLimits returnLimits) {
-    TChecker checker{info, returnLimits, std::nullopt};
+std::optional<std::string> FindUnsupported(TModuleInfo& info, TReturnLimits returnLimits, bool cStructs) {
+    TChecker checker{info, returnLimits, cStructs, std::nullopt};
     for (const auto& fun : info.Module.Functions) {
         checker.Function(fun);
         if (checker.Error) {
