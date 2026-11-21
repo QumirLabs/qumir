@@ -18,6 +18,8 @@
 #include <qumir/codegen/llvm/llvm_backend.h>
 
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <cassert>
@@ -47,6 +49,19 @@ NFrontend::TFrontendOptions FrontendOptions(const TLLVMRunnerOptions& options) {
         .SourceFilePath = options.SourceFilePath,
         .DebugOptions = {.EmitDebugInfo = options.EmitDebugInfo && options.OptLevel == 0},
     };
+}
+
+// Experiment: QUMIR_KERNEL_TIMING prints the stages of an uncached kernel compile.
+bool KernelTimingEnabled() {
+    static const bool enabled = std::getenv("QUMIR_KERNEL_TIMING") != nullptr;
+    return enabled;
+}
+
+double MsSince(std::chrono::steady_clock::time_point& point) {
+    auto now = std::chrono::steady_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(now - point).count();
+    point = now;
+    return ms;
 }
 
 } // namespace
@@ -374,11 +389,58 @@ std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> TLLVMRunner::EmitKernelArtifacts
     std::vector<NAst::TPragma> mainPragmas,
     const std::vector<std::string>* llvmBitcode)
 {
+    auto point = std::chrono::steady_clock::now();
     if (!LowerKernelAst(std::move(ast), entryNames, error, std::move(mainPragmas))) {
         return nullptr;
     }
+    double frontendMs = MsSince(point);
     std::unordered_set<std::string> exports(entryNames.begin(), entryNames.end());
-    return EmitLoweredModule(nullptr, nullptr, error, llvmBitcode, nullptr, &exports);
+    auto artifacts = EmitLoweredModule(nullptr, nullptr, error, llvmBitcode, nullptr, &exports);
+    if (KernelTimingEnabled()) {
+        std::cerr << "[kernel-timing] llvm frontend=" << frontendMs
+                  << "ms ir+opt=" << MsSince(point) << "ms\n";
+    }
+    return artifacts;
+}
+
+bool TLLVMRunner::KernelsUseBackend() const {
+    return dynamic_cast<const NCodeGen::TLLVMBackend*>(Backend_.get()) == nullptr;
+}
+
+std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
+    const std::vector<std::string>& entryNames,
+    std::string* error)
+{
+    auto point = std::chrono::steady_clock::now();
+    // The LLVM path leaves the IR to LLVM -O; a backend without an optimizer
+    // gets the Qumir IR passes, as Run() does.
+    if (Options.OptLevel > 0) {
+        Optimize();
+    }
+    double optMs = MsSince(point);
+    auto object = Backend_->EmitObject(Module, NCodeGen::EObjectUse::Load);
+    if (!object) {
+        if (error) {
+            *error = object.error().ToString();
+        }
+        return {};
+    }
+    double emitMs = MsSince(point);
+    // Every function of the object is global; the JIT is private to this call.
+    auto linked = LlvmRunner_.LinkAndLookup(
+        {}, {std::move(*object)}, nullptr, Options.NativeCode, entryNames, error);
+    if (linked.Entries.empty()) {
+        if (error && error->empty()) {
+            *error = "function lookup failed";
+        }
+        return {};
+    }
+    if (KernelTimingEnabled()) {
+        std::cerr << "[kernel-timing] backend ir-opt=" << optMs << "ms emit=" << emitMs
+                  << "ms jit-link=" << MsSince(point) << "ms\n";
+    }
+    LinkedKernels_.push_back(std::move(linked.Lifetime));
+    return std::move(linked.Entries);
 }
 
 std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
@@ -386,11 +448,22 @@ std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
+    if (KernelsUseBackend()) {
+        auto point = std::chrono::steady_clock::now();
+        if (!LowerKernelAst(std::move(ast), entryNames, error)) {
+            return {};
+        }
+        if (KernelTimingEnabled()) {
+            std::cerr << "[kernel-timing] backend frontend=" << MsSince(point) << "ms\n";
+        }
+        return LinkBackendKernels(entryNames, error);
+    }
     auto artifacts = EmitKernelArtifacts(std::move(ast), entryNames, error);
     if (!artifacts) {
         return {};
     }
 
+    auto point = std::chrono::steady_clock::now();
     std::string runErr;
     auto entries = LlvmRunner_.LookupMany(std::move(artifacts), entryNames, &runErr);
     if (entries.empty()) {
@@ -398,6 +471,9 @@ std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
             *error = runErr.empty() ? "function lookup failed" : runErr;
         }
         return {};
+    }
+    if (KernelTimingEnabled()) {
+        std::cerr << "[kernel-timing] llvm jit-codegen+link=" << MsSince(point) << "ms\n";
     }
     return entries;
 }
@@ -407,6 +483,18 @@ std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
+    if (KernelsUseBackend()) {
+        if (!composed.LlvmBitcode.empty()) {
+            if (error) {
+                *error = "codegen backend: LLVM bitcode of source modules needs the LLVM backend";
+            }
+            return {};
+        }
+        if (!LowerKernelAst(std::move(composed.Ast), entryNames, error, std::move(composed.Pragmas))) {
+            return {};
+        }
+        return LinkBackendKernels(entryNames, error);
+    }
     auto llvmBitcode = std::move(composed.LlvmBitcode);
     auto artifacts = EmitKernelArtifacts(
         std::move(composed.Ast),
@@ -476,6 +564,12 @@ TLLVMRunner::PrepareFusedKernelsCached(
 {
     if (error) {
         error->clear();
+    }
+    if (KernelsUseBackend()) {
+        if (error) {
+            *error = "codegen backend: the kernel object cache needs the LLVM backend";
+        }
+        return std::nullopt;
     }
     auto started = std::chrono::steady_clock::now();
     if (!LowerKernelAst(std::move(ast), entryNames, error)) {

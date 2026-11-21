@@ -168,6 +168,14 @@ private:
         const std::unordered_set<std::string>* inlineDefinitions = nullptr,
         const std::unordered_set<std::string>* exports = nullptr);
 
+    // Kernels go through Backend_ unless it is the LLVM one: the object cache
+    // and bitcode linking need the partitioned LLVM codegen.
+    bool KernelsUseBackend() const;
+    // Backend_ object of the lowered Module, linked by ORC JITLink.
+    std::unordered_map<std::string, void*> LinkBackendKernels(
+        const std::vector<std::string>& entryNames,
+        std::string* error);
+
     // Shared frontend for both CompileKernelAst overloads: lower then emit.
     std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> EmitKernelArtifacts(
         NAst::TExprPtr ast,
@@ -183,8 +191,9 @@ private:
     std::vector<std::shared_ptr<NRegistry::IModule>> RegisteredModules;
     std::vector<std::shared_ptr<NRegistry::IModule>> AvailableModules;
 
-    std::unique_ptr<NCodeGen::ICodegenBackend> Backend_; // Run() only; the kernel APIs use LLVM directly
+    std::unique_ptr<NCodeGen::ICodegenBackend> Backend_; // Run(); kernels too if not LLVM
     NCodeGen::TLlvmRunner LlvmRunner_; // persistent; keeps compiled kernels alive
+    std::vector<std::shared_ptr<void>> LinkedKernels_; // JITs of LinkBackendKernels
 };
 
 } // namespace NQumir
