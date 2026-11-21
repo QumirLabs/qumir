@@ -1017,10 +1017,8 @@ struct TCompilerCommon
             this->generate_uncond_branch(t);
             return true;
         }
-        if (Ir->IsImm(rec.Pos[0])) {
-            this->generate_uncond_branch(Ir->Imm(rec.Pos[0]).Value != 0 ? t : f);
-            return true;
-        }
+        // No folding of a constant condition: TPDE frees a phi only after every
+        // incoming edge has moved its value, so a dropped edge leaks the phi.
         if (!D().EmitTest(rec.Pos[0])) {
             return false;
         }

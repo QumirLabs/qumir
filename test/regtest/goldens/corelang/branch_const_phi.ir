@@ -1,0 +1,59 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    salloc tmp(0,ptr to struct { i1; i64}) = imm(16,i64) 
+    + tmp(1,ptr to i1) = tmp(0,ptr to struct { i1; i64}) imm(0,i64) 
+    ste tmp(1,ptr to i1) imm(1,i1) 
+    + tmp(2,ptr to i64) = tmp(0,ptr to struct { i1; i64}) imm(8,i64) 
+    ste tmp(2,ptr to i64) imm(7,i64) 
+    stre local(0,struct { i1; i64}) tmp(0,ptr to struct { i1; i64}) 
+    lea tmp(3,ptr to struct { i1; i64}) = local(0,struct { i1; i64}) 
+    arg tmp(3,ptr to struct { i1; i64}) 
+    call tmp(4,i1) = key_valid 
+    cmp tmp(4,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    arg imm(1,ptr to i8) 
+    call output_string 
+    jmp label(4) 
+  }
+  block {
+    label: label(3)
+    arg imm(2,ptr to i8) 
+    call output_string 
+    jmp label(4) 
+  }
+  block {
+    label: label(4)
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function key_valid (local(0)) { ; i1
+  block {
+    label: label(0)
+    cmp imm(1,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    lea tmp(0,ptr to struct { i1; i64}) = local(0,struct { i1; i64}) 
+    + tmp(1,ptr to i1) = tmp(0,ptr to struct { i1; i64}) imm(0,i64) 
+    lde tmp(2,i1) = tmp(1,ptr to i1) 
+    jmp label(3) 
+  }
+  block {
+    label: label(3)
+    phi tmp(3,i1) = imm(1,i1) label(0) tmp(2,i1) label(2) 
+    stre local(1,i1) tmp(3,i1) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    load tmp(4,i1) = local(1,i1) 
+    ret tmp(4,i1) 
+  }
+}
