@@ -290,7 +290,7 @@ bool TLLVMRunner::LowerKernelAst(
         return false;
     }
 
-    // Another backend prints the IR after the Qumir passes, in LinkBackendKernels.
+    // Another backend prints the IR after the Qumir passes, in EmitBackendKernels.
     if (!KernelsUseBackend()) {
         PrintModuleIr();
     }
@@ -392,10 +392,22 @@ void TLLVMRunner::PrintModuleIr() {
     }
 }
 
-std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
+std::optional<std::string> TLLVMRunner::EmitBackendKernels(
+    NAst::TExprPtr ast,
     const std::vector<std::string>& entryNames,
-    std::string* error)
+    std::string* error,
+    std::vector<NAst::TPragma> mainPragmas,
+    const std::vector<std::string>& llvmBitcode)
 {
+    if (!llvmBitcode.empty()) {
+        if (error) {
+            *error = "the LLVM bitcode of source modules needs the LLVM codegen backend";
+        }
+        return std::nullopt;
+    }
+    if (!LowerKernelAst(std::move(ast), entryNames, error, std::move(mainPragmas))) {
+        return std::nullopt;
+    }
     // The LLVM codegen leaves the IR to LLVM -O; another backend gets the
     // Qumir IR passes, as Compile() runs them for Run().
     if (Options.OptLevel > 0) {
@@ -407,10 +419,18 @@ std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
         if (error) {
             *error = object.error().ToString();
         }
-        return {};
+        return std::nullopt;
     }
+    return std::move(*object);
+}
+
+std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
+    std::string object,
+    const std::vector<std::string>& entryNames,
+    std::string* error)
+{
     auto linked = LlvmRunner_.LinkAndLookup(
-        {}, {std::move(*object)}, nullptr, Options.NativeCode, entryNames, error);
+        {}, {std::move(object)}, nullptr, Options.NativeCode, entryNames, error);
     if (linked.Entries.empty()) {
         return {};
     }
@@ -424,10 +444,11 @@ std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
     std::string* error)
 {
     if (KernelsUseBackend()) {
-        if (!LowerKernelAst(std::move(ast), entryNames, error)) {
+        auto object = EmitBackendKernels(std::move(ast), entryNames, error);
+        if (!object) {
             return {};
         }
-        return LinkBackendKernels(entryNames, error);
+        return LinkBackendKernels(std::move(*object), entryNames, error);
     }
     auto artifacts = EmitKernelArtifacts(std::move(ast), entryNames, error);
     if (!artifacts) {
@@ -451,16 +472,12 @@ std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
     std::string* error)
 {
     if (KernelsUseBackend()) {
-        if (!composed.LlvmBitcode.empty()) {
-            if (error) {
-                *error = "the LLVM bitcode of source modules needs the LLVM codegen backend";
-            }
+        auto object = EmitBackendKernels(
+            std::move(composed.Ast), entryNames, error, std::move(composed.Pragmas), composed.LlvmBitcode);
+        if (!object) {
             return {};
         }
-        if (!LowerKernelAst(std::move(composed.Ast), entryNames, error, std::move(composed.Pragmas))) {
-            return {};
-        }
-        return LinkBackendKernels(entryNames, error);
+        return LinkBackendKernels(std::move(*object), entryNames, error);
     }
     auto llvmBitcode = std::move(composed.LlvmBitcode);
     auto artifacts = EmitKernelArtifacts(
@@ -489,6 +506,9 @@ std::optional<std::string> TLLVMRunner::CompileKernelAstToObject(
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
+    if (KernelsUseBackend()) {
+        return EmitBackendKernels(std::move(ast), entryNames, error);
+    }
     auto artifacts = EmitKernelArtifacts(std::move(ast), entryNames, error);
     if (!artifacts) {
         return std::nullopt;
@@ -504,6 +524,10 @@ std::optional<std::string> TLLVMRunner::CompileKernelAstToObject(
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
+    if (KernelsUseBackend()) {
+        return EmitBackendKernels(
+            std::move(composed.Ast), entryNames, error, std::move(composed.Pragmas), composed.LlvmBitcode);
+    }
     auto llvmBitcode = std::move(composed.LlvmBitcode);
     auto artifacts = EmitKernelArtifacts(
         std::move(composed.Ast),
@@ -531,6 +555,12 @@ TLLVMRunner::PrepareFusedKernelsCached(
 {
     if (error) {
         error->clear();
+    }
+    if (KernelsUseBackend()) {
+        if (error) {
+            *error = "the kernel object cache needs the LLVM codegen backend";
+        }
+        return std::nullopt;
     }
     auto started = std::chrono::steady_clock::now();
     if (!LowerKernelAst(std::move(ast), entryNames, error)) {
