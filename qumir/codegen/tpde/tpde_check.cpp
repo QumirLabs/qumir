@@ -124,7 +124,7 @@ struct TChecker {
             "lde"_op, "ste"_op, "salloc"_op, "copy"_op, "load"_op, "lea"_op, "stre"_op,
             "ret"_op, "i2b"_op, "f2b"_op, "i2f"_op, "f2i"_op, "bitcast"_op, "mov"_op,
             "arg"_op, "call"_op, "jmp"_op, "cmp"_op, "prefetch"_op,
-            "select"_op, "any"_op, "all"_op, "movemask"_op, "shuffle"_op, "index"_op,
+            "select"_op, "any"_op, "all"_op, "movemask"_op, "shuffle"_op, "index"_op, "gather"_op,
         };
         const std::string name = instr.Op.ToString();
         if (!known.count(instr.Op)) {
