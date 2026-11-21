@@ -162,6 +162,29 @@ u128 negi128(u128 a) {
     return -a;
 }
 
+// i128 division calls __divti3 and friends with the divisor 1 where the divide
+// would trap (CreateDefinedDivRem). One argument part per snippet: CallBuilder
+// cannot evict a temporary that holds the next argument register.
+static inline bool sdivtrap(u64 a0, u64 a1, u64 b0, u64 b1) {
+    bool zero = (b0 | b1) == 0;
+    bool minusOne = (b0 & b1) == ~(u64)0;
+    bool min = (a0 | (a1 ^ ((u64)1 << 63))) == 0;
+    return zero | (min & minusOne);
+}
+u64 sdivisorlo128(u64 a0, u64 a1, u64 b0, u64 b1) {
+    return sdivtrap(a0, a1, b0, b1) ? 1 : b0;
+}
+u64 sdivisorhi128(u64 a0, u64 a1, u64 b0, u64 b1) {
+    return sdivtrap(a0, a1, b0, b1) ? 0 : b1;
+}
+u64 udivisorlo128(u64 b0, u64 b1) {
+    return b0 | ((b0 | b1) == 0);
+}
+// x / 0 == 0; the libcall divided by 1.
+u128 divresi128(u128 q, u64 b0, u64 b1) {
+    return (b0 | b1) == 0 ? 0 : q;
+}
+
 // bit counting (builtin::cttz/ctlz/ctpop, zero is not poison)
 u64 cttzi64(u64 a) {
     return !a ? 64 : __builtin_ctzll(a);
@@ -259,6 +282,20 @@ double u32tof64(u32 a) {
 }
 double u64tof64(u64 a) {
     return (double)a;
+}
+// llvm.fptosi.sat over the result r of __fixdfti or __fixsfti, as in the LLVM
+// backend: NaN gives 0, values out of range give the nearest bound.
+i128 satf64toi128(double a, i128 r) {
+    i128 max = (i128)(~(u128)0 >> 1);
+    r = a < -0x1p127 ? -max - 1 : r;
+    r = a >= 0x1p127 ? max : r;
+    return a != a ? 0 : r;
+}
+i128 satf32toi128(float a, i128 r) {
+    i128 max = (i128)(~(u128)0 >> 1);
+    r = a < -0x1p127f ? -max - 1 : r;
+    r = a >= 0x1p127f ? max : r;
+    return a != a ? 0 : r;
 }
 
 // bit casts between register banks

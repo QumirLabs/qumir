@@ -1,0 +1,332 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    << tmp(0,i128) = imm(1,i128) imm(127,i128) 
+    stre local(0,i128) tmp(0,i128) 
+    load tmp(1,i128) = local(0,i128) 
+    ~ tmp(2,i128) = tmp(1,i128) 
+    stre local(1,i128) tmp(2,i128) 
+    << tmp(3,i128) = imm(1,i128) imm(100,i128) 
+    stre local(2,i128) tmp(3,i128) 
+    << tmp(4,i128) = imm(1,i128) imm(47,i128) 
+    stre local(3,i128) tmp(4,i128) 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    * tmp(5,i128) = imm(1000000000000,i128) imm(1000000000,i128) 
+    arg tmp(5,i128) 
+    call tmp(6,f64) = tof 
+    == tmp(7,i1) = tmp(6,f64) imm(4921056587992461136,f64) 
+    arg tmp(7,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(3,ptr to i8) 
+    call output_string 
+    load tmp(8,i128) = local(2,i128) 
+    load tmp(9,i128) = local(3,i128) 
+    + tmp(10,i128) = tmp(8,i128) tmp(9,i128) 
+    arg tmp(10,i128) 
+    call tmp(11,f64) = tof 
+    load tmp(12,i128) = local(2,i128) 
+    arg tmp(12,i128) 
+    call tmp(13,f64) = tof 
+    == tmp(14,i1) = tmp(11,f64) tmp(13,f64) 
+    arg tmp(14,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(4,ptr to i8) 
+    call output_string 
+    load tmp(15,i128) = local(2,i128) 
+    load tmp(16,i128) = local(3,i128) 
+    * tmp(17,i128) = imm(3,i128) tmp(16,i128) 
+    + tmp(18,i128) = tmp(15,i128) tmp(17,i128) 
+    arg tmp(18,i128) 
+    call tmp(19,f64) = tof 
+    load tmp(20,i128) = local(2,i128) 
+    load tmp(21,i128) = local(3,i128) 
+    << tmp(22,i128) = tmp(21,i128) imm(2,i128) 
+    + tmp(23,i128) = tmp(20,i128) tmp(22,i128) 
+    arg tmp(23,i128) 
+    call tmp(24,f64) = tof 
+    == tmp(25,i1) = tmp(19,f64) tmp(24,f64) 
+    arg tmp(25,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(5,ptr to i8) 
+    call output_string 
+    load tmp(26,i128) = local(2,i128) 
+    load tmp(27,i128) = local(3,i128) 
+    + tmp(28,i128) = tmp(26,i128) tmp(27,i128) 
+    + tmp(29,i128) = tmp(28,i128) imm(1,i128) 
+    arg tmp(29,i128) 
+    call tmp(30,f64) = tof 
+    arg tmp(30,f64) 
+    call back 
+    arg imm(6,ptr to i8) 
+    call output_string 
+    load tmp(31,i128) = local(2,i128) 
+    neg tmp(32,i128) = tmp(31,i128) 
+    load tmp(33,i128) = local(3,i128) 
+    + tmp(34,i128) = tmp(33,i128) imm(1,i128) 
+    - tmp(35,i128) = tmp(32,i128) tmp(34,i128) 
+    arg tmp(35,i128) 
+    call tmp(36,f64) = tof 
+    arg tmp(36,f64) 
+    call back 
+    arg imm(7,ptr to i8) 
+    call output_string 
+    load tmp(37,i128) = local(0,i128) 
+    arg tmp(37,i128) 
+    call tmp(38,f64) = tof 
+    arg tmp(38,f64) 
+    call back 
+    arg imm(8,ptr to i8) 
+    call output_string 
+    load tmp(39,i128) = local(1,i128) 
+    arg tmp(39,i128) 
+    call tmp(40,f64) = tof 
+    arg tmp(40,f64) 
+    call back 
+    stre local(4,f64) imm(-1,f64) 
+    stre local(5,f64) imm(9218868437227405312,f64) 
+    arg imm(9,ptr to i8) 
+    call output_string 
+    arg imm(4638419104340482458,f64) 
+    call back 
+    arg imm(10,ptr to i8) 
+    call output_string 
+    arg imm(-4584952932514293350,f64) 
+    call back 
+    arg imm(11,ptr to i8) 
+    call output_string 
+    arg imm(-4165004184426878545,f64) 
+    call back 
+    arg imm(12,ptr to i8) 
+    call output_string 
+    load tmp(41,f64) = local(4,f64) 
+    arg tmp(41,f64) 
+    call back 
+    arg imm(13,ptr to i8) 
+    call output_string 
+    load tmp(42,f64) = local(5,f64) 
+    arg tmp(42,f64) 
+    call back 
+    arg imm(14,ptr to i8) 
+    call output_string 
+    load tmp(43,f64) = local(5,f64) 
+    neg tmp(44,f64) = tmp(43,f64) 
+    arg tmp(44,f64) 
+    call back 
+    arg imm(15,ptr to i8) 
+    call output_string 
+    arg imm(5190260616003865117,f64) 
+    call back 
+    arg imm(16,ptr to i8) 
+    call output_string 
+    arg imm(-4033111420850910691,f64) 
+    call back 
+    arg imm(17,ptr to i8) 
+    call output_string 
+    arg imm(5179139571476070400,f64) 
+    call back 
+    arg imm(18,ptr to i8) 
+    call output_string 
+    arg imm(-4044232465378705408,f64) 
+    call back 
+    arg imm(19,ptr to i8) 
+    call output_string 
+    arg imm(5179139571476070399,f64) 
+    call back 
+    ~ tmp(45,u128) = imm(0,u128) 
+    stre local(6,u128) tmp(45,u128) 
+    load tmp(46,i128) = local(0,i128) 
+    mov tmp(47,u128) = tmp(46,i128) 
+    stre local(7,u128) tmp(47,u128) 
+    arg imm(20,ptr to i8) 
+    call output_string 
+    load tmp(48,u128) = local(6,u128) 
+    arg tmp(48,u128) 
+    call tmp(49,f64) = utof 
+    == tmp(50,i1) = tmp(49,f64) imm(5183643171103440896,f64) 
+    arg tmp(50,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(21,ptr to i8) 
+    call output_string 
+    load tmp(51,u128) = local(7,u128) 
+    << tmp(52,i128) = imm(1,i128) imm(74,i128) 
+    mov tmp(53,u128) = tmp(52,i128) 
+    + tmp(54,u128) = tmp(51,u128) tmp(53,u128) 
+    arg tmp(54,u128) 
+    call tmp(55,f64) = utof 
+    load tmp(56,u128) = local(7,u128) 
+    arg tmp(56,u128) 
+    call tmp(57,f64) = utof 
+    == tmp(58,i1) = tmp(55,f64) tmp(57,f64) 
+    arg tmp(58,i1) 
+    call output_bool 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(22,ptr to i8) 
+    call output_string 
+    arg imm(5175426328141668785,f64) 
+    call uback 
+    arg imm(23,ptr to i8) 
+    call output_string 
+    arg imm(4606281698874543309,f64) 
+    call uback 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function tof (local(0)) { ; f64
+  block {
+    label: label(0)
+    load tmp(0,i128) = local(0,i128) 
+    i2f tmp(1,f64) = tmp(0,i128) 
+    stre local(1,f64) tmp(1,f64) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    load tmp(2,f64) = local(1,f64) 
+    ret tmp(2,f64) 
+  }
+}
+function utof (local(0)) { ; f64
+  block {
+    label: label(0)
+    load tmp(0,u128) = local(0,u128) 
+    i2f tmp(1,f64) = tmp(0,u128) 
+    stre local(1,f64) tmp(1,f64) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    load tmp(2,f64) = local(1,f64) 
+    ret tmp(2,f64) 
+  }
+}
+function back (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,f64) = local(0,f64) 
+    f2i tmp(1,i128) = tmp(0,f64) 
+    arg tmp(1,i128) 
+    call put 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function uback (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,f64) = local(0,f64) 
+    f2i tmp(1,u128) = tmp(0,f64) 
+    mov tmp(2,i128) = tmp(1,u128) 
+    arg tmp(2,i128) 
+    call put 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function put (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,i128) = local(0,i128) 
+    < tmp(1,i1) = tmp(0,i128) imm(0,i128) 
+    cmp tmp(1,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    arg imm(24,ptr to i8) 
+    call output_string 
+    jmp label(4) 
+  }
+  block {
+    label: label(3)
+    jmp label(4) 
+  }
+  block {
+    label: label(4)
+    load tmp(2,i128) = local(0,i128) 
+    arg tmp(2,i128) 
+    call digits 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function digits (local(0)) { ; void
+  block {
+    label: label(0)
+    load tmp(0,i128) = local(0,i128) 
+    / tmp(1,i128) = tmp(0,i128) imm(10,i128) 
+    stre local(1,i128) tmp(1,i128) 
+    load tmp(2,i128) = local(1,i128) 
+    != tmp(3,i1) = tmp(2,i128) imm(0,i128) 
+    cmp tmp(3,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    load tmp(4,i128) = local(1,i128) 
+    arg tmp(4,i128) 
+    call digits 
+    jmp label(4) 
+  }
+  block {
+    label: label(3)
+    jmp label(4) 
+  }
+  block {
+    label: label(4)
+    load tmp(5,i128) = local(0,i128) 
+    % tmp(6,i128) = tmp(5,i128) imm(10,i128) 
+    mov tmp(7,i64) = tmp(6,i128) 
+    stre local(2,i64) tmp(7,i64) 
+    load tmp(8,i64) = local(2,i64) 
+    < tmp(9,i1) = tmp(8,i64) imm(0,i64) 
+    cmp tmp(9,i1) label(5) label(6) 
+  }
+  block {
+    label: label(5)
+    load tmp(10,i64) = local(2,i64) 
+    neg tmp(11,i64) = tmp(10,i64) 
+    stre local(2,i64) tmp(11,i64) 
+    jmp label(7) 
+  }
+  block {
+    label: label(6)
+    jmp label(7) 
+  }
+  block {
+    label: label(7)
+    load tmp(12,i64) = local(2,i64) 
+    arg tmp(12,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}

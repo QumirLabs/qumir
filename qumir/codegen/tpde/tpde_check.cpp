@@ -187,9 +187,6 @@ struct TChecker {
         switch (instr.Op) {
             case "/"_op:
             case "%"_op:
-                if (rs.Class == TTypeShape::Int && rs.Bits > 64) {
-                    Bad("i128 " + name);
-                }
                 if (rs.Class == TTypeShape::Float && instr.Op == "%"_op) {
                     Bad("float %");
                 }
@@ -253,16 +250,6 @@ struct TChecker {
             case "f2b"_op:
                 if (IsAggregate(opType(0)) || (IsVector(opType(0)) && !vecRes)) {
                     Bad(name + " of " + TypeKind(opType(0)));
-                }
-                break;
-            case "i2f"_op:
-                if (!vecRes && Shape(opType(0)).Bits > 64) {
-                    Bad("i128 i2f");
-                }
-                break;
-            case "f2i"_op:
-                if (!vecRes && rs.Bits > 64) {
-                    Bad("i128 f2i");
                 }
                 break;
             case "mov"_op:
