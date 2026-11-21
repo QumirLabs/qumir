@@ -133,6 +133,47 @@ TQumirWide qumir_wide_make(int64_t a, int64_t b, int64_t c) {
     return TQumirWide{a, b, c};
 }
 
+// Appends v as one decimal digit, so the output shows each value in its place.
+static int64_t QumirDigits(std::initializer_list<double> values) {
+    int64_t acc = 0;
+    for (double v : values) {
+        acc = acc * 10 + int64_t(v);
+    }
+    return acc;
+}
+
+// The leading scalars take every argument register (8 GP and 8 FP on AArch64,
+// 6 and 8 on x86-64), so the structs and scalars after them go to the stack.
+int64_t qumir_stack_mix(
+    int64_t a0, int64_t a1, int64_t a2, int64_t a3, int64_t a4, int64_t a5, int64_t a6, int64_t a7,
+    double d0, double d1, double d2, double d3, double d4, double d5, double d6, double d7,
+    TQumirIntInt ii, TQumirSseSse ss, TQumirIntSse is, TQumirWide wide, int64_t t, double u)
+{
+    int64_t lead = a0 + a1 * 2 + a2 * 3 + a3 * 4 + a4 * 5 + a5 * 6 + a6 * 7 + a7 * 8;
+    lead += int64_t(d0 + d1 * 2 + d2 * 3 + d3 * 4 + d4 * 5 + d5 * 6 + d6 * 7 + d7 * 8);
+    int64_t tail = QumirDigits({
+        double(ii.a), double(ii.b), ss.a, ss.b, double(is.a), is.b,
+        double(wide.a), double(wide.b), double(wide.c), double(t), u,
+    });
+    return tail * 1000 + lead;
+}
+
+// The structs take the argument registers and push the scalar to the stack.
+int64_t qumir_regs_ii(TQumirIntInt p, TQumirIntInt q, TQumirIntInt r, TQumirIntInt s, int64_t t) {
+    return QumirDigits({
+        double(p.a), double(p.b), double(q.a), double(q.b),
+        double(r.a), double(r.b), double(s.a), double(s.b), double(t),
+    });
+}
+
+// A result in memory with every argument register taken.
+TQumirWide qumir_stack_wide(
+    int64_t a0, int64_t a1, int64_t a2, int64_t a3, int64_t a4, int64_t a5, int64_t a6, int64_t a7,
+    TQumirWide p)
+{
+    return TQumirWide{p.a + a0, p.b + a7, p.c * 10 + a3};
+}
+
 } // extern "C"
 
 namespace {

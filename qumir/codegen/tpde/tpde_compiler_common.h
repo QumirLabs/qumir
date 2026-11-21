@@ -35,6 +35,20 @@ namespace NTpde {
 //   void StoreFrame(u32 frameOff, AsmReg reg, u32 size)
 //   template <class TFn> void ForEachAggPart(ValueRef&, const TLayout&, TFn&&)
 //   bool CompileSelect(const TInstRec&), CompileReduce(const TInstRec&)
+//   static constexpr bool CStructs;    external calls pass structs by the C ABI
+// and, where CStructs holds:
+//   TCStruct ClassifyCStruct(int type)
+//   ValuePartRef FrameAddress(u32 frameOff)
+
+// How the C ABI passes a struct: one register per piece, or in memory (a
+// pointer to a copy as an argument, a buffer the caller passes as a result).
+struct TCStruct {
+    bool Memory = false;
+    // Alignment of the first piece: 16 takes an even register pair.
+    u32 Align = 0;
+    std::vector<TPartDesc> Pieces;
+};
+
 template <typename TDerived, typename TBase, typename TEncode, typename TConfig, typename TAssigner>
 struct TCompilerCommon
     : TBase
@@ -1415,6 +1429,104 @@ struct TCompilerCommon
         return std::nullopt;
     }
 
+    // A struct argument or result of an external call and its frame copy (Slot 0: none).
+    struct TCValue {
+        TCStruct Abi;
+        i32 Slot = 0;
+        u32 SlotSize = 0;
+    };
+
+    // The parts of the value are the C ABI pieces: they go to and come from the registers as they are.
+    bool PartsArePieces(int type, const TCStruct& abi) const {
+        const auto& parts = LayoutOf(type).Parts;
+        if (abi.Memory || parts.size() != abi.Pieces.size()) {
+            return false;
+        }
+        for (u32 i = 0; i < parts.size(); ++i) {
+            if (parts[i].Offset != abi.Pieces[i].Offset || parts[i].Fp != abi.Pieces[i].Fp) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Whole eightbytes, so the pieces load from the slot without reading past it.
+    void AllocFrameCopy(TCValue& c, int type) {
+        c.SlotSize = std::max(8, (Module.Types.SizeInBytes(type) + 7) & ~7);
+        c.Slot = this->allocate_stack_slot(c.SlotSize);
+    }
+
+    bool CopyCArg(EValueRef v, int type, TCValue& c) {
+        AllocFrameCopy(c, type);
+        if (Shape(TypeOf(v)).Class == TTypeShape::Ptr) {
+            ValueRef vr = this->val_ref(v);
+            D().CopyMemory(D().FrameAddress(c.Slot), vr.part(0), Module.Types.SizeInBytes(type));
+            return true;
+        }
+        return StoreValue(D().FrameAddress(c.Slot), v, type, true);
+    }
+
+    bool AddCArg(CallBuilder& cb, EValueRef v, int type, const TCValue& c) {
+        const auto& abi = c.Abi;
+        if (abi.Memory) {
+            cb.add_arg(D().FrameAddress(c.Slot), tpde::CCAssignment{});
+            return true;
+        }
+        // The pieces go to consecutive registers or all to the stack.
+        u32 n = abi.Pieces.size();
+        u32 k = 0;
+        auto add = [&](ValuePartRef&& p) {
+            cb.add_arg(std::move(p), tpde::CCAssignment{
+                .consecutive = u8(n - 1 - k),
+                .align = u8(k == 0 ? abi.Align : 0),
+            });
+            ++k;
+        };
+        if (c.Slot) {
+            for (const auto& piece : abi.Pieces) {
+                AsmReg reg;
+                auto p = SizedTemp(piece.Size, piece.Fp ? TConfig::FP_BANK : TConfig::GP_BANK, reg);
+                this->load_from_stack(reg, c.Slot + piece.Offset, piece.Size);
+                add(std::move(p));
+            }
+            return true;
+        }
+        const auto& parts = LayoutOf(type).Parts;
+        // Bools read from memory are 0 or 1 already.
+        bool inRegs = Shape(TypeOf(v)).Class != TTypeShape::Ptr;
+        ValueRef vr = this->val_ref(v);
+        return ForEachPart(v, type, vr, [&](ValuePartRef&& p) {
+            if (inRegs && Shape(parts[k].Type).Bits == 1) {
+                p = WithSize(MaskBool(std::move(p)), 4);
+            }
+            add(std::move(p));
+        });
+    }
+
+    bool TakeCResult(CallBuilder& cb, int type, TCValue& c, ValueRef& res) {
+        if (c.Abi.Memory) {
+            return LoadValue(D().FrameAddress(c.Slot), type, res);
+        }
+        if (PartsArePieces(type, c.Abi)) {
+            cb.add_ret(res);
+            return true;
+        }
+        // The registers go through a frame copy to the parts they hold.
+        std::vector<ValuePartRef> regs;
+        regs.reserve(c.Abi.Pieces.size());
+        for (const auto& piece : c.Abi.Pieces) {
+            regs.emplace_back(this, piece.Fp ? TConfig::FP_BANK : TConfig::GP_BANK);
+            cb.add_ret(regs.back(), tpde::CCAssignment{});
+        }
+        AllocFrameCopy(c, type);
+        for (u32 k = 0; k < regs.size(); ++k) {
+            const auto& piece = c.Abi.Pieces[k];
+            D().StoreFrame(c.Slot + piece.Offset, regs[k].cur_reg_or_load(), piece.Size);
+            regs[k].reset();
+        }
+        return LoadValue(D().FrameAddress(c.Slot), type, res);
+    }
+
     bool CompileCall(const TInstRec& rec) {
         const auto& instr = *rec.Instr;
         int sym = instr.Operands[0].Imm.Value;
@@ -1453,10 +1565,44 @@ struct TCompilerCommon
             }
         }
 
+        // Struct arguments and results of external calls follow the C ABI.
+        std::vector<std::optional<TCValue>> cArgs(args.size());
+        std::optional<TCValue> cRet;
+        if constexpr (TDerived::CStructs) {
+            // Frame copies come before the argument registers are taken: a large one calls memcpy.
+            for (size_t i = 0; ext && i < args.size(); ++i) {
+                if (IsAgg(params[i])) {
+                    auto& c = cArgs[i].emplace(TCValue{.Abi = D().ClassifyCStruct(params[i])});
+                    if (!PartsArePieces(params[i], c.Abi) && !CopyCArg(args[i], params[i], c)) {
+                        return false;
+                    }
+                }
+            }
+            if (ext && IsAgg(retType)) {
+                auto& c = cRet.emplace(TCValue{.Abi = D().ClassifyCStruct(retType)});
+                if (c.Abi.Memory) {
+                    AllocFrameCopy(c, retType);
+                }
+            }
+        }
+
         TAssigner assigner;
         CallBuilder cb(D(), assigner);
+        if constexpr (TDerived::CStructs) {
+            if (cRet && cRet->Abi.Memory) {
+                cb.add_arg(D().FrameAddress(cRet->Slot), tpde::CCAssignment{.sret = true});
+            }
+        }
         for (size_t i = 0; i < args.size(); ++i) {
             int to = params[i];
+            if constexpr (TDerived::CStructs) {
+                if (cArgs[i]) {
+                    if (!AddCArg(cb, args[i], to, *cArgs[i])) {
+                        return false;
+                    }
+                    continue;
+                }
+            }
             ValueRef vr = this->val_ref(args[i]);
             if (Shape(to).Bits == 128 && LayoutOf(to).Kind == TLayout::Scalar) {
                 if (Shape(TypeOf(args[i])).Bits != 128) {
@@ -1479,6 +1625,27 @@ struct TCompilerCommon
             }
         }
         cb.call(this->func_syms[funcIdx]);
+        if constexpr (TDerived::CStructs) {
+            if (cRet && hasResult) {
+                if (TypeOf(rec.Result) != retType) {
+                    return false;
+                }
+                ValueRef res = this->result_ref(rec.Result);
+                if (!TakeCResult(cb, retType, *cRet, res)) {
+                    return false;
+                }
+            }
+            auto release = [&](const std::optional<TCValue>& c) {
+                if (c && c->Slot) {
+                    this->free_stack_slot(c->Slot, c->SlotSize);
+                }
+            };
+            std::ranges::for_each(cArgs, release);
+            release(cRet);
+            if (cRet) {
+                return true;
+            }
+        }
         if (hasResult) {
             if (LayoutOf(retType).Parts.size() != LayoutOf(TypeOf(rec.Result)).Parts.size()) {
                 return false;

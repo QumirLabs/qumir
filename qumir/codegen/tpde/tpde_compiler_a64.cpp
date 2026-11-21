@@ -49,6 +49,7 @@ struct TCompilerA64
     // AArch64 returns values in up to 8 general and 8 FP registers.
     static constexpr TReturnLimits ReturnLimits{.Gp = 8, .Fp = 8};
     static constexpr u64 ByteMatchBackend = 1; // NEON
+    static constexpr bool CStructs = true;
 
     static Jump CondEq() {
         return Jump::Jeq;
@@ -129,6 +130,38 @@ struct TCompilerA64
 
     void StoreFrame(u32 frameOff, AsmReg reg, u32 size) {
         this->store_off(AsmReg{AsmReg::FP}, frameOff, reg, size);
+    }
+
+    ValuePartRef FrameAddress(u32 frameOff) {
+        AsmReg r;
+        auto addr = SizedTemp(8, TConfig::GP_BANK, r);
+        if (!ASMIF(ADDxi, r, AsmReg{AsmReg::FP}, frameOff)) {
+            this->materialize_constant(u64(frameOff), TConfig::GP_BANK, 8, r);
+            ASM(ADDx, r, r, AsmReg{AsmReg::FP});
+        }
+        return addr;
+    }
+
+    // AAPCS64: a homogeneous aggregate of up to four floats or doubles (fields
+    // of nested structs count) goes in FP registers, any other struct of up to
+    // 16 bytes in general registers by eightbytes, a larger one in memory.
+    TCStruct ClassifyCStruct(int type) const {
+        const auto& parts = LayoutOf(type).Parts;
+        int size = Module.Types.SizeInBytes(type);
+        TCStruct abi{.Align = u32(Module.Types.AlignInBytes(type))};
+        bool hfa = parts.size() <= 4 && std::ranges::all_of(parts, [&](const TPartDesc& p) {
+            return p.Fp && p.Size == parts[0].Size;
+        });
+        if (hfa) {
+            abi.Pieces = parts;
+        } else if (size > 16) {
+            abi.Memory = true;
+        } else {
+            for (int off = 0; off < size; off += 8) {
+                abi.Pieces.push_back({u32(off), 8, false, Info.I64});
+            }
+        }
+        return abi;
     }
 
     // Calls fn with each part of the struct `vr` points to.
@@ -407,7 +440,7 @@ struct TCompilerA64
 std::expected<std::string, TError> TTpdeBackend::EmitObject(NIR::TModule& module, EObjectUse use) {
     try {
         NTpde::TModuleInfo info(module);
-        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerA64::ReturnLimits)) {
+        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerA64::ReturnLimits, NTpde::TCompilerA64::CStructs)) {
             return std::unexpected(TError("tpde: unsupported " + *unsupported));
         }
         NTpde::TAdaptor adaptor(info, use == EObjectUse::Link);
