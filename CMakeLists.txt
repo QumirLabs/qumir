@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.30)
 project(qumir VERSION 1.1.0)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# No C++20 modules here: without this, CMake 3.28+ with Ninja and GCC 14+ scans every
+# file for them and adds -fmodules-ts, which also makes ccache skip the compile.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(QUMIR_BUILD_TESTS "Build Qumir tests" OFF)
 option(QUMIR_USE_CCACHE "Compile through ccache when it is installed" ON)
