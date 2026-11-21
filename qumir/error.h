@@ -119,7 +119,7 @@ private:
         case EErrorId::INVALID_ARGUMENT: return "недопустимый аргумент";
 
         case EErrorId::UNDEFINED_GLOBAL_SYMBOL: return "неопределённый глобальный символ: `{}`";
-        case EErrorId::UNEXPECTED_TOP_LEVEL_STATEMENT: return "неожиданное верхнеуровневое выражение: `{}`";
+        case EErrorId::UNEXPECTED_TOP_LEVEL_STATEMENT: return "команды вне алгоритма не поддерживаются; перенесите их между `нач' и `кон'";
         case EErrorId::MULTI_INDEX_COLLECTION_MUST_BE_IDENTIFIER: return "multi-index коллекция должна быть идентификатором";
         case EErrorId::VAR_HAS_NO_BINDING: return "переменная не имеет привязки";
         case EErrorId::UNDEFINED_NAME: return "неопределённое имя";

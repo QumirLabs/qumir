@@ -1,0 +1,7 @@
+(block
+  (fun <main> ()
+    (block
+      (cleanup-exit (return))))
+  (block
+    (call output_int64 1 0)
+    (call output_string "\n")))
