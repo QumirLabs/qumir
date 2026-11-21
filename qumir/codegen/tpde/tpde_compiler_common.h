@@ -1264,7 +1264,12 @@ struct TCompilerCommon
                 return false;
             }
         }
-        bool ok = LoadValue(std::move(base), to, res);
+        bool ok = true;
+        const auto& toLayout = LayoutOf(to);
+        for (u32 i = 0; ok && i < toLayout.Parts.size(); ++i) {
+            auto out = res.part(i);
+            ok = LoadScalar(Expr(b, toLayout.Parts[i].Offset), toLayout.Parts[i].Type, out);
+        }
         this->free_stack_slot(slot, slotSize);
         return ok;
     }
