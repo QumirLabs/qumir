@@ -1,6 +1,5 @@
 #include "runner_llvm.h"
 
-#include <qumir/parser/lexer.h>
 #include <qumir/semantics/kumir/pipeline.h>
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
@@ -14,7 +13,6 @@
 #include <qumir/modules/painter/painter.h>
 #include <qumir/modules/colors/colors.h>
 #include <qumir/modules/keyboard/keyboard.h>
-#include <qumir/ir/passes/transforms/pipeline.h>
 #include <qumir/frontend/compose.h>
 #include <qumir/frontend/source_module_loader.h>
 
@@ -34,13 +32,27 @@ bool IsKnown32BitTarget(const std::string& targetTriple) {
     return targetTriple.starts_with("wasm32-");
 }
 
+NFrontend::TFrontendOptions FrontendOptions(const TLLVMRunnerOptions& options) {
+    return {
+        .PrintAst = options.PrintAst,
+        .PrintTransformedAst = options.PrintTransformedAst,
+        .PrintIr = options.PrintIr,
+        .CoreInput = options.CoreInput,
+        .ResolveCoreInput = options.ResolveCoreInput,
+        .RunDefiniteAssignment = options.RunDefiniteAssignment,
+        .OptLevel = options.OptLevel,
+        .ModuleSearchPaths = options.ModuleSearchPaths,
+        .ModuleFiles = options.ModuleFiles,
+        .SourceFilePath = options.SourceFilePath,
+        .DebugOptions = {.EmitDebugInfo = options.EmitDebugInfo && options.OptLevel == 0},
+    };
+}
+
 } // namespace
 
 TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options)
-    : Options(std::move(options))
-    , Module{.SourceFilePath = Options.SourceFilePath}
-    , Builder(Module)
-    , Lowerer(Module, Builder, Resolver, {.EmitDebugInfo = Options.EmitDebugInfo && Options.OptLevel == 0})
+    : TFrontend(FrontendOptions(options))
+    , Options(std::move(options))
     , LlvmRunner_({
         .EnablePerfJitEventListener = Options.EnablePerfJitEventListener,
     })
@@ -105,107 +117,8 @@ void TLLVMRunner::RegisterModule(std::shared_ptr<NRegistry::IModule> module, boo
 }
 
 std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream& input) {
-    NFrontend::TSourceModuleLoader loader;
-    for (const auto& dir : Options.ModuleSearchPaths) {
-        loader.AddSearchPath(dir);
-    }
-    for (const auto& file : Options.ModuleFiles) {
-        if (auto reg = loader.RegisterSourceModule(file); !reg) {
-            return std::unexpected(reg.error());
-        }
-    }
-
-    // Parse source into AST
-    std::expected<NAst::TExprPtr, TError> parsed;
-    std::vector<NAst::TPragma> mainPragmas;
-    if (Options.CoreInput) {
-        NAst::NCore::TTokenStream ts(input);
-        NAst::NCore::TParser p;
-        parsed = p.Parse(ts);
-        if (parsed) {
-            mainPragmas = std::move(p.Pragmas);
-        }
-    } else {
-        NAst::TTokenStream ts(input);
-        NAst::TParser p;
-        parsed = p.parse(ts, &Resolver, &loader);
-        if (parsed) {
-            mainPragmas = ts.GetContext()->GetPragmas();
-        }
-    }
-    if (!parsed) {
-        return std::unexpected(parsed.error());
-    }
-    auto ast = std::move(parsed.value());
-
-    {
-        auto composed = NFrontend::LoadAndCompose(loader, ast, mainPragmas);
-        if (!composed) {
-            return std::unexpected(composed.error());
-        }
-        ast = std::move(composed->Ast);
-        Resolver.ApplyPragmas(composed->Pragmas);
-    }
-
-    // Name resolution
-    auto scope = Resolver.GetOrCreateRootScope();
-    // scope->AllowsRedeclare = true; // TODO: move to options?
-    scope->RootLevel = false;
-
-    if (Options.CoreInput && Options.ResolveCoreInput) {
-        if (auto err = Resolver.Resolve(ast)) {
-            return std::unexpected(*err);
-        }
-    }
-
-    if (Options.PrintAst) {
-        std::cerr << "=========== AST: ===========\n";
-        std::cerr << ast << std::endl;
-        std::cerr << "============================\n\n";
-    }
-
-    NTransform::TPipelineExtensions extensions;
-    if (Options.CoreInput) {
-        extensions.AfterTypeAnnotation.push_back(
-            NTransform::CoroutineAnnotationTransform);
-    } else {
-        extensions = NSemantics::NKumir::PipelineExtensions();
-    }
-    auto pipelineOptions = NTransform::TPipelineOptions{
-        .Extensions = std::move(extensions),
-        .RunDefiniteAssignment = Options.RunDefiniteAssignment,
-    };
-    auto error = NTransform::Pipeline(ast, Resolver, std::move(pipelineOptions));
-    if (!error) {
-        return std::unexpected(error.error());
-    }
-
-    if (Options.PrintTransformedAst) {
-        std::cerr << "===== TRANSFORMED AST: =====\n";
-        std::cerr << ast << std::endl;
-        std::cerr << "============================\n\n";
-    }
-
-    // Lower to IR: we build a fresh __repl function chunk per call
-    auto lowerRes = Lowerer.LowerTop(ast);
-    if (!lowerRes) {
-        return std::unexpected(lowerRes.error());
-    }
-
-    if (Options.OptLevel > 0) {
-        NIR::NPasses::Pipeline(Module);
-    }
-
-    if (Options.PrintIr) {
-        std::cerr << "=========== IR: ============\n";
-        for (const auto& function : Module.Functions) {
-            if (PrintedChunks.insert(function.UniqueId).second) {
-                std::ostringstream oss;
-                function.Print(oss, Module);
-                std::cerr << oss.str() << std::endl;
-            }
-        }
-        std::cerr << "============================\n\n";
+    if (auto compiled = Compile(input); !compiled) {
+        return std::unexpected(compiled.error());
     }
 
     NCodeGen::TLLVMCodeGen cg({
