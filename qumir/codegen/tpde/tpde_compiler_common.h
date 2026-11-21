@@ -1254,9 +1254,6 @@ struct TCompilerCommon
     // type are loaded, little-endian. Bool lanes are stored as bytes 0 and 1.
     bool BitcastInMemory(ValueRef& ar, int from, int to, ValueRef& res) {
         int size = Module.Types.SizeInBytes(to);
-        if (IsAgg(from) || IsAgg(to) || Module.Types.SizeInBytes(from) != size) {
-            return false;
-        }
         u32 slotSize = std::max(8, (size + 7) & ~7);
         i32 slot = this->allocate_stack_slot(slotSize);
         ValuePartRef base = D().FrameAddress(slot);
