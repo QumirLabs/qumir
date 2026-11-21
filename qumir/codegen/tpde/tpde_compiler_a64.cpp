@@ -2,6 +2,13 @@
 // snippets (snippets.c, snippets_div.ll) through tpde_encodegen; compares,
 // branches, calls and the Qumir type rules are here.
 
+// Int128Compare and load_address_of_var_reference are adapted from
+// tpde-llvm/src/arm64/LLVMCompilerArm64.cpp of TPDE (license text: LICENSE.TPDE):
+//
+// SPDX-FileCopyrightText: 2025 Contributors to TPDE <https://tpde.org>
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #include "tpde_adaptor.h"
 #include "tpde_backend.h"
 

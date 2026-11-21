@@ -1,6 +1,10 @@
+// SPDX-FileCopyrightText: 2025 Contributors to TPDE <https://tpde.org>
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // Instruction semantics for the TPDE backend; tpde_encodegen turns each function
-// into an encode_<name>() method at build time. Most follow
-// tpde-llvm/src/encode_template.c of TPDE (Apache-2.0 WITH LLVM-exception).
+// into an encode_<name>() method at build time. Most are adapted from
+// tpde-llvm/src/encode_template.c of TPDE; the license text is in LICENSE.TPDE.
 
 #include <stdbool.h>
 #include <stdint.h>
