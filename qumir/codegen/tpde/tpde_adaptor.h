@@ -128,7 +128,7 @@ public:
     static constexpr bool TPDE_PROVIDES_HIGHEST_VAL_IDX = true;
     static constexpr bool TPDE_LIVENESS_VISIT_ARGS = true;
 
-    explicit TAdaptor(TModuleInfo& info);
+    TAdaptor(TModuleInfo& info, bool link);
 
     // Module.
     u32 func_count() const {
@@ -150,8 +150,11 @@ public:
     bool func_extern(EFuncRef f) const {
         return u32(f) >= NFunc || Info.Module.Functions[u32(f)].Blocks.empty();
     }
-    bool func_only_local(EFuncRef) const {
-        return false;
+    // Several linked objects each have their own hooks, as in the LLVM backend.
+    bool func_only_local(EFuncRef f) const {
+        int idx = int(u32(f));
+        const auto& m = Info.Module;
+        return Link && (idx == m.ModuleConstructorFunctionId || idx == m.ModuleDestructorFunctionId);
     }
     bool func_has_weak_linkage(EFuncRef) const {
         return false;
@@ -330,6 +333,8 @@ public:
     const NIR::TFunction* Fun = nullptr;
     u32 NFunc;
     u32 NExt;
+    // EObjectUse::Link: the module hooks run from .init_array and .fini_array.
+    bool Link;
 
 private:
     EValueRef AddImm(const NIR::TImm& imm, int contextType);

@@ -6,6 +6,7 @@ add_executable(qumirc driver.cpp)
 if(QUMIR_ENABLE_TPDE)
     # Ahead of the link group below, which resolves its qumir symbols.
     target_link_libraries(qumiri PUBLIC qumir_codegen_tpde)
+    target_link_libraries(qumirc PUBLIC qumir_codegen_tpde)
 endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(qumiri PUBLIC

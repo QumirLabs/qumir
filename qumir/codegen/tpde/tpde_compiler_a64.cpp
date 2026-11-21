@@ -508,7 +508,22 @@ struct TCompilerA64
         }
         MemsetSym = this->assembler.sym_add_undef("memset", tpde::Assembler::SymBinding::GLOBAL);
         MemcpySym = this->assembler.sym_add_undef("memcpy", tpde::Assembler::SymBinding::GLOBAL);
+        if (Ir->Link) {
+            AddStructor(Module.ModuleConstructorFunctionId, /*init=*/true);
+            AddStructor(Module.ModuleDestructorFunctionId, /*init=*/false);
+        }
         return true;
+    }
+
+    // The C runtime calls the hook from this entry, as for llvm.global_ctors/dtors in the LLVM backend.
+    void AddStructor(int funcIdx, bool init) {
+        if (funcIdx < 0) {
+            return;
+        }
+        auto sec = this->assembler.create_structor_section(init);
+        auto& data = this->assembler.get_section(sec).data;
+        data.resize(data.size() + 8);
+        this->assembler.reloc_abs(sec, this->func_syms[funcIdx], data.size() - 8, 0);
     }
 
     // Helpers.
@@ -2116,16 +2131,12 @@ std::optional<std::string> FindUnsupported(TModuleInfo& info) {
 } // namespace NTpde
 
 std::expected<std::string, TError> TTpdeBackend::EmitObject(NIR::TModule& module, EObjectUse use) {
-    if (use != EObjectUse::Load) {
-        // A linked program runs the module hooks from .init_array/.fini_array, which are not emitted.
-        return std::unexpected(TError("tpde: objects for linking are not supported"));
-    }
     try {
         NTpde::TModuleInfo info(module);
         if (auto unsupported = NTpde::FindUnsupported(info)) {
             return std::unexpected(TError("tpde: unsupported " + *unsupported));
         }
-        NTpde::TAdaptor adaptor(info);
+        NTpde::TAdaptor adaptor(info, use == EObjectUse::Link);
         NTpde::TCompilerA64 compiler(&adaptor);
         if (!compiler.compile()) {
             return std::unexpected(TError(compiler.FailedOp.empty()
