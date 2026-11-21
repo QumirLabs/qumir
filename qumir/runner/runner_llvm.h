@@ -79,17 +79,17 @@ public:
     void* CompileKernelAst(
         NAst::TExprPtr ast, const std::string& entryName, std::string* error);
     // Compiles an AST already processed by LoadAndCompose, including any LLVM
-    // bitcode carried by its source modules.
+    // bitcode carried by its source modules; another backend rejects such bitcode.
     void* CompileKernelAst(
         NFrontend::TComposeResult composed,
         const std::string& entryName,
         std::string* error);
-    // A backend other than TLLVMBackend compiles all entries into one object,
-    // which cannot link the LLVM bitcode of source modules.
     std::unordered_map<std::string, void*> CompileKernelAst(
         NAst::TExprPtr ast,
         const std::vector<std::string>& entryNames,
         std::string* error);
+    // A backend other than TLLVMBackend compiles all entries into one object,
+    // which cannot link the LLVM bitcode of source modules.
     std::unordered_map<std::string, void*> CompileKernelAst(
         NFrontend::TComposeResult composed,
         const std::vector<std::string>& entryNames,
@@ -174,12 +174,14 @@ private:
     // True unless Backend_ is TLLVMBackend, whose kernels keep the partitioned
     // LLVM codegen (entry exports, bitcode linking, the object cache).
     bool KernelsUseBackend() const;
+    // Prints the IR chunks not printed yet when Options.PrintIr is set.
+    void PrintModuleIr();
     // Emits the lowered Module with Backend_ and links it with ORC JITLink.
     std::unordered_map<std::string, void*> LinkBackendKernels(
         const std::vector<std::string>& entryNames,
         std::string* error);
 
-    // Shared frontend for both CompileKernelAst overloads: lower then emit.
+    // LLVM-backend frontend of the CompileKernelAst overloads: lower then emit.
     std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> EmitKernelArtifacts(
         NAst::TExprPtr ast,
         const std::vector<std::string>& entryNames,

@@ -290,16 +290,9 @@ bool TLLVMRunner::LowerKernelAst(
         return false;
     }
 
-    if (Options.PrintIr) {
-        std::cerr << "=========== IR: ============\n";
-        for (const auto& function : Module.Functions) {
-            if (PrintedChunks.insert(function.UniqueId).second) {
-                std::ostringstream oss;
-                function.Print(oss, Module);
-                std::cerr << oss.str() << std::endl;
-            }
-        }
-        std::cerr << "============================\n\n";
+    // Another backend prints the IR after the Qumir passes, in LinkBackendKernels.
+    if (!KernelsUseBackend()) {
+        PrintModuleIr();
     }
 
     if (Module.Functions.empty()) {
@@ -385,6 +378,20 @@ bool TLLVMRunner::KernelsUseBackend() const {
     return dynamic_cast<const NCodeGen::TLLVMBackend*>(Backend_.get()) == nullptr;
 }
 
+void TLLVMRunner::PrintModuleIr() {
+    if (Options.PrintIr) {
+        std::cerr << "=========== IR: ============\n";
+        for (const auto& function : Module.Functions) {
+            if (PrintedChunks.insert(function.UniqueId).second) {
+                std::ostringstream oss;
+                function.Print(oss, Module);
+                std::cerr << oss.str() << std::endl;
+            }
+        }
+        std::cerr << "============================\n\n";
+    }
+}
+
 std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
     const std::vector<std::string>& entryNames,
     std::string* error)
@@ -394,6 +401,7 @@ std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
     if (Options.OptLevel > 0) {
         Optimize();
     }
+    PrintModuleIr();
     auto object = Backend_->EmitObject(Module, NCodeGen::EObjectUse::Load);
     if (!object) {
         if (error) {
