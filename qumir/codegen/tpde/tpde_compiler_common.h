@@ -35,10 +35,11 @@ namespace NTpde {
 //   void StoreFrame(u32 frameOff, AsmReg reg, u32 size)
 //   template <class TFn> void ForEachAggPart(ValueRef&, const TLayout&, TFn&&)
 //   bool CompileSelect(const TInstRec&), CompileReduce(const TInstRec&)
+//   ValuePartRef FrameAddress(u32 frameOff)
+//   static constexpr bool SretReturned;    the callee returns the sret buffer address
 //   static constexpr bool CStructs;    external calls pass structs by the C ABI
 // and, where CStructs holds:
 //   TCStruct ClassifyCStruct(int type)
-//   ValuePartRef FrameAddress(u32 frameOff)
 //   void PassByval(TAssigner&, i32 frameOff, u32 size, u32 align)  (for TCStruct::Byval)
 // A platform whose assigner has BeginCStruct(gp, fp) is told how many general
 // and FP registers the pieces of a struct take, before the pieces.
@@ -716,7 +717,7 @@ struct TCompilerCommon
         for (int i = 0; i < Ir->ArgCount(); ++i) {
             int local = fun.ArgLocals[i].Idx;
             u32 off = FrameOff(Ir->LocalValue(local));
-            ValueRef arg = this->val_ref(Ir->cur_args()[i]);
+            ValueRef arg = this->val_ref(Ir->ArgValue(i));
             const auto& layout = LayoutOf(fun.LocalTypes[local]);
             for (u32 p = 0; p < layout.Parts.size(); ++p) {
                 auto part = arg.part(p);
@@ -1461,14 +1462,19 @@ struct TCompilerCommon
         c.Slot = this->allocate_stack_slot(c.SlotSize);
     }
 
-    bool CopyCArg(EValueRef v, int type, TCValue& c) {
-        AllocFrameCopy(c, type);
-        if (Shape(TypeOf(v)).Class == TTypeShape::Ptr) {
+    // Stores the value of `type` read from v, as in ForEachPart, to [dst].
+    bool StoreParts(ValuePartRef&& dst, EValueRef v, int type) {
+        if (IsAgg(type) && Shape(TypeOf(v)).Class == TTypeShape::Ptr) {
             ValueRef vr = this->val_ref(v);
-            D().CopyMemory(D().FrameAddress(c.Slot), vr.part(0), Module.Types.SizeInBytes(type));
+            D().CopyMemory(std::move(dst), vr.part(0), Module.Types.SizeInBytes(type));
             return true;
         }
-        return StoreValue(D().FrameAddress(c.Slot), v, type, true);
+        return StoreValue(std::move(dst), v, type, true);
+    }
+
+    bool CopyCArg(EValueRef v, int type, TCValue& c) {
+        AllocFrameCopy(c, type);
+        return StoreParts(D().FrameAddress(c.Slot), v, type);
     }
 
     bool AddCArg(CallBuilder& cb, TAssigner& assigner, EValueRef v, int type, const TCValue& c) {
@@ -1602,13 +1608,15 @@ struct TCompilerCommon
                 }
             }
         }
+        // A result of a Qumir function that the return registers cannot hold comes back in memory too.
+        if (!ext && Ir->InMemory(retType)) {
+            AllocFrameCopy(cRet.emplace(TCValue{.Abi = TCStruct{.Memory = true}}), retType);
+        }
 
         TAssigner assigner;
         CallBuilder cb(D(), assigner);
-        if constexpr (TDerived::CStructs) {
-            if (cRet && cRet->Abi.Memory) {
-                cb.add_arg(D().FrameAddress(cRet->Slot), tpde::CCAssignment{.sret = true});
-            }
+        if (cRet && cRet->Abi.Memory) {
+            cb.add_arg(D().FrameAddress(cRet->Slot), tpde::CCAssignment{.sret = true});
         }
         for (size_t i = 0; i < args.size(); ++i) {
             int to = params[i];
@@ -1642,26 +1650,24 @@ struct TCompilerCommon
             }
         }
         cb.call(this->func_syms[funcIdx]);
-        if constexpr (TDerived::CStructs) {
-            if (cRet && hasResult) {
-                if (TypeOf(rec.Result) != retType) {
-                    return false;
-                }
-                ValueRef res = this->result_ref(rec.Result);
-                if (!TakeCResult(cb, retType, *cRet, res)) {
-                    return false;
-                }
+        if (cRet && hasResult) {
+            if (TypeOf(rec.Result) != retType) {
+                return false;
             }
-            auto release = [&](const std::optional<TCValue>& c) {
-                if (c && c->Slot) {
-                    this->free_stack_slot(c->Slot, c->SlotSize);
-                }
-            };
-            std::ranges::for_each(cArgs, release);
-            release(cRet);
-            if (cRet) {
-                return true;
+            ValueRef res = this->result_ref(rec.Result);
+            if (!TakeCResult(cb, retType, *cRet, res)) {
+                return false;
             }
+        }
+        auto release = [&](const std::optional<TCValue>& c) {
+            if (c && c->Slot) {
+                this->free_stack_slot(c->Slot, c->SlotSize);
+            }
+        };
+        std::ranges::for_each(cArgs, release);
+        release(cRet);
+        if (cRet) {
+            return true;
         }
         if (hasResult) {
             if (LayoutOf(retType).Parts.size() != LayoutOf(TypeOf(rec.Result)).Parts.size()) {
@@ -1675,6 +1681,20 @@ struct TCompilerCommon
 
     bool CompileRet(const TInstRec& rec) {
         RetBuilder rb(D(), *this->cur_cc_assigner());
+        if (Ir->SretArg() != TAdaptor::INVALID_VALUE_REF) {
+            {
+                ValueRef buf = this->val_ref(Ir->SretArg());
+                EValueRef v = rec.Pos[0];
+                if (v != TAdaptor::INVALID_VALUE_REF && !StoreParts(buf.part_unowned(0), v, Ir->Fun->ReturnTypeId)) {
+                    return false;
+                }
+                if constexpr (TDerived::SretReturned) {
+                    rb.add(buf.part(0), tpde::CCAssignment{});
+                }
+            }
+            rb.ret();
+            return true;
+        }
         if (rec.Pos[0] != TAdaptor::INVALID_VALUE_REF) {
             EValueRef v = rec.Pos[0];
             int to = Ir->Fun->ReturnTypeId;

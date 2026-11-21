@@ -1,0 +1,410 @@
+function <main> () { ; void
+  block {
+    label: label(0)
+    arg imm(1,i64) 
+    call tmp(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(1,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    stre local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(1,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(3,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    lde tmp(4,i64) = tmp(3,ptr to i64) 
+    arg tmp(4,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(5,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(6,ptr to i64) = tmp(5,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(32,i64) 
+    lde tmp(7,i64) = tmp(6,ptr to i64) 
+    arg tmp(7,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(8,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(9,ptr to i64) = tmp(8,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    lde tmp(10,i64) = tmp(9,ptr to i64) 
+    arg tmp(10,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(10,i64) 
+    call tmp(11,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(4,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(11,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(12,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(4,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    arg tmp(12,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    call tmp(13,i64) = sum 
+    arg tmp(13,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(1,i1) 
+    call tmp(14,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = pick 
+    stre local(5,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(14,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(15,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(5,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    arg tmp(15,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    call tmp(16,i64) = sum 
+    arg tmp(16,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    arg imm(0,i1) 
+    call tmp(17,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = pick 
+    stre local(6,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(17,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(18,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(6,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    arg tmp(18,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    call tmp(19,i64) = sum 
+    arg tmp(19,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(10,i64) 
+    call tmp(20,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = fib 
+    stre local(7,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(20,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(21,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(7,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    stre local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(21,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(22,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(23,ptr to i64) = tmp(22,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    lde tmp(24,i64) = tmp(23,ptr to i64) 
+    arg tmp(24,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(25,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(26,ptr to i64) = tmp(25,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(8,i64) 
+    lde tmp(27,i64) = tmp(26,ptr to i64) 
+    arg tmp(27,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(28,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(29,ptr to i64) = tmp(28,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    lde tmp(30,i64) = tmp(29,ptr to i64) 
+    arg tmp(30,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(100,i64) 
+    call tmp(31,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = spread 
+    stre local(8,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) tmp(31,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    lea tmp(32,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = local(8,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    stre local(2,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) tmp(32,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    lea tmp(33,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = local(2,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    + tmp(34,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(33,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(0,i64) 
+    + tmp(35,ptr to i64) = tmp(34,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    lde tmp(36,i64) = tmp(35,ptr to i64) 
+    arg tmp(36,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(37,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = local(2,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    + tmp(38,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(37,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(72,i64) 
+    + tmp(39,ptr to i64) = tmp(38,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(32,i64) 
+    lde tmp(40,i64) = tmp(39,ptr to i64) 
+    arg tmp(40,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(41,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = local(2,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    + tmp(42,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(41,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(144,i64) 
+    + tmp(43,ptr to i64) = tmp(42,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(56,i64) 
+    lde tmp(44,i64) = tmp(43,ptr to i64) 
+    arg tmp(44,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(1,ptr to i8) 
+    call output_string 
+    lea tmp(45,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = local(2,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    + tmp(46,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(45,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(216,i64) 
+    + tmp(47,ptr to i64) = tmp(46,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    lde tmp(48,i64) = tmp(47,ptr to i64) 
+    arg tmp(48,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    arg imm(7,i64) 
+    call tmp(49,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = spread 
+    stre local(9,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) tmp(49,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    lea tmp(50,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = local(9,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    + tmp(51,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(50,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(216,i64) 
+    arg tmp(51,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    call tmp(52,i64) = sum 
+    arg tmp(52,i64) 
+    arg imm(0,i64) 
+    call output_int64 
+    arg imm(2,ptr to i8) 
+    call output_string 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    ret 
+  }
+}
+function mk (local(0)) { ; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}
+  block {
+    label: label(0)
+    salloc tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = imm(72,i64) 
+    load tmp(1,i64) = local(0,i64) 
+    + tmp(2,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    ste tmp(2,ptr to i64) tmp(1,i64) 
+    load tmp(3,i64) = local(0,i64) 
+    + tmp(4,i64) = tmp(3,i64) imm(1,i64) 
+    + tmp(5,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(8,i64) 
+    ste tmp(5,ptr to i64) tmp(4,i64) 
+    load tmp(6,i64) = local(0,i64) 
+    + tmp(7,i64) = tmp(6,i64) imm(2,i64) 
+    + tmp(8,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(16,i64) 
+    ste tmp(8,ptr to i64) tmp(7,i64) 
+    load tmp(9,i64) = local(0,i64) 
+    + tmp(10,i64) = tmp(9,i64) imm(3,i64) 
+    + tmp(11,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(24,i64) 
+    ste tmp(11,ptr to i64) tmp(10,i64) 
+    load tmp(12,i64) = local(0,i64) 
+    + tmp(13,i64) = tmp(12,i64) imm(4,i64) 
+    + tmp(14,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(32,i64) 
+    ste tmp(14,ptr to i64) tmp(13,i64) 
+    load tmp(15,i64) = local(0,i64) 
+    + tmp(16,i64) = tmp(15,i64) imm(5,i64) 
+    + tmp(17,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(40,i64) 
+    ste tmp(17,ptr to i64) tmp(16,i64) 
+    load tmp(18,i64) = local(0,i64) 
+    + tmp(19,i64) = tmp(18,i64) imm(6,i64) 
+    + tmp(20,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(48,i64) 
+    ste tmp(20,ptr to i64) tmp(19,i64) 
+    load tmp(21,i64) = local(0,i64) 
+    + tmp(22,i64) = tmp(21,i64) imm(7,i64) 
+    + tmp(23,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(56,i64) 
+    ste tmp(23,ptr to i64) tmp(22,i64) 
+    load tmp(24,i64) = local(0,i64) 
+    + tmp(25,i64) = tmp(24,i64) imm(8,i64) 
+    + tmp(26,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    ste tmp(26,ptr to i64) tmp(25,i64) 
+    stre local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    lea tmp(27,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    ret tmp(27,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+  }
+}
+function sum (local(0)) { ; i64
+  block {
+    label: label(0)
+    lea tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(1,ptr to i64) = tmp(0,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    lde tmp(2,i64) = tmp(1,ptr to i64) 
+    lea tmp(3,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(4,ptr to i64) = tmp(3,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(8,i64) 
+    lde tmp(5,i64) = tmp(4,ptr to i64) 
+    + tmp(6,i64) = tmp(2,i64) tmp(5,i64) 
+    lea tmp(7,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(8,ptr to i64) = tmp(7,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(16,i64) 
+    lde tmp(9,i64) = tmp(8,ptr to i64) 
+    + tmp(10,i64) = tmp(6,i64) tmp(9,i64) 
+    lea tmp(11,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(12,ptr to i64) = tmp(11,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(24,i64) 
+    lde tmp(13,i64) = tmp(12,ptr to i64) 
+    + tmp(14,i64) = tmp(10,i64) tmp(13,i64) 
+    lea tmp(15,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(16,ptr to i64) = tmp(15,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(32,i64) 
+    lde tmp(17,i64) = tmp(16,ptr to i64) 
+    + tmp(18,i64) = tmp(14,i64) tmp(17,i64) 
+    lea tmp(19,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(20,ptr to i64) = tmp(19,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(40,i64) 
+    lde tmp(21,i64) = tmp(20,ptr to i64) 
+    + tmp(22,i64) = tmp(18,i64) tmp(21,i64) 
+    lea tmp(23,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(24,ptr to i64) = tmp(23,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(48,i64) 
+    lde tmp(25,i64) = tmp(24,ptr to i64) 
+    + tmp(26,i64) = tmp(22,i64) tmp(25,i64) 
+    lea tmp(27,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(28,ptr to i64) = tmp(27,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(56,i64) 
+    lde tmp(29,i64) = tmp(28,ptr to i64) 
+    + tmp(30,i64) = tmp(26,i64) tmp(29,i64) 
+    lea tmp(31,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(0,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(32,ptr to i64) = tmp(31,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    lde tmp(33,i64) = tmp(32,ptr to i64) 
+    * tmp(34,i64) = imm(1000,i64) tmp(33,i64) 
+    + tmp(35,i64) = tmp(30,i64) tmp(34,i64) 
+    stre local(1,i64) tmp(35,i64) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    load tmp(36,i64) = local(1,i64) 
+    ret tmp(36,i64) 
+  }
+}
+function pick (local(0)) { ; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}
+  block {
+    label: label(0)
+    load tmp(0,i1) = local(0,i1) 
+    cmp tmp(0,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    arg imm(1,i64) 
+    call tmp(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    stre local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    jmp label(1) 
+  }
+  block {
+    label: label(3)
+    arg imm(2,i64) 
+    call tmp(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(4,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    stre local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(4,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    lea tmp(5,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    ret tmp(5,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+  }
+}
+function fib (local(0)) { ; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}
+  block {
+    label: label(0)
+    load tmp(0,i64) = local(0,i64) 
+    == tmp(1,i1) = tmp(0,i64) imm(1,i64) 
+    cmp tmp(1,i1) label(2) label(3) 
+  }
+  block {
+    label: label(2)
+    salloc tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = imm(72,i64) 
+    + tmp(3,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    ste tmp(3,ptr to i64) imm(1,i64) 
+    + tmp(4,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(8,i64) 
+    ste tmp(4,ptr to i64) imm(0,i64) 
+    + tmp(5,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(16,i64) 
+    ste tmp(5,ptr to i64) imm(0,i64) 
+    + tmp(6,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(24,i64) 
+    ste tmp(6,ptr to i64) imm(0,i64) 
+    + tmp(7,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(32,i64) 
+    ste tmp(7,ptr to i64) imm(0,i64) 
+    + tmp(8,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(40,i64) 
+    ste tmp(8,ptr to i64) imm(0,i64) 
+    + tmp(9,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(48,i64) 
+    ste tmp(9,ptr to i64) imm(0,i64) 
+    + tmp(10,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(56,i64) 
+    ste tmp(10,ptr to i64) imm(0,i64) 
+    + tmp(11,ptr to i64) = tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    ste tmp(11,ptr to i64) imm(1,i64) 
+    stre local(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(2,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    jmp label(1) 
+  }
+  block {
+    label: label(3)
+    jmp label(4) 
+  }
+  block {
+    label: label(4)
+    load tmp(12,i64) = local(0,i64) 
+    - tmp(13,i64) = tmp(12,i64) imm(1,i64) 
+    arg tmp(13,i64) 
+    call tmp(14,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = fib 
+    stre local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(14,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(15,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    stre local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(15,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    salloc tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = imm(72,i64) 
+    lea tmp(17,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(18,ptr to i64) = tmp(17,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    lde tmp(19,i64) = tmp(18,ptr to i64) 
+    lea tmp(20,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(21,ptr to i64) = tmp(20,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(8,i64) 
+    lde tmp(22,i64) = tmp(21,ptr to i64) 
+    + tmp(23,i64) = tmp(19,i64) tmp(22,i64) 
+    + tmp(24,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    ste tmp(24,ptr to i64) tmp(23,i64) 
+    lea tmp(25,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(26,ptr to i64) = tmp(25,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(0,i64) 
+    lde tmp(27,i64) = tmp(26,ptr to i64) 
+    + tmp(28,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(8,i64) 
+    ste tmp(28,ptr to i64) tmp(27,i64) 
+    + tmp(29,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(16,i64) 
+    ste tmp(29,ptr to i64) imm(0,i64) 
+    + tmp(30,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(24,i64) 
+    ste tmp(30,ptr to i64) imm(0,i64) 
+    + tmp(31,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(32,i64) 
+    ste tmp(31,ptr to i64) imm(0,i64) 
+    + tmp(32,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(40,i64) 
+    ste tmp(32,ptr to i64) imm(0,i64) 
+    + tmp(33,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(48,i64) 
+    ste tmp(33,ptr to i64) imm(0,i64) 
+    + tmp(34,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(56,i64) 
+    ste tmp(34,ptr to i64) imm(0,i64) 
+    lea tmp(35,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(1,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(36,ptr to i64) = tmp(35,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    lde tmp(37,i64) = tmp(36,ptr to i64) 
+    + tmp(38,i64) = tmp(37,i64) imm(1,i64) 
+    + tmp(39,ptr to i64) = tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(64,i64) 
+    ste tmp(39,ptr to i64) tmp(38,i64) 
+    stre local(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(16,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    lea tmp(40,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    ret tmp(40,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+  }
+}
+function spread (local(0)) { ; struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}
+  block {
+    label: label(0)
+    salloc tmp(0,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = imm(288,i64) 
+    load tmp(1,i64) = local(0,i64) 
+    arg tmp(1,i64) 
+    call tmp(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(3,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(2,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(4,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(0,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(0,i64) 
+    copy tmp(4,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(3,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(72) 
+    load tmp(5,i64) = local(0,i64) 
+    + tmp(6,i64) = tmp(5,i64) imm(10,i64) 
+    arg tmp(6,i64) 
+    call tmp(7,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(7,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(8,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(3,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(9,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(0,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(72,i64) 
+    copy tmp(9,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(8,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(72) 
+    load tmp(10,i64) = local(0,i64) 
+    + tmp(11,i64) = tmp(10,i64) imm(20,i64) 
+    arg tmp(11,i64) 
+    call tmp(12,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(4,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(12,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(13,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(4,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(14,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(0,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(144,i64) 
+    copy tmp(14,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(13,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(72) 
+    load tmp(15,i64) = local(0,i64) 
+    + tmp(16,i64) = tmp(15,i64) imm(30,i64) 
+    arg tmp(16,i64) 
+    call tmp(17,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = mk 
+    stre local(5,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(17,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    lea tmp(18,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = local(5,struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) 
+    + tmp(19,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) = tmp(0,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) imm(216,i64) 
+    copy tmp(19,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) tmp(18,ptr to struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}) imm(72) 
+    stre local(1,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) tmp(0,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    jmp label(1) 
+  }
+  block {
+    label: label(1)
+    lea tmp(20,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) = local(1,struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+    ret tmp(20,ptr to struct { struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}; struct { i64; i64; i64; i64; i64; i64; i64; i64; i64}}) 
+  }
+}

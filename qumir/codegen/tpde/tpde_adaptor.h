@@ -60,6 +60,12 @@ struct TLayout {
     u32 FpParts = 0;
 };
 
+// How many general and floating-point registers the platform returns a value in.
+struct TReturnLimits {
+    u32 Gp;
+    u32 Fp;
+};
+
 // Module-wide data shared by the adaptor and the compiler.
 struct TModuleInfo {
     explicit TModuleInfo(NIR::TModule& module);
@@ -78,7 +84,8 @@ struct TModuleInfo {
 };
 
 // Value ids of a function are TPDE local indices: temporaries, then locals
-// (static stack slots), arguments, addresses of globals and string literals.
+// (static stack slots), arguments with the sret one last, addresses of globals
+// and string literals.
 // Immediates have no local index: ImmBit | index into Imms.
 constexpr u32 ImmBit = 0x8000'0000u;
 
@@ -129,7 +136,7 @@ public:
     static constexpr bool TPDE_PROVIDES_HIGHEST_VAL_IDX = true;
     static constexpr bool TPDE_LIVENESS_VISIT_ARGS = true;
 
-    TAdaptor(TModuleInfo& info, bool link);
+    TAdaptor(TModuleInfo& info, bool link, TReturnLimits returnLimits);
 
     // Module.
     u32 func_count() const {
@@ -183,8 +190,8 @@ public:
     u32 cur_arg_byval_align(u32) const {
         return 0;
     }
-    bool cur_arg_is_sret(u32) const {
-        return false;
+    bool cur_arg_is_sret(u32 idx) const {
+        return idx == 0 && SretArg_ != INVALID_VALUE_REF;
     }
     std::span<const EValueRef> cur_static_allocas() const {
         return StaticAllocas_;
@@ -304,7 +311,20 @@ public:
         return EValueRef(LocalBase_ + local);
     }
     int ArgCount() const {
-        return (int)Args_.size();
+        return (int)Fun->ArgLocals.size();
+    }
+    EValueRef ArgValue(int i) const {
+        return EValueRef(ArgBase_ + i);
+    }
+    // A value with more parts than the return registers hold goes through
+    // memory: the caller passes the buffer as the sret argument, as in the C ABI.
+    bool InMemory(int type) const {
+        const auto& l = Info.Layout(type);
+        return l.GpParts > ReturnLimits.Gp || l.FpParts > ReturnLimits.Fp;
+    }
+    // The buffer of the current function's result, or INVALID_VALUE_REF.
+    EValueRef SretArg() const {
+        return SretArg_;
     }
     int SlotVarRef(int slot) const {
         return SlotRefs_[slot];
@@ -336,6 +356,7 @@ public:
     u32 NExt;
     // EObjectUse::Link: the module hooks run from .init_array and .fini_array.
     bool Link;
+    TReturnLimits ReturnLimits;
 
 private:
     EValueRef AddImm(const NIR::TImm& imm, int contextType);
@@ -348,6 +369,7 @@ private:
     u32 NBlocks_ = 0;
     u32 HighestValIdx_ = 0;
     bool HasCalls_ = false;
+    EValueRef SretArg_ = INVALID_VALUE_REF;
     std::vector<EValueRef> Args_;
     std::vector<EValueRef> StaticAllocas_;
     std::vector<EValueRef> Operands_;

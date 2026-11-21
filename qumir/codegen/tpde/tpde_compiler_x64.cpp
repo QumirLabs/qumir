@@ -91,6 +91,8 @@ struct TCompilerX64
     static constexpr TReturnLimits ReturnLimits{.Gp = 2, .Fp = 2};
     static constexpr u64 ByteMatchBackend = 2; // SSE2
     static constexpr bool CStructs = true;
+    // System V returns the address of the sret buffer in RAX.
+    static constexpr bool SretReturned = true;
 
     static Jump CondEq() {
         return Jump::je;
@@ -594,10 +596,10 @@ struct TCompilerX64
 std::expected<std::string, TError> TTpdeBackend::EmitObject(NIR::TModule& module, EObjectUse use) {
     try {
         NTpde::TModuleInfo info(module);
-        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerX64::ReturnLimits, NTpde::TCompilerX64::CStructs)) {
+        if (auto unsupported = NTpde::FindUnsupported(info, NTpde::TCompilerX64::CStructs)) {
             return std::unexpected(TError("tpde: unsupported " + *unsupported));
         }
-        NTpde::TAdaptor adaptor(info, use == EObjectUse::Link);
+        NTpde::TAdaptor adaptor(info, use == EObjectUse::Link, NTpde::TCompilerX64::ReturnLimits);
         NTpde::TCompilerX64 compiler(&adaptor);
         if (!compiler.compile()) {
             return std::unexpected(TError(compiler.FailedOp.empty()
