@@ -2185,7 +2185,9 @@ llvm::Value* TLLVMCodeGen::LowerInstr(const NIR::TInstr& instr, NIR::TModule& mo
             if (lhs->getType()->isFloatingPointTy() || lhs->getType()->isIntegerTy()) {
                 rhs = cast(rhs, lhs->getType());
                 const int lhsTypeId = OperandType(*CurFun->Fun, module, instr.Operands[0]);
-                const bool isSigned = lhsTypeId < 0 || IsSignedIntegerType(module.Types, lhsTypeId);
+                // false < true: bools compare unsigned.
+                const bool isSigned = !lhs->getType()->isIntegerTy(1)
+                    && (lhsTypeId < 0 || IsSignedIntegerType(module.Types, lhsTypeId));
                 const auto pred = ComparisonPredicate(opcode, lhs->getType()->isFloatingPointTy(), isSigned);
                 return storeTmp(cmpInsr(pred, lhs, rhs));
             } else if (lhs->getType()->isPointerTy()) {
