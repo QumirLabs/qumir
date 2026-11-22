@@ -20,7 +20,7 @@ const NAst::TFunDecl* FindFun(const NAst::TExprPtr& e, const std::string& name) 
         return nullptr;
     }
     if (auto f = NAst::TMaybeNode<NAst::TFunDecl>(e); f && f.Cast()->Name == name) {
-        return f.Cast().Get();
+        return f.Cast();
     }
     for (const auto& c : e->Children()) {
         if (auto* r = FindFun(c, name)) {

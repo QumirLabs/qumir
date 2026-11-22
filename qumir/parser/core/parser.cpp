@@ -243,7 +243,7 @@ TParamListTask ParseParams(TParserContext& context) {
         if (!var) {
             co_return TError(param ? param->Location : context.Stream.GetLocation(), "expected parameter var");
         }
-        result.push_back(var.Cast());
+        result.push_back(TExprPtrOf<TVarStmt>(var.Cast()));
     }
     co_return result;
 }
@@ -964,7 +964,7 @@ TListHandlerMap MakeDefaultHandlers() {
             if (!body) {
                 co_return TError(bodyExpr ? bodyExpr->Location : loc, "function body must be block");
             }
-            auto funDecl = MakeIntrusive<TFunDecl>(loc, std::move(name), std::move(genericParams), std::move(params), std::move(body), std::move(returnType));
+            auto funDecl = MakeIntrusive<TFunDecl>(loc, std::move(name), std::move(genericParams), std::move(params), TExprPtrOf<TBlockExpr>(body), std::move(returnType));
             funDecl->LastAssert = std::move(attrs.After);
             funDecl->OperatorName = std::move(operatorName);
             funDecl->LiteralSuffix = std::move(literalSuffix);

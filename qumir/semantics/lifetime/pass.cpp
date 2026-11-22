@@ -15,14 +15,16 @@ enum class EValueOwnership {
     Literal,
 };
 
-TTypePtr ValueType(TTypePtr type) {
+// A reference to `type` or to a type it points to, so `type` must outlive it.
+const TTypePtr& ValueType(const TTypePtr& type) {
+    const TTypePtr* current = &type;
     while (true) {
-        if (auto reference = TMaybeType<TReferenceType>(type)) {
-            type = reference.Cast()->ReferencedType;
-        } else if (auto named = TMaybeType<TNamedType>(type)) {
-            type = named.Cast()->UnderlyingType;
+        if (auto reference = TMaybeType<TReferenceType>(*current)) {
+            current = &reference.Cast()->ReferencedType;
+        } else if (auto named = TMaybeType<TNamedType>(*current)) {
+            current = &named.Cast()->UnderlyingType;
         } else {
-            return type;
+            return *current;
         }
     }
 }
@@ -306,7 +308,7 @@ private:
     // Converts a source return into a value-preserving structured cleanup exit.
     std::expected<bool, TError> RewriteReturn(
         TExprPtr& expr,
-        const TExprPtrOf<TReturnExpr>& returnExpr,
+        TReturnExpr* returnExpr,
         TScopeId scopeId)
     {
         if (!FunctionBoundary_) {
@@ -399,7 +401,7 @@ private:
     }
 
     std::expected<bool, TError> RewriteBlock(
-        const TExprPtrOf<TBlockExpr>& block,
+        TBlockExpr* block,
         TScopeId parentScope,
         bool resultUsed)
     {
@@ -616,7 +618,7 @@ private:
 
     std::expected<bool, TError> RewriteAssign(
         TExprPtr& expr,
-        const TExprPtrOf<TAssignExpr>& assign,
+        TAssignExpr* assign,
         TScopeId scopeId)
     {
         bool changed = false;
@@ -650,7 +652,7 @@ private:
 
     std::expected<bool, TError> RewriteArrayAssign(
         TExprPtr& expr,
-        const TExprPtrOf<TArrayAssignExpr>& assign,
+        TArrayAssignExpr* assign,
         TScopeId scopeId)
     {
         bool changed = false;
@@ -715,7 +717,7 @@ private:
 
     std::expected<bool, TError> RewriteFieldAssign(
         TExprPtr& expr,
-        const TExprPtrOf<TFieldAssignExpr>& assign,
+        TFieldAssignExpr* assign,
         TScopeId scopeId)
     {
         bool changed = false;
@@ -730,7 +732,7 @@ private:
             changed = result.value() || changed;
         }
 
-        auto objectType = ValueType(assign->Object->Type);
+        const auto& objectType = ValueType(assign->Object->Type);
         auto structType = TMaybeType<TStructType>(objectType);
         if (!structType
             || assign->FieldIndex < 0
@@ -765,12 +767,12 @@ private:
     // the future, is the value of the block - see RewriteAwaitedCall.
     std::expected<bool, TError> RewriteCall(
         TExprPtr& expr,
-        const TExprPtrOf<TCallExpr>& call,
+        TCallExpr* call,
         TScopeId scopeId,
         TExprPtr valueNode = nullptr)
     {
         if (!valueNode) {
-            valueNode = call;
+            valueNode = TExprPtr(call);
         }
         bool changed = false;
         for (auto& argument : call->Args) {
@@ -931,7 +933,7 @@ private:
     // with a Future return type.
     std::expected<bool, TError> RewriteAwaitedCall(
         TExprPtr& expr,
-        const TExprPtrOf<TAwaitExpr>& await,
+        TAwaitExpr* await,
         TScopeId scopeId)
     {
         auto call = TMaybeNode<TCallExpr>(await->Operand);

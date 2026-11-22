@@ -36,7 +36,7 @@ TExprPtr parseStmtList(const std::string& src) {
     return std::move(res.value());
 }
 
-TIntrusivePtr<TFunDecl> findFunction(const TExprPtr& ast, const std::string& name) {
+TFunDecl* findFunction(const TExprPtr& ast, const std::string& name) {
     auto block = TMaybeNode<TBlockExpr>(ast).Cast();
     if (!block) {
         return nullptr;
@@ -50,7 +50,7 @@ TIntrusivePtr<TFunDecl> findFunction(const TExprPtr& ast, const std::string& nam
     return nullptr;
 }
 
-TIntrusivePtr<TCallExpr> findCall(const TExprPtr& expr, const std::string& name) {
+TCallExpr* findCall(const TExprPtr& expr, const std::string& name) {
     if (!expr) {
         return nullptr;
     }
@@ -67,7 +67,7 @@ TIntrusivePtr<TCallExpr> findCall(const TExprPtr& expr, const std::string& name)
     return nullptr;
 }
 
-TIntrusivePtr<TAwaitExpr> findAwaitCall(const TExprPtr& expr, const std::string& name) {
+TAwaitExpr* findAwaitCall(const TExprPtr& expr, const std::string& name) {
     if (!expr) {
         return nullptr;
     }

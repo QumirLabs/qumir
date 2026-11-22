@@ -65,7 +65,7 @@ std::optional<TError> ValidateVectorTypes(const TTypePtr& type, const TLocation&
             if (vector.Cast()->SizeParam.empty() && !IsValidVectorSize(vector.Cast()->Size)) {
                 return TError(location, "Размер вектора должен быть 2, 4, 8, 16 или 32.");
             }
-            auto element = UnwrapNamedType(vector.Cast()->ElementType);
+            const auto& element = UnwrapNamedType(vector.Cast()->ElementType);
             if (element && !TMaybeType<TNamedType>(element) && !TMaybeType<TIntegerType>(element)
                 && !TMaybeType<TFloatType>(element) && !TMaybeType<TBoolType>(element))
             {
@@ -120,16 +120,16 @@ std::optional<TError> ValidateVectorTypes(const TTypePtr& type, const TLocation&
 }
 
 TTask AnnotateIdent(
-    const TExprPtrOf<TIdentExpr>& ident,
+    TIdentExpr* ident,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId,
     bool pathThrough);
 TTask AnnotateStructConstruct(
-    const TExprPtrOf<TStructConstructExpr>& structure,
+    TStructConstructExpr* structure,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId);
 TFunDeclTask InstantiateGenericFunction(
-    const TExprPtrOf<TFunDecl>& genericDecl,
+    TFunDecl* genericDecl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
@@ -395,7 +395,7 @@ bool CanImplicit(const TTypePtr& S, const TTypePtr& D, NSemantics::TNameResolver
 
 // Returns the inline replacement if the function has an InlineFactory, nullptr otherwise.
 // The replacement has no Type set - callers that are coroutines must DoAnnotate it.
-TExprPtr TryApplyInlineFactory(const TExprPtrOf<TFunDecl>& funDecl, std::vector<TExprPtr> args) {
+TExprPtr TryApplyInlineFactory(TFunDecl* funDecl, std::vector<TExprPtr> args) {
     if (funDecl->InlineFactory) {
         return (*funDecl->InlineFactory)(std::move(args));
     }
@@ -437,14 +437,14 @@ TExprPtr InsertImplicitCastIfNeeded(const TExprPtr& expr, const TTypePtr& toType
             } else {
                 // int to int (widening)
                 num->Type = toType;
-                return num;
+                return expr;
             }
         }
         if (TMaybeType<TFloatType>(toType)) {
             if (num->IsFloat()) {
                 // float to float (widening)
                 num->Type = toType;
-                return num;
+                return expr;
             } else {
                 // int to float
                 double floatVal = static_cast<double>(num->IntValue);
@@ -532,16 +532,16 @@ TTypePtr CommonValueType(const TTypePtr& a, const TTypePtr& b, NSemantics::TName
     return {};
 }
 
-TExprPtr AnnotateNumber(const TExprPtrOf<TNumberExpr>& num, TTypeFactory& types) {
+TExprPtr AnnotateNumber(TNumberExpr* num, TTypeFactory& types) {
     if (num->Type) {
-        return num;
+        return TExprPtr(num);
     }
     if (num->IsFloat()) {
         num->Type = types.MakeFloat();
     } else {
         num->Type = types.MakeInteger();
     }
-    return num;
+    return TExprPtr(num);
 }
 
 std::string AvailableStructFields(const TStructType& structure) {
@@ -637,7 +637,7 @@ bool ApplyStructConstructContext(const TExprPtr& expr, const TTypePtr& targetTyp
     return false;
 }
 
-void BackfillStructFieldTypes(const TExprPtrOf<TStructConstructExpr>& structure) {
+void BackfillStructFieldTypes(TStructConstructExpr* structure) {
     auto structType = TMaybeType<TStructType>(UnwrapNamedType(structure->Type)).Cast();
     if (!structType) {
         return;
@@ -647,14 +647,14 @@ void BackfillStructFieldTypes(const TExprPtrOf<TStructConstructExpr>& structure)
     }
 }
 
-TTask AnnotateStructConstruct(const TExprPtrOf<TStructConstructExpr>& structure, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateStructConstruct(TStructConstructExpr* structure, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto targetStruct = TMaybeType<TStructType>(UnwrapNamedType(UnwrapReferenceType(structure->Type))).Cast();
     if (!targetStruct || !HasConcreteStructFieldTypes(*targetStruct)) {
         for (auto& field : structure->Fields) {
             field = co_await DoAnnotate(field, context, scopeId);
         }
         BackfillStructFieldTypes(structure);
-        co_return structure;
+        co_return TExprPtr(structure);
     }
 
     std::unordered_map<std::string, size_t> fieldByName;
@@ -703,17 +703,17 @@ TTask AnnotateStructConstruct(const TExprPtrOf<TStructConstructExpr>& structure,
         }
     }
 
-    co_return structure;
+    co_return TExprPtr(structure);
 }
 
-TTask AnnotateCast(const TExprPtrOf<TCastExpr>& cast, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateCast(TCastExpr* cast, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     bool contextualStructConstruct = ApplyStructConstructContext(cast->Operand, cast->Type);
     cast->Operand = co_await DoAnnotate(cast->Operand, context, scopeId);
     if (cast->Operand->Type) {
         auto sourceType = UnwrapReferenceType(cast->Operand->Type);
         auto targetType = UnwrapReferenceType(cast->Type);
         if (TypeKey(sourceType) == TypeKey(targetType)) {
-            co_return cast;
+            co_return TExprPtr(cast);
         }
         auto sourceStructType = UnwrapNamedType(sourceType);
         auto targetStructType = UnwrapNamedType(targetType);
@@ -748,23 +748,23 @@ TTask AnnotateCast(const TExprPtrOf<TCastExpr>& cast, NSemantics::TNameResolver&
                 + FormatStructCastMismatch(*sourceStruct, *targetStruct) + ".");
         }
     }
-    co_return cast;
+    co_return TExprPtr(cast);
 }
 
-TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateUnary(TUnaryExpr* unary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     unary->Operand = co_await DoAnnotate(unary->Operand, context, scopeId);
     unary->Type = unary->Operand->Type;
     if (auto vector = TMaybeType<TVectorType>(UnwrapNamedType(UnwrapReferenceType(unary->Type))).Cast()) {
-        auto element = UnwrapNamedType(vector->ElementType);
+        const auto& element = UnwrapNamedType(vector->ElementType);
         if (unary->Operator == TOperator("!")
             && (TMaybeType<TIntegerType>(element) || TMaybeType<TFloatType>(element) || TMaybeType<TBoolType>(element)))
         {
             unary->Type = context.Types().MakeVector(context.Types().Make<TBoolType>(), vector->Size);
-            co_return unary;
+            co_return TExprPtr(unary);
         }
         if (unary->Operator == TOperator("~") && TMaybeType<TIntegerType>(element)) {
             unary->Type = UnwrapReferenceType(unary->Type);
-            co_return unary;
+            co_return TExprPtr(unary);
         }
     }
     if (unary->Operator == '-') {
@@ -774,11 +774,11 @@ TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolv
             if (false /*!intType->IsSigned()*/) {
                 co_return TError(unary->Location, "Нельзя применять унарный минус к беззнаковому целому типу");
             }
-            co_return unary;
+            co_return TExprPtr(unary);
         }
         auto maybeFloat = TMaybeType<TFloatType>(unary->Type);
         if (maybeFloat) {
-            co_return unary;
+            co_return TExprPtr(unary);
         }
         if (auto m = context.GetUnaryOp("neg", UnwrapReferenceType(unary->Type))) {
             co_return co_await AnnotateIfNeeded(MakeModuleOpCall(m->SynthName, {unary->Operand}, m->ReturnType, unary->Location, context), context, scopeId);
@@ -792,17 +792,17 @@ TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolv
         auto maybeBool = TMaybeType<TBoolType>(unary->Type);
         if (maybeBool) {
             unary->Type = context.Types().Make<TBoolType>();
-            co_return unary;
+            co_return TExprPtr(unary);
         }
         auto maybeInt = TMaybeType<TIntegerType>(unary->Type);
         if (maybeInt) {
             unary->Type = context.Types().Make<TBoolType>();
-            co_return unary;
+            co_return TExprPtr(unary);
         }
         auto maybeFloat = TMaybeType<TFloatType>(unary->Type);
         if (maybeFloat) {
             unary->Type = context.Types().Make<TBoolType>();
-            co_return unary;
+            co_return TExprPtr(unary);
         }
         if (auto m = context.GetUnaryOp("!", UnwrapReferenceType(unary->Type))) {
             co_return co_await AnnotateIfNeeded(MakeModuleOpCall(m->SynthName, {unary->Operand}, m->ReturnType, unary->Location, context), context, scopeId);
@@ -814,7 +814,7 @@ TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolv
     }
     if (unary->Operator == TOperator("~")) {
         if (TMaybeType<TIntegerType>(unary->Type)) {
-            co_return unary; // keeps the operand's width and signedness
+            co_return TExprPtr(unary); // keeps the operand's width and signedness
         }
         if (auto m = context.GetUnaryOp("~", UnwrapReferenceType(unary->Type))) {
             co_return co_await AnnotateIfNeeded(MakeModuleOpCall(m->SynthName, {unary->Operand}, m->ReturnType, unary->Location, context), context, scopeId);
@@ -824,10 +824,10 @@ TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolv
         }
         co_return TError(unary->Location, "Битовое отрицание применяется только к целым числам");
     }
-    co_return unary;
+    co_return TExprPtr(unary);
 }
 
-TTask AnnotateFunDecl(const TExprPtrOf<TFunDecl>& funDecl, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFunDecl(TFunDecl* funDecl, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     std::vector<TTypePtr> params;
     for (auto& p : funDecl->Params) {
         co_await DoAnnotate(p, context, NSemantics::TScopeId{funDecl->Body->Scope});
@@ -854,7 +854,7 @@ TTask AnnotateFunDecl(const TExprPtrOf<TFunDecl>& funDecl, NSemantics::TNameReso
 
     if (funDecl->IsExternal()) {
         // External functions have no body to type-check; the body is ignored.
-        co_return funDecl;
+        co_return TExprPtr(funDecl);
     }
 
     if (HasGenericParams(*funDecl)) {
@@ -862,7 +862,7 @@ TTask AnnotateFunDecl(const TExprPtrOf<TFunDecl>& funDecl, NSemantics::TNameReso
         // placeholder types and cannot be type-checked on its own - only
         // monomorphized clones (created at call sites by
         // InstantiateGenericFunction) get annotated.
-        co_return funDecl;
+        co_return TExprPtr(funDecl);
     }
 
     co_await DoAnnotate(funDecl->Body, context, scopeId);
@@ -898,10 +898,10 @@ TTask AnnotateFunDecl(const TExprPtrOf<TFunDecl>& funDecl, NSemantics::TNameReso
         }
     }
 
-    co_return funDecl;
+    co_return TExprPtr(funDecl);
 }
 
-TTask AnnotateReturn(const TExprPtrOf<TReturnExpr>& ret, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateReturn(TReturnExpr* ret, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto scope = context.GetScope(scopeId);
     auto funcScope = scope->FuncScope;
     if (!funcScope || !funcScope->RetType) {
@@ -934,12 +934,12 @@ TTask AnnotateReturn(const TExprPtrOf<TReturnExpr>& ret, NSemantics::TNameResolv
     }
 
     ret->Type = context.Types().Make<TVoidType>();
-    co_return ret;
+    co_return TExprPtr(ret);
 }
 
 template<typename T>
 TTask AnnotateLifetimeValue(
-    const TExprPtrOf<T>& expr,
+    T* expr,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -948,11 +948,11 @@ TTask AnnotateLifetimeValue(
         co_return TError(expr->Location, "Lifetime-выражение имеет значение без типа.");
     }
     expr->Type = expr->Value->Type;
-    co_return expr;
+    co_return TExprPtr(expr);
 }
 
 TTask AnnotateDestroy(
-    const TExprPtrOf<TDestroyExpr>& destroy,
+    TDestroyExpr* destroy,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -961,11 +961,11 @@ TTask AnnotateDestroy(
         destroy->Aux = co_await DoAnnotate(destroy->Aux, context, scopeId);
     }
     destroy->Type = context.Types().Make<TVoidType>();
-    co_return destroy;
+    co_return TExprPtr(destroy);
 }
 
 TTask AnnotateReplace(
-    const TExprPtrOf<TReplaceExpr>& replace,
+    TReplaceExpr* replace,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -990,11 +990,11 @@ TTask AnnotateReplace(
         replace->Value = InsertImplicitCastIfNeeded(replace->Value, targetType, &context);
     }
     replace->Type = context.Types().Make<TVoidType>();
-    co_return replace;
+    co_return TExprPtr(replace);
 }
 
 TTask AnnotateCleanupExit(
-    const TExprPtrOf<TCleanupExitExpr>& exit,
+    TCleanupExitExpr* exit,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -1035,11 +1035,11 @@ TTask AnnotateCleanupExit(
         cleanup = co_await DoAnnotate(cleanup, context, scopeId);
     }
     exit->Type = context.Types().Make<TVoidType>();
-    co_return exit;
+    co_return TExprPtr(exit);
 }
 
 TTask AnnotateGlobalCleanup(
-    const TExprPtrOf<TGlobalCleanupExpr>& cleanup,
+    TGlobalCleanupExpr* cleanup,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -1047,7 +1047,7 @@ TTask AnnotateGlobalCleanup(
         expr = co_await DoAnnotate(expr, context, scopeId);
     }
     cleanup->Type = context.Types().Make<TVoidType>();
-    co_return cleanup;
+    co_return TExprPtr(cleanup);
 }
 
 // Tries exact match, then cast-left, then cast-right. Returns TCallExpr or nullptr.
@@ -1102,7 +1102,7 @@ struct TBinaryOpTypes {
 using TBinaryOpTypesResult = std::expected<TBinaryOpTypes, TError>;
 
 TTask AnnotateVector(
-    const TExprPtrOf<TVectorExpr>& vector,
+    TVectorExpr* vector,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -1157,7 +1157,7 @@ TTask AnnotateVector(
     if (!target) {
         vector->Type = context.Types().MakeVector(elementType, static_cast<int>(vector->Elements.size()));
     }
-    co_return vector;
+    co_return TExprPtr(vector);
 }
 
 bool IsStringType(const TTypePtr& type) {
@@ -1165,7 +1165,7 @@ bool IsStringType(const TTypePtr& type) {
 }
 
 TBinaryOpTypesResult AnnotateNumericBinaryOp(
-    const TExprPtrOf<TBinaryExpr>& binary,
+    TBinaryExpr* binary,
     TTypePtr left,
     TTypePtr right,
     NSemantics::TNameResolver& context)
@@ -1251,7 +1251,7 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
 
 TBinaryOpTypesResult AnnotateStringBinaryOp(
     TTypeFactory& types,
-    const TExprPtrOf<TBinaryExpr>& binary,
+    TBinaryExpr* binary,
     const TTypePtr& left,
     const TTypePtr& right)
 {
@@ -1278,7 +1278,7 @@ TBinaryOpTypesResult AnnotateStringBinaryOp(
 }
 
 TBinaryOpTypesResult AnnotateVecBinaryOp(
-    const TExprPtrOf<TBinaryExpr>& binary,
+    TBinaryExpr* binary,
     const TTypePtr& left,
     const TTypePtr& right,
     NSemantics::TNameResolver& context)
@@ -1346,7 +1346,7 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
     return types;
 }
 
-TTask AnnotateBinary(const TExprPtrOf<TBinaryExpr>& binary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateBinary(TBinaryExpr* binary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto explicitType = binary->Type;
     binary->Left = co_await DoAnnotate(binary->Left, context, scopeId);
     binary->Right = co_await DoAnnotate(binary->Right, context, scopeId);
@@ -1377,15 +1377,15 @@ TTask AnnotateBinary(const TExprPtrOf<TBinaryExpr>& binary, NSemantics::TNameRes
     binary->Right = InsertImplicitCastIfNeeded(binary->Right, types->Right, &context);
     binary->Type = types->Result;
     if (explicitType && !EqualTypes(explicitType, binary->Type)) {
-        co_return MakeCast(binary, explicitType);
+        co_return MakeCast(TExprPtr(binary), explicitType);
     }
     if (explicitType) {
         binary->Type = explicitType;
     }
-    co_return binary;
+    co_return TExprPtr(binary);
 }
 
-TTask AnnotateBlock(const TExprPtrOf<TBlockExpr>& block, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateBlock(TBlockExpr* block, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     for (auto& s : block->Stmts) {
         s = co_await DoAnnotate(s, context, NSemantics::TScopeId{block->Scope});
         if (!s->Type) {
@@ -1408,25 +1408,25 @@ TTask AnnotateBlock(const TExprPtrOf<TBlockExpr>& block, NSemantics::TNameResolv
     } else {
         block->Type = context.Types().Make<TVoidType>();
     }
-    co_return block;
+    co_return TExprPtr(block);
 }
 
 // Access mode (readable/mutable) of the variable or parameter declared by `declaration`.
-TAccess AccessOf(const TExprPtr& declaration) {
+TAccess AccessOf(TExpr* declaration) {
     if (auto var = TMaybeNode<TVarStmt>(declaration)) {
         return var.Cast()->Access;
     }
     return {};
 }
 
-TAccess IdentAccess(const TExprPtrOf<TIdentExpr>& ident, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TAccess IdentAccess(TIdentExpr* ident, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     if (auto symbolId = context.Lookup(ident->Name, scopeId)) {
         return AccessOf(context.GetSymbolNode(NSemantics::TSymbolId{symbolId->Id}));
     }
     return {};
 }
 
-TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateAssign(TAssignExpr* assign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     assign->Value = co_await DoAnnotate(assign->Value, context, scopeId);
     if (!assign->Value->Type) {
         co_return TError(assign->Location, "Нельзя присвоить значение с неопределённым типом переменной: " + assign->Name);
@@ -1439,7 +1439,7 @@ TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameRes
     if (!sym || !sym->Type) {
         co_return TError(assign->Location, "У переменной не определён тип: " + assign->Name);
     }
-    auto symbolType = UnwrapReferenceType(sym->Type);
+    const auto& symbolType = UnwrapReferenceType(sym->Type);
 
     if (!AccessOf(sym).Mutable) {
         co_return TError(assign->Location, "Нельзя присвоить аргументу функции '" + assign->Name + "'. Присваивать можно только переменным, а для аргументов функции — только если они объявлены как 'рез' или 'арг рез'.");
@@ -1447,10 +1447,10 @@ TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameRes
 
     auto valueType = UnwrapReferenceType(assign->Value->Type);
     if (!EqualTypes(valueType, symbolType)) {
-        auto futureValueType = FutureResultType(valueType);
+        const auto& futureValueType = FutureResultType(valueType);
         if (futureValueType && CanImplicit(futureValueType, symbolType, &context)) {
             assign->Type = context.Types().Make<NAst::TVoidType>();
-            co_return assign;
+            co_return TExprPtr(assign);
         }
         if (!CanImplicit(valueType, symbolType, &context)) {
             co_return TError(assign->Location, "Нельзя неявно преобразовать тип '" + TypeDiagnosticName(valueType) + "' к типу '" + TypeDiagnosticName(symbolType) + "' при присваивании переменной '" + assign->Name + "'.");
@@ -1459,10 +1459,10 @@ TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameRes
     }
 
     assign->Type = context.Types().Make<NAst::TVoidType>();
-    co_return assign;
+    co_return TExprPtr(assign);
 }
 
-TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateArrayAssign(TArrayAssignExpr* arrayAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     arrayAssign->Value = co_await DoAnnotate(arrayAssign->Value, context, scopeId);
     if (!arrayAssign->Value->Type) {
         co_return TError(arrayAssign->Location, "Нельзя присвоить значение без типа элементу массива '" + arrayAssign->Name + "'.");
@@ -1504,7 +1504,7 @@ TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSema
             co_return TError(arrayAssign->Location, "Неверное количество индексов в присваивании элементу массива '" + arrayAssign->Name + "': ожидается " + std::to_string(arrayType->Arity) + ", получено " + std::to_string(arrayAssign->Indices.size()) + ".");
         }
         arrayAssign->Type = context.Types().Make<NAst::TVoidType>();
-        co_return arrayAssign;
+        co_return TExprPtr(arrayAssign);
     } else if (maybePointerType) {
         auto pointerType = maybePointerType.Cast();
         if (arrayAssign->Indices.size() != 1) {
@@ -1533,7 +1533,7 @@ TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSema
         }
 
         arrayAssign->Type = context.Types().Make<NAst::TVoidType>();
-        co_return arrayAssign;
+        co_return TExprPtr(arrayAssign);
     } else if (maybeStringType) {
         // Only allow s[1] = 'c' (symbol to string)
         if (arrayAssign->Indices.size() != 1) {
@@ -1550,13 +1550,13 @@ TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSema
             co_return TError(arrayAssign->Location, "Значение в присваивании элементу строки '" + arrayAssign->Name + "' должно быть символом (например, s[1]='a').");
         }
         arrayAssign->Type = context.Types().Make<NAst::TVoidType>();
-        co_return arrayAssign;
+        co_return TExprPtr(arrayAssign);
     } else {
         co_return TError(arrayAssign->Location, "Идентификатор '" + arrayAssign->Name + "' не является массивом, строкой или указателем, поэтому нельзя использовать присваивание по индексу.");
     }
 }
 
-TTask AnnotateVar(const TExprPtrOf<TVarStmt>& var, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateVar(TVarStmt* var, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     if (!var->Type) {
         // (var name = expr): type inferred from init expression
         if (!var->Init) {
@@ -1572,7 +1572,7 @@ TTask AnnotateVar(const TExprPtrOf<TVarStmt>& var, NSemantics::TNameResolver& co
             auto sym = context.GetSymbolNode(NSemantics::TSymbolId{sidOpt->Id});
             if (sym) { sym->Type = var->Type; }
         }
-        co_return var;
+        co_return TExprPtr(var);
     }
     for (auto& [from, to] : var->Bounds) {
         if (from) {
@@ -1596,10 +1596,10 @@ TTask AnnotateVar(const TExprPtrOf<TVarStmt>& var, NSemantics::TNameResolver& co
             var->Init = InsertImplicitCastIfNeeded(var->Init, variableType, &context);
         }
     }
-    co_return var;
+    co_return TExprPtr(var);
 }
 
-TTask AnnotateIdent(const TExprPtrOf<TIdentExpr>& ident, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId, bool pathThrough = false) {
+TTask AnnotateIdent(TIdentExpr* ident, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId, bool pathThrough = false) {
     auto symbolId = context.Lookup(ident->Name, scopeId);
     if (!symbolId) {
         co_return TError(ident->Location, "Идентификатор '" + ident->Name + "' не определён. Проверьте правильность написания имени или объявите переменную перед использованием.");
@@ -1613,9 +1613,9 @@ TTask AnnotateIdent(const TExprPtrOf<TIdentExpr>& ident, NSemantics::TNameResolv
         co_return TError(ident->Location, "У идентификатора '" + ident->Name + "' не определён тип. Возможно, переменная объявлена без типа или произошла ошибка при анализе типов.");
     }
     if (pathThrough) {
-        co_return ident;
+        co_return TExprPtr(ident);
     }
-    auto unwrappedType = UnwrapReferenceType(ident->Type);
+    const auto& unwrappedType = UnwrapReferenceType(ident->Type);
     if (!AccessOf(sym).Readable) {
         if (TMaybeType<TArrayType>(unwrappedType)) {
             co_return TError(ident->Location, "Нельзя читать элементы массива `рез' аргумента '" + ident->Name + "'.\n"
@@ -1625,7 +1625,7 @@ TTask AnnotateIdent(const TExprPtrOf<TIdentExpr>& ident, NSemantics::TNameResolv
             "`рез' аргумент предназначен только для записи. Если нужно читать значение, объявите его как `арг рез'.");
     }
 
-    co_return ident;
+    co_return TExprPtr(ident);
 }
 
 // --- Generic instantiation ---------------------------------------------------
@@ -2196,7 +2196,7 @@ TGenericBoolTask InferGenericBindingsFromReturnContext(
     NSemantics::TScopeId scopeId);
 
 TGenericBoolTask InferGenericBindingsFromStructConstruct(
-    const TExprPtrOf<TStructConstructExpr>& structure,
+    TStructConstructExpr* structure,
     TTypePtr targetType,
     const TGenericParamSets& genericParams,
     TGenericBindings& bindings,
@@ -2369,7 +2369,7 @@ TGenericBoolTask InferGenericBindingsFromExplicitReturns(
 }
 
 TGenericBoolTask InferGenericBindingsFromReturnBody(
-    const TExprPtrOf<TFunDecl>& genericDecl,
+    TFunDecl* genericDecl,
     const TGenericParamSets& genericParams,
     TGenericBindings& bindings,
     NSemantics::TNameResolver& context,
@@ -2392,13 +2392,14 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
     }
 
     auto retType = SubstituteGenericType(context.Types(), genericDecl->RetType, genericParams, bindings);
-    auto body = TMaybeNode<TBlockExpr>(CloneAndSubstituteExpr(context.Types(), genericDecl->Body, genericParams, bindings)).Cast();
+    auto clonedBody = CloneAndSubstituteExpr(context.Types(), genericDecl->Body, genericParams, bindings);
+    auto body = TMaybeNode<TBlockExpr>(clonedBody).Cast();
     auto probe = MakeIntrusive<TFunDecl>(
         genericDecl->Location,
         genericDecl->Name + "$return_infer",
         UnboundGenericParams(*genericDecl, bindings),
         std::move(params),
-        body,
+        TExprPtrOf<TBlockExpr>(body),
         retType);
 
     std::vector<TTypePtr> paramTypes;
@@ -2447,7 +2448,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
 }
 
 TGenericBindingsTask InferCompleteGenericBindings(
-    const TExprPtrOf<TFunDecl>& genericDecl,
+    TFunDecl* genericDecl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
@@ -2492,7 +2493,7 @@ TGenericBindingsTask InferCompleteGenericBindings(
 // look-up-able before its body gets annotated, so a recursive call resolves
 // to the already-registered (in-progress) clone instead of re-entering.
 TFunDeclTask InstantiateGenericFunction(
-    const TExprPtrOf<TFunDecl>& genericDecl,
+    TFunDecl* genericDecl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
@@ -2538,13 +2539,14 @@ TFunDeclTask InstantiateGenericFunction(
     auto rootScopeId = context.GetOrCreateRootScope()->Id;
     if (auto found = context.Lookup(mangledName, rootScopeId)) {
         if (auto cached = TMaybeNode<TFunDecl>(context.GetSymbolNode(NSemantics::TSymbolId{found->Id})).Cast()) {
-            co_return cached;
+            co_return TExprPtrOf<TFunDecl>(cached);
         }
     }
 
-    auto body = TMaybeNode<TBlockExpr>(CloneAndSubstituteExpr(context.Types(), genericDecl->Body, genericParams, bindings)).Cast();
+    auto clonedBody = CloneAndSubstituteExpr(context.Types(), genericDecl->Body, genericParams, bindings);
+    auto body = TMaybeNode<TBlockExpr>(clonedBody).Cast();
 
-    auto cloned = MakeIntrusive<TFunDecl>(genericDecl->Location, mangledName, std::vector<TGenericParam>{}, std::move(params), body, retType);
+    auto cloned = MakeIntrusive<TFunDecl>(genericDecl->Location, mangledName, std::vector<TGenericParam>{}, std::move(params), TExprPtrOf<TBlockExpr>(body), retType);
     cloned->OriginalName = genericDecl->OriginalName.empty()
         ? genericDecl->Name
         : genericDecl->OriginalName;
@@ -2594,7 +2596,7 @@ TFunDeclTask InstantiateGenericFunction(
 }
 
 std::optional<TTypePtr> SubstituteGenericOperatorReturnType(
-    const TExprPtrOf<TFunDecl>& decl,
+    TFunDecl* decl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     const TTypePtr& expectedReturnType,
@@ -2625,7 +2627,7 @@ TRegisteredOpTask InstantiateGenericOperator(
     TLocation callLoc)
 {
     std::optional<TArgCost> bestCost;
-    TExprPtrOf<TFunDecl> bestDecl;
+    TFunDecl* bestDecl = nullptr;
     bool ambiguous = false;
     std::optional<TError> delayedError;
 
@@ -2637,7 +2639,7 @@ TRegisteredOpTask InstantiateGenericOperator(
         bool viable = true;
         auto genericParams = GenericParamSets(*candidate);
         for (size_t i = 0; i < args.size(); ++i) {
-            auto argType = UnwrapReferenceType(args[i]->Type);
+            const auto& argType = UnwrapReferenceType(args[i]->Type);
             auto cost = ArgCost(argType, candidate->Params[i]->Type, &context, &genericParams.Types, &genericParams.Values);
             if (!cost) {
                 viable = false;
@@ -2733,7 +2735,7 @@ TTask TryGenericBinaryOp(TExprPtr left, TExprPtr right,
 }
 
 TTask AnnotateOverloadedCall(
-    const TExprPtrOf<TCallExpr>& call,
+    TCallExpr* call,
     const std::vector<NSemantics::TSymbolId>& overloads,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
@@ -2784,7 +2786,7 @@ TTask AnnotateOverloadedCall(
         }
         if (!bestCost || totalCost < *bestCost) {
             bestCost = totalCost;
-            bestDecl = funDecl;
+            bestDecl = TExprPtrOf<TFunDecl>(funDecl);
             ambiguous = false;
         } else if (totalCost == *bestCost) {
             ambiguous = true;
@@ -2801,7 +2803,7 @@ TTask AnnotateOverloadedCall(
     }
 
     if (HasGenericParams(*bestDecl)) {
-        auto instantiated = co_await InstantiateGenericFunction(bestDecl, call->Args, context, call->Location);
+        auto instantiated = co_await InstantiateGenericFunction(bestDecl.Get(), call->Args, context, call->Location);
         bestDecl = instantiated;
     }
 
@@ -2821,7 +2823,7 @@ TTask AnnotateOverloadedCall(
         }
     }
 
-    co_return call;
+    co_return TExprPtr(call);
 }
 
 std::expected<TTypePtr, TError> VectorIntrinsicResult(
@@ -2845,7 +2847,7 @@ std::expected<TTypePtr, TError> VectorIntrinsicResult(
         if (!pointer || !indices || !TMaybeType<TIntegerType>(UnwrapNamedType(indices->ElementType))) {
             return error("ожидаются указатель и вектор целых индексов.");
         }
-        auto element = UnwrapNamedType(pointer->PointeeType);
+        const auto& element = UnwrapNamedType(pointer->PointeeType);
         if ((!IsNumericType(element) && !TMaybeType<TBoolType>(element)) || IsWideIntegerType(element)) {
             return error("тип элемента должен быть числом не шире 64 бит или bool.");
         }
@@ -2889,7 +2891,7 @@ std::expected<TTypePtr, TError> VectorIntrinsicResult(
 }
 
 TTask AnnotateVectorIntrinsic(
-    const TExprPtrOf<TCallExpr>& call,
+    TCallExpr* call,
     std::string_view op,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
@@ -2936,10 +2938,10 @@ TTask AnnotateVectorIntrinsic(
     call->Callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, name);
     call->Callee->Type = context.Types().MakeFunction(std::move(argTypes), result);
     call->Type = result;
-    co_return call;
+    co_return TExprPtr(call);
 }
 
-TTask AnnotateCall(const TExprPtrOf<TCallExpr>& call, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateCall(TCallExpr* call, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     if (auto maybeIdent = TMaybeNode<TIdentExpr>(call->Callee)) {
         auto op = NSemantics::VectorIntrinsic(maybeIdent.Cast()->Name);
         if (!op.empty() && !context.Lookup(maybeIdent.Cast()->Name, scopeId)) {
@@ -3031,7 +3033,7 @@ TTask AnnotateCall(const TExprPtrOf<TCallExpr>& call, NSemantics::TNameResolver&
                             "алг ф(цел i)\n  g(i)  // ошибка: i нельзя передать как 'рез'\n\nалг g(рез i)\n  ...\n");
                     }
                 }
-                auto argTypeUnwrapped = UnwrapReferenceType(arg->Type);
+                const auto& argTypeUnwrapped = UnwrapReferenceType(arg->Type);
                 if (!EqualTypes(argTypeUnwrapped, paramRefT->ReferencedType)) {
                     co_return TError(arg->Location, "Аргумент #" + std::to_string(i+1) + ": тип '" + TypeDiagnosticName(arg->Type) + "' не совпадает с типом ссылочного параметра '" + TypeDiagnosticName(paramT) + "'.");
                 }
@@ -3051,10 +3053,10 @@ TTask AnnotateCall(const TExprPtrOf<TCallExpr>& call, NSemantics::TNameResolver&
     } else {
         call->Type = call->Callee->Type;
     }
-    co_return call;
+    co_return TExprPtr(call);
 }
 
-TTask AnnotateAwait(const TExprPtrOf<TAwaitExpr>& awaitExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateAwait(TAwaitExpr* awaitExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     awaitExpr->Operand = co_await DoAnnotate(awaitExpr->Operand, context, scopeId);
     if (!awaitExpr->Operand->Type) {
         co_return TError(awaitExpr->Location, "Нельзя ожидать выражение без типа.");
@@ -3066,7 +3068,7 @@ TTask AnnotateAwait(const TExprPtrOf<TAwaitExpr>& awaitExpr, NSemantics::TNameRe
     }
 
     awaitExpr->Type = resultType;
-    co_return awaitExpr;
+    co_return TExprPtr(awaitExpr);
 }
 
 // Type of an `если' branch as it will be AFTER the implied `await'.
@@ -3081,15 +3083,15 @@ TTask AnnotateAwait(const TExprPtrOf<TAwaitExpr>& awaitExpr, NSemantics::TNameRe
 // Not used for the common-type computation below: there a future is meaningful
 // on its own, and unwrapping it would make `если c то <future<цел>> иначе <цел>
 // все' insert a bogus cast.
-TTypePtr SettledBranchType(const TTypePtr& type) {
-    auto unwrapped = UnwrapReferenceType(type);
-    if (auto awaited = FutureResultType(unwrapped)) {
+const TTypePtr& SettledBranchType(const TTypePtr& type) {
+    const auto& unwrapped = UnwrapReferenceType(type);
+    if (const auto& awaited = FutureResultType(unwrapped)) {
         return awaited;
     }
     return unwrapped;
 }
 
-TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateIfExpr(TIfExpr* ifExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     ifExpr->Cond = co_await DoAnnotate(ifExpr->Cond, context, scopeId);
     if (!ifExpr->Cond->Type) {
         co_return TError(ifExpr->Cond->Location, "Условие в `если' не имеет типа. Проверьте корректность выражения в условии.");
@@ -3115,7 +3117,7 @@ TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolve
             co_return TError(ifExpr->Then->Location, "if-expression без ветви `иначе': ветвь `то' должна иметь тип void.");
         }
         ifExpr->Type = context.Types().Make<TVoidType>();
-        co_return ifExpr;
+        co_return TExprPtr(ifExpr);
     }
 
     ifExpr->Else = co_await DoAnnotate(ifExpr->Else, context, scopeId);
@@ -3130,7 +3132,7 @@ TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolve
     if (TMaybeType<TVoidType>(SettledBranchType(thenType))
         && TMaybeType<TVoidType>(SettledBranchType(elseType))) {
         ifExpr->Type = context.Types().Make<TVoidType>();
-        co_return ifExpr;
+        co_return TExprPtr(ifExpr);
     }
 
     // Expression context: both branches must yield a compatible non-void type
@@ -3146,26 +3148,26 @@ TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolve
     ifExpr->Then = InsertImplicitCastIfNeeded(ifExpr->Then, common, &context);
     ifExpr->Else = InsertImplicitCastIfNeeded(ifExpr->Else, common, &context);
     ifExpr->Type = common;
-    co_return ifExpr;
+    co_return TExprPtr(ifExpr);
 }
 
-TTask AnnotateWhile(const TExprPtrOf<TWhileStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateWhile(TWhileStmtExpr* loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
     loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, context.Types().Make<TBoolType>(), &context);
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
     loop->Type = context.Types().Make<TVoidType>();
-    co_return loop;
+    co_return TExprPtr(loop);
 }
 
-TTask AnnotateRepeat(const TExprPtrOf<TRepeatStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateRepeat(TRepeatStmtExpr* loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
     loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
     loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, context.Types().Make<TBoolType>(), &context);
     loop->Type = context.Types().Make<TVoidType>();
-    co_return loop;
+    co_return TExprPtr(loop);
 }
 
-TTask AnnotateFor(const TExprPtrOf<TForStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFor(TForStmtExpr* loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto intType = context.Types().MakeInteger();
 
     auto symbolId = context.Lookup(loop->VarName, scopeId);
@@ -3187,18 +3189,18 @@ TTask AnnotateFor(const TExprPtrOf<TForStmtExpr>& loop, NSemantics::TNameResolve
     }
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
     loop->Type = context.Types().Make<TVoidType>();
-    co_return loop;
+    co_return TExprPtr(loop);
 }
 
-TTask AnnotateTimes(const TExprPtrOf<TTimesStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateTimes(TTimesStmtExpr* loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Count = co_await DoAnnotate(loop->Count, context, scopeId);
     loop->Count = InsertImplicitCastIfNeeded(loop->Count, context.Types().MakeInteger(), &context);
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
     loop->Type = context.Types().Make<TVoidType>();
-    co_return loop;
+    co_return TExprPtr(loop);
 }
 
-TTask AnnotateMultiIndex(const TExprPtrOf<TMultiIndexExpr>& indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateMultiIndex(TMultiIndexExpr* indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     indexExpr->Collection = co_await DoAnnotate(indexExpr->Collection, context, scopeId);
     if (!indexExpr->Collection->Type) {
         co_return TError(indexExpr->Location, "В выражении многомерного индекса не удалось определить тип коллекции (массив). Проверьте корректность выражения.");
@@ -3225,10 +3227,10 @@ TTask AnnotateMultiIndex(const TExprPtrOf<TMultiIndexExpr>& indexExpr, NSemantic
     auto arrayType = maybeArrayType.Cast();
     indexExpr->Type = arrayType->ElementType;
 
-    co_return indexExpr;
+    co_return TExprPtr(indexExpr);
 }
 
-TTask AnnotateIndex(const TExprPtrOf<TIndexExpr>& indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateIndex(TIndexExpr* indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     indexExpr->Collection = co_await DoAnnotate(indexExpr->Collection, context, scopeId);
     if (!indexExpr->Collection->Type) {
         co_return TError(indexExpr->Location, "В выражении индексации не удалось определить тип коллекции (массива или строки). Проверьте корректность выражения.");
@@ -3261,10 +3263,10 @@ TTask AnnotateIndex(const TExprPtrOf<TIndexExpr>& indexExpr, NSemantics::TNameRe
             "Проверьте, что вы обращаетесь к массиву, строке или указателю, а не к другому типу.");
     }
 
-    co_return indexExpr;
+    co_return TExprPtr(indexExpr);
 }
 
-TTask AnnotateSlice(const TExprPtrOf<TSliceExpr>& sliceExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateSlice(TSliceExpr* sliceExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     sliceExpr->Collection = co_await DoAnnotate(sliceExpr->Collection, context, scopeId);
     if (!sliceExpr->Collection->Type) {
         co_return TError(sliceExpr->Location, "В выражении среза не удалось определить тип коллекции. Проверьте корректность выражения.");
@@ -3304,10 +3306,10 @@ TTask AnnotateSlice(const TExprPtrOf<TSliceExpr>& sliceExpr, NSemantics::TNameRe
     // Срез строки возвращает строку
     sliceExpr->Type = collectionType;
 
-    co_return sliceExpr;
+    co_return TExprPtr(sliceExpr);
 }
 
-TTask AnnotateFieldAccess(const TExprPtrOf<TFieldAccessExpr>& fieldAccess, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFieldAccess(TFieldAccessExpr* fieldAccess, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     fieldAccess->Object = co_await DoAnnotate(fieldAccess->Object, context, scopeId);
     if (!fieldAccess->Object->Type) {
         co_return TError(fieldAccess->Location, "Не удалось определить тип объекта в выражении обращения к полю '" + fieldAccess->FieldName + "'.");
@@ -3326,7 +3328,7 @@ TTask AnnotateFieldAccess(const TExprPtrOf<TFieldAccessExpr>& fieldAccess, NSema
         if (fields[i].first == fieldAccess->FieldName) {
             fieldAccess->FieldIndex = i;
             fieldAccess->Type = fields[i].second;
-            co_return fieldAccess;
+            co_return TExprPtr(fieldAccess);
         }
     }
 
@@ -3339,7 +3341,7 @@ TTask AnnotateFieldAccess(const TExprPtrOf<TFieldAccessExpr>& fieldAccess, NSema
         "Поле '" + fieldAccess->FieldName + "' не найдено в структуре. Доступные поля: " + available + ".");
 }
 
-static std::pair<TConcreteTypePtr<TStructType>, std::string>
+static std::pair<TStructType*, std::string>
 ResolveStructField(const TTypePtr& objType, const std::string& fieldName, int& outIndex) {
     auto structType = TMaybeType<TStructType>(UnwrapNamedType(UnwrapReferenceType(objType))).Cast();
     if (!structType) return {nullptr, ""};
@@ -3358,7 +3360,7 @@ ResolveStructField(const TTypePtr& objType, const std::string& fieldName, int& o
     return {nullptr, available};
 }
 
-TTask AnnotateFieldAssign(const TExprPtrOf<TFieldAssignExpr>& fieldAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFieldAssign(TFieldAssignExpr* fieldAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     fieldAssign->Object = co_await DoAnnotate(fieldAssign->Object, context, scopeId);
     if (!fieldAssign->Object->Type) {
         co_return TError(fieldAssign->Location, "Не удалось определить тип объекта при присваивании полю '" + fieldAssign->FieldName + "'.");
@@ -3392,7 +3394,7 @@ TTask AnnotateFieldAssign(const TExprPtrOf<TFieldAssignExpr>& fieldAssign, NSema
     }
 
     fieldAssign->Type = context.Types().Make<TVoidType>();
-    co_return fieldAssign;
+    co_return TExprPtr(fieldAssign);
 }
 
 TTask DoAnnotate(TExprPtr expr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
@@ -3468,7 +3470,7 @@ TTask DoAnnotate(TExprPtr expr, NSemantics::TNameResolver& context, NSemantics::
                 }
             }
         }
-        co_return output.Cast();
+        co_return expr;
     } else if (auto retain = TMaybeNode<TRetainExpr>(expr)) {
         co_return co_await AnnotateLifetimeValue(retain.Cast(), context, scopeId);
     } else if (auto ownLiteral = TMaybeNode<TOwnLiteralExpr>(expr)) {
