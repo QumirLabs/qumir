@@ -40,8 +40,8 @@ struct IParseHandle {
 using TNodeParser = std::function<TAstTask(IParseHandle&, TLocation)>;
 using TNodeParserMap = std::unordered_map<std::string, TNodeParser>;
 
-// Builds a custom type from the generic args of "<named Name [args]>".
-using TTypeParser = std::function<std::expected<TTypePtr, std::string>(std::vector<TGenericArg>)>;
+// Builds a custom type from the generic args of "<named Name [args]>" with the parser's factory.
+using TTypeParser = std::function<std::expected<TTypePtr, std::string>(TTypeFactory&, std::vector<TGenericArg>)>;
 using TTypeParserMap = std::unordered_map<std::string, TTypeParser>;
 
 class TParser {

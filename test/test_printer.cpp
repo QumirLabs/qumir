@@ -413,31 +413,30 @@ private:
 TPrintOptions MakeTypePrintOptions() {
     TPrintOptions opts;
     opts.TypePrinters[TOptType::TypeId] = [](const TType& type, TPrinter& p, int level) {
-        p.PrintType(NQumir::NTest::TestTypes().MakeNamed(
-            "Opt", nullptr, {TGenericArg::TypeArg(static_cast<const TOptType&>(type).Inner)}), level);
+        p.PrintNamedType("Opt", {TGenericArg::TypeArg(static_cast<const TOptType&>(type).Inner)}, nullptr, level);
     };
     return opts;
 }
 
 TTypeParserMap MakeTypeParsers() {
     TTypeParserMap parsers;
-    parsers["Opt"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
+    parsers["Opt"] = [](TTypeFactory& types, std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (args.size() != 1 || args[0].Kind != TGenericArg::EKind::Type) {
             return std::unexpected("Opt expects one type argument");
         }
-        return NQumir::NTest::TestTypes().MakeCustom<TOptType>(args[0].Type);
+        return types.MakeCustom<TOptType>(args[0].Type);
     };
-    parsers["Unit"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
+    parsers["Unit"] = [](TTypeFactory& types, std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (!args.empty()) {
             return std::unexpected("Unit expects no arguments");
         }
-        return NQumir::NTest::TestTypes().MakeCustom<TUnitType>();
+        return types.MakeCustom<TUnitType>();
     };
-    parsers["Dec"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
+    parsers["Dec"] = [](TTypeFactory& types, std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (args.size() != 2 || args[0].Kind != TGenericArg::EKind::Value || args[1].Kind != TGenericArg::EKind::Value) {
             return std::unexpected("Dec expects two value arguments");
         }
-        return NQumir::NTest::TestTypes().MakeCustom<TDecType>(std::stoi(args[0].Value), std::stoi(args[1].Value));
+        return types.MakeCustom<TDecType>(std::stoi(args[0].Value), std::stoi(args[1].Value));
     };
     return parsers;
 }

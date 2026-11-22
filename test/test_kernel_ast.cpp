@@ -101,6 +101,29 @@ TEST(KernelAst, LoadsU64FromPointerIndex) {
         INT64_C(5922767304251906895));
 }
 
+TEST(KernelAst, CompilesOnHostTypeFactory) {
+    // Declared first: the factory outlives the runner, as a host's does.
+    NQumir::NAst::TTypeFactory types;
+    NQumir::TLLVMRunner runner(types, {
+        .NativeCode = true,
+        .CoreInput = true,
+        .ResolveCoreInput = true,
+        .OptLevel = 1,
+    });
+    ASSERT_EQ(&runner.TypeFactory(), &types);
+
+    std::istringstream input(RootsSource);
+    NQumir::NAst::NCore::TTokenStream tokens(input);
+    NQumir::NAst::NCore::TParser parser(types);
+    auto parsed = parser.Parse(tokens);
+    ASSERT_TRUE(parsed) << parsed.error().ToString();
+
+    std::string error;
+    void* entry = runner.CompileKernelAst(*parsed, "kernel", &error);
+    ASSERT_NE(entry, nullptr) << error;
+    EXPECT_EQ(reinterpret_cast<int64_t(*)(int64_t)>(entry)(41), 42);
+}
+
 TEST(KernelAst, UsedFunctionStaysExportedAfterO3) {
     auto ir = CompileKernelObjectIr(RootsSource, 3);
     EXPECT_NE(ir.find("define i64 @kernel("), std::string::npos) << ir;

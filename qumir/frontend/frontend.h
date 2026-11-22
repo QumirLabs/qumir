@@ -9,6 +9,7 @@
 
 #include <expected>
 #include <istream>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -44,7 +45,9 @@ public:
     // must be built with it (types are interned per factory, equal types are one object).
     NAst::TTypeFactory& TypeFactory() { return Types; }
 
-    explicit TFrontend(TFrontendOptions options);
+    // `types` is the host's factory, which must outlive the frontend. Without one the
+    // frontend owns a factory (qumirc, tests).
+    explicit TFrontend(TFrontendOptions options, NAst::TTypeFactory* types = nullptr);
 
     // Parses the program and composes it with the source modules it uses.
     std::expected<NAst::TExprPtr, TError> Parse(std::istream& input);
@@ -63,11 +66,13 @@ public:
 
 private:
     TFrontendOptions Options_;
+    // Set only when no host factory is passed; declared first, so it outlives the rest.
+    std::optional<NAst::TTypeFactory> OwnedTypes_;
 
 protected:
-    // Owns every type of this session, so it precedes (and outlives) the IR module, the
+    // Every type of this session comes from it, so it outlives the IR module, the
     // lowerer, the resolver and a derived runner's codegen.
-    NAst::TTypeFactory Types;
+    NAst::TTypeFactory& Types;
     NIR::TModule Module;
     NIR::TBuilder Builder;
     NIR::TAstLowerer Lowerer;
