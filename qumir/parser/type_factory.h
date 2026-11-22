@@ -11,8 +11,7 @@ namespace NAst {
 // Interns immutable types: two calls with equal arguments return the same object, so
 // type equality is pointer equality. One factory is shared by every layer of a
 // compilation (modules, parsers, name resolution, passes) through their contexts.
-// Types that are completed after creation (TNamedType, generic-sized TVectorType) are
-// not interned.
+// Generic-sized TVectorType is not interned (its size is bound after creation).
 class TTypeFactory {
 public:
     // Parameterless singleton types: bool, string, char, void.
@@ -69,14 +68,31 @@ public:
         return ret ? ret : (ret = MakeIntrusive<TReferenceType>(referenced));
     }
 
-    // Not interned: TNamedType is completed after creation (UnderlyingType, Reference
-    // are assigned during name resolution), so every call returns a fresh object.
+    // Interned by (name, typeArgs). UnderlyingType is not part of the key: a named type is
+    // declared by name, so the same name completes with the same underlying type, and an
+    // incomplete named type (no underlying yet) is completed in place, once. A conflicting
+    // redefinition - the name is declared again with a different underlying type, e.g. a
+    // reused resolver or a second program - gets a fresh object and replaces the cached one.
     TConcreteTypePtr<TNamedType> MakeNamed(
         const std::string& name,
-        const TTypePtr& underlying,
+        const TTypePtr& underlying = nullptr,
         std::vector<TGenericArg>&& typeArgs = {})
     {
-        return MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs));
+        auto& ret = NamedTypes_[{name, typeArgs}];
+        if (!ret) {
+            return ret = MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs));
+        }
+        if (!underlying) {
+            return ret;
+        }
+        if (!ret->UnderlyingType) {
+            ret->UnderlyingType = underlying;
+            return ret;
+        }
+        if (ret->UnderlyingType == underlying || TypeKey(ret->UnderlyingType) == TypeKey(underlying)) {
+            return ret;
+        }
+        return ret = MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs));
     }
 
     TConcreteTypePtr<TStructType> MakeStruct(std::vector<std::pair<std::string, TTypePtr>>&& fields) {
@@ -110,6 +126,7 @@ private:
     std::map<TTypePtr, TConcreteTypePtr<TReferenceType>> ReferenceTypes_;
     std::map<std::vector<std::pair<std::string, TTypePtr>>, TConcreteTypePtr<TStructType>> TStructTypes_;
     std::map<std::pair<TTypePtr, int>, TConcreteTypePtr<TVectorType>> VectorTypes_;
+    std::map<std::pair<std::string, std::vector<TGenericArg>>, TConcreteTypePtr<TNamedType>> NamedTypes_;
     std::map<std::pair<TTypePtr, std::vector<int>>, TConcreteTypePtr<TTensorType>> TensorTypes_;
 };
 

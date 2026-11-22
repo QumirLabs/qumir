@@ -33,11 +33,31 @@ TEST(TypeFactory, InternsImmutableTypes) {
     EXPECT_EQ(types.WrapFuture(types.MakeFuture(i64)), types.MakeFuture(i64));
 }
 
-TEST(TypeFactory, NamedTypesAreCompletedAfterCreationAndNotInterned) {
+TEST(TypeFactory, NamedTypesAreInternedByNameAndArgsAndCompletedOnce) {
     TTypeFactory types;
-    auto first = types.MakeNamed("X", nullptr);
-    auto second = types.MakeNamed("X", nullptr);
-    EXPECT_NE(first, second);
+    auto i64 = types.MakeInteger();
+    auto f64 = types.MakeFloat();
+
+    // Created incomplete, e.g. by a parser before the declaration is known.
+    auto incomplete = types.MakeNamed("X");
+    EXPECT_FALSE(incomplete->UnderlyingType);
+    EXPECT_EQ(incomplete, types.MakeNamed("X"));
+
+    // Completing it fills the very same object.
+    auto complete = types.MakeNamed("X", i64);
+    EXPECT_EQ(complete, incomplete);
+    EXPECT_EQ(incomplete->UnderlyingType, i64);
+    EXPECT_EQ(complete, types.MakeNamed("X"));
+    EXPECT_EQ(complete, types.MakeNamed("X", i64));
+
+    // Different arguments are a different type.
+    EXPECT_NE(types.MakeNamed("X", i64, {TGenericArg::TypeArg(i64)}), complete);
+
+    // A conflicting redefinition of the name does not reuse the stale declaration.
+    auto redefined = types.MakeNamed("X", f64);
+    EXPECT_NE(redefined, complete);
+    EXPECT_EQ(complete->UnderlyingType, i64);
+    EXPECT_EQ(redefined->UnderlyingType, f64);
 }
 
 TEST(TypeFactory, PointersAreHashableAndOrdered) {

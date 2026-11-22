@@ -584,31 +584,24 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     if (head == "named") {
         auto name = co_await ParseName(context);
         auto typeArgs = co_await ParseGenericTypeArgs(context);
-        auto type = context.Types.MakeNamed(std::move(name), nullptr, std::move(typeArgs));
         auto tok = context.Stream.Next();
         if (IsOp(tok, '>')) {
             if (context.TypeParsers) {
-                if (auto it = context.TypeParsers->find(type->Name); it != context.TypeParsers->end()) {
-                    auto custom = it->second(std::move(type->TypeArgs));
+                if (auto it = context.TypeParsers->find(name); it != context.TypeParsers->end()) {
+                    auto custom = it->second(std::move(typeArgs));
                     if (!custom) {
                         co_return TError(location, custom.error());
                     }
                     co_return std::move(*custom);
                 }
             }
-            co_return type;
+            co_return context.Types.MakeNamed(std::move(name), nullptr, std::move(typeArgs));
         }
-        // "<named Name (attrs)>" - a reference with no inline underlying type,
-        // as opposed to "<named Name UnderlyingType (attrs)>".
-        if (IsOp(tok, '(')) {
-            context.Stream.Unget(tok);
-                co_await Expect(context, '>');
-            co_return type;
-        }
+        // "<named Name UnderlyingType>": the underlying type completes the named type.
         context.Stream.Unget(tok);
-        type->UnderlyingType = co_await ParseType(context);
+        auto underlying = co_await ParseType(context);
         co_await Expect(context, '>');
-        co_return type;
+        co_return context.Types.MakeNamed(std::move(name), underlying, std::move(typeArgs));
     }
     if (head == "struct") {
         std::vector<std::pair<std::string, TTypePtr>> fields;
