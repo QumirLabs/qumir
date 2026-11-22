@@ -299,46 +299,9 @@ bool IntegerLiteralCanUseType(const TExprPtr& expr, const TTypePtr& toType) {
         && IntegerLiteralFits(maybeNumber.Cast()->IntValue, *maybeInteger.Cast());
 }
 
+// Types are interned by the type factory, so equal types are the same object.
 bool EqualTypes(const TTypePtr& a, const TTypePtr& b) {
-    if (!a || !b) {
-        return a == b;
-    }
-    if (a->TypeName() != b->TypeName()) {
-        return false;
-    }
-
-    auto maybeAInt = TMaybeType<TIntegerType>(a);
-    auto maybeBInt = TMaybeType<TIntegerType>(b);
-    if (maybeAInt && maybeBInt) {
-        return maybeAInt.Cast()->Kind == maybeBInt.Cast()->Kind;
-    }
-
-    auto maybeAFloat = TMaybeType<TFloatType>(a);
-    auto maybeBFloat = TMaybeType<TFloatType>(b);
-    if (maybeAFloat && maybeBFloat) {
-        return maybeAFloat.Cast()->Kind == maybeBFloat.Cast()->Kind;
-    }
-
-    auto maybeANamed = TMaybeType<TNamedType>(a);
-    auto maybeBNamed = TMaybeType<TNamedType>(b);
-    if (maybeANamed && maybeBNamed) {
-        return TypeKey(a) == TypeKey(b);
-    }
-
-    auto maybeAFuture = TMaybeType<TFutureType>(a);
-    auto maybeBFuture = TMaybeType<TFutureType>(b);
-    if (maybeAFuture && maybeBFuture) {
-        return EqualTypes(maybeAFuture.Cast()->ResultType, maybeBFuture.Cast()->ResultType);
-    }
-
-    if (auto vector = TMaybeType<TVectorType>(a)) {
-        auto other = TMaybeType<TVectorType>(b).Cast();
-        return vector.Cast()->Size == other->Size
-            && vector.Cast()->SizeParam == other->SizeParam
-            && EqualTypes(vector.Cast()->ElementType, other->ElementType);
-    }
-
-    return true;
+    return a == b;
 }
 
 bool CanImplicit(const TTypePtr& S, const TTypePtr& D, NSemantics::TNameResolver* ctx) {
@@ -585,7 +548,7 @@ std::string FormatStructCastMismatch(const TStructType& source, const TStructTyp
                 + FormatStructFieldForDiagnostic(sourceField));
             continue;
         }
-        if (TypeKey(sourceField.second) != TypeKey(targetField.second)) {
+        if (sourceField.second != targetField.second) {
             details.push_back("поле #" + index + " '" + sourceField.first
                 + "': ожидается " + TypeDiagnosticName(targetField.second)
                 + ", получено " + TypeDiagnosticName(sourceField.second));
@@ -649,7 +612,8 @@ TTypePtr ReplaceStructType(TTypeFactory& types, const TTypePtr& type, const TTyp
         return types.MakeNamed(
             named.Cast()->Name,
             ReplaceStructType(types, named.Cast()->UnderlyingType(), replacement),
-            auto(named.Cast()->TypeArgs));
+            auto(named.Cast()->TypeArgs),
+            named.Cast()->Reference());
     }
     return type;
 }
@@ -734,7 +698,7 @@ TTask AnnotateCast(TCastExpr* cast, NSemantics::TNameResolver& context, NSemanti
     if (cast->Operand->Type) {
         auto sourceType = UnwrapReferenceType(cast->Operand->Type);
         auto targetType = UnwrapReferenceType(cast->Type);
-        if (TypeKey(sourceType) == TypeKey(targetType)) {
+        if (sourceType == targetType) {
             co_return TExprPtr(cast);
         }
         auto sourceStructType = UnwrapNamedType(sourceType);
@@ -761,7 +725,7 @@ TTask AnnotateCast(TCastExpr* cast, NSemantics::TNameResolver& context, NSemanti
         if (!contextualStructConstruct
             && TMaybeType<TStructType>(sourceStructType)
             && TMaybeType<TStructType>(targetStructType)
-            && TypeKey(sourceStructType) != TypeKey(targetStructType))
+            && sourceStructType != targetStructType)
         {
             auto sourceStruct = TMaybeType<TStructType>(sourceStructType).Cast();
             auto targetStruct = TMaybeType<TStructType>(targetStructType).Cast();
@@ -1719,11 +1683,7 @@ TTypePtr SubstituteGenericType(
         if (!changed) {
             return type;
         }
-        auto result = types.MakeNamed(placeholder->Name, std::move(underlying), std::move(typeArgs));
-        if (placeholder->Reference()) {
-            result->SetReference(placeholder->Reference());
-        }
-        return result;
+        return types.MakeNamed(placeholder->Name, std::move(underlying), std::move(typeArgs), placeholder->Reference());
     }
     if (auto arr = TMaybeType<TArrayType>(type)) {
         auto src = arr.Cast();
@@ -1817,7 +1777,7 @@ std::optional<std::string> UnifyGenericType(
         if (placeholder->TypeArgs.empty() && genericParams.Types.contains(placeholder->Name)) {
             auto concrete = UnwrapReferenceType(argType);
             auto [it, inserted] = bindings.Types.try_emplace(placeholder->Name, concrete);
-            if (!inserted && TypeKey(it->second) != TypeKey(concrete)) {
+            if (!inserted && it->second != concrete) {
                 if (IntegerLiteralCanUseType(argExpr, it->second)) {
                     if (retypeIntegerLiterals) {
                         RetypeIntegerLiteralIfFits(argExpr, it->second);
@@ -1825,7 +1785,7 @@ std::optional<std::string> UnifyGenericType(
                     concrete = it->second;
                 }
             }
-            if (!inserted && TypeKey(it->second) != TypeKey(concrete)) {
+            if (!inserted && it->second != concrete) {
                 return "тип обобщённого параметра '" + placeholder->Name + "' определяется неоднозначно: то как '"
                     + it->second->ToString() + "', то как '" + concrete->ToString() + "'";
             }

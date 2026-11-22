@@ -47,12 +47,6 @@ NCodeGen::TLlvmRunner::TLinkedModule Compile(
 {
     std::istringstream in(source);
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
-    auto parsed = parser.Parse(tokens);
-    EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());
-    if (!parsed) {
-        return {};
-    }
     TLLVMRunner runner({
         .PrintLlvm = printLlvm,
         .NativeCode = true,
@@ -61,6 +55,12 @@ NCodeGen::TLlvmRunner::TLinkedModule Compile(
         .AllowOverloads = true,
         .OptLevel = optLevel,
     });
+    NAst::NCore::TParser parser(runner.TypeFactory());
+    auto parsed = parser.Parse(tokens);
+    EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());
+    if (!parsed) {
+        return {};
+    }
     return runner.CompileFusedKernelsCached(*parsed, {entry}, cacheDir, "v1", "k1", err);
 }
 

@@ -18,10 +18,10 @@ using namespace NQumir;
 
 namespace {
 
-auto Parse(const std::string& source) {
+auto Parse(NAst::TTypeFactory& types, const std::string& source) {
     std::istringstream input(source);
     NAst::NCore::TTokenStream tokens(input);
-    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
+    NAst::NCore::TParser parser(types);
     return parser.Parse(tokens);
 }
 
@@ -31,7 +31,7 @@ void* Compile(
     TLLVMRunner& runner,
     std::string& llvmIr)
 {
-    auto parsed = Parse(source);
+    auto parsed = Parse(runner.TypeFactory(), source);
     if (!parsed) {
         ADD_FAILURE() << parsed.error().ToString();
         return nullptr;
@@ -109,13 +109,13 @@ TEST(InlineAttribute, PrintingAndDeepCloningPreserveAttributes) {
         const std::string source =
             "(block (fun twice [T] ((var x T)) -> T (attrs " + attrs +
             ") (block (return (+ x x)))))";
-        auto parsed = Parse(source);
+        auto parsed = Parse(NQumir::NTest::TestTypes(), source);
         ASSERT_TRUE(parsed) << parsed.error().ToString();
         auto cloned = NAst::DeepCloneExpr(*parsed);
         std::ostringstream out;
         NAst::NCore::TPrinter printer(out, {});
         printer.PrintExpr(cloned);
-        auto reparsed = Parse(out.str());
+        auto reparsed = Parse(NQumir::NTest::TestTypes(), out.str());
         ASSERT_TRUE(reparsed) << reparsed.error().ToString();
         auto block = NAst::TMaybeNode<NAst::TBlockExpr>(*reparsed).Cast();
         ASSERT_NE(block, nullptr);

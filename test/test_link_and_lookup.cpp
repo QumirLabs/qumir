@@ -16,10 +16,6 @@ using namespace NQumir;
 TEST(LinkAndLookup, LoadsPrebuiltObjectAndRuns) {
     std::istringstream in("(block (fun f () -> i64 (block (return (: 42 i64)))))");
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
-    auto parsed = parser.Parse(tokens);
-    ASSERT_TRUE(parsed) << parsed.error().ToString();
-
     TLLVMRunner compiler({
         .NativeCode = true,
         .CoreInput = true,
@@ -27,6 +23,10 @@ TEST(LinkAndLookup, LoadsPrebuiltObjectAndRuns) {
         .AllowOverloads = true,
         .OptLevel = 0,
     });
+    NAst::NCore::TParser parser(compiler.TypeFactory());
+    auto parsed = parser.Parse(tokens);
+    ASSERT_TRUE(parsed) << parsed.error().ToString();
+
     std::string err;
     auto obj = compiler.CompileKernelAstToObject(*parsed, {"f"}, &err);
     ASSERT_TRUE(obj.has_value()) << err;

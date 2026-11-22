@@ -23,10 +23,6 @@ TEST(CacheableMangle, OverloadedCacheableResolveByType) {
         "  (fun caller () -> i64 (block"
         "    (return (+ (call h (: 40 i64)) (call h (< (: 0 i64) (: 1 i64))))))))");
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
-    auto parsed = parser.Parse(tokens);
-    ASSERT_TRUE(parsed) << parsed.error().ToString();
-
     TLLVMRunner runner({
         .NativeCode = true,
         .CoreInput = true,
@@ -34,6 +30,10 @@ TEST(CacheableMangle, OverloadedCacheableResolveByType) {
         .AllowOverloads = true,
         .OptLevel = 0,
     });
+    NAst::NCore::TParser parser(runner.TypeFactory());
+    auto parsed = parser.Parse(tokens);
+    ASSERT_TRUE(parsed) << parsed.error().ToString();
+
     std::string err;
     void* entry = runner.CompileKernelAst(*parsed, "caller", &err);
     ASSERT_NE(entry, nullptr) << err;
@@ -49,10 +49,6 @@ TEST(CacheableMangle, CacheableWithoutOverloads) {
         "  (fun g ((var x i64)) -> i64 (attrs cacheable) (block (return (+ x (: 2 i64)))))"
         "  (fun caller () -> i64 (block (return (call g (: 40 i64))))))");
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
-    auto parsed = parser.Parse(tokens);
-    ASSERT_TRUE(parsed) << parsed.error().ToString();
-
     TLLVMRunner runner({
         .NativeCode = true,
         .CoreInput = true,
@@ -60,6 +56,10 @@ TEST(CacheableMangle, CacheableWithoutOverloads) {
         .AllowOverloads = false,
         .OptLevel = 0,
     });
+    NAst::NCore::TParser parser(runner.TypeFactory());
+    auto parsed = parser.Parse(tokens);
+    ASSERT_TRUE(parsed) << parsed.error().ToString();
+
     std::string err;
     void* entry = runner.CompileKernelAst(*parsed, "caller", &err);
     ASSERT_NE(entry, nullptr) << err;
