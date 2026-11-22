@@ -1,5 +1,6 @@
 #pragma once
 
+#include <compare>
 #include <memory>
 #include <charconv>
 #include <string>
@@ -56,6 +57,26 @@ struct TGenericArg {
             return Type ? Type->ToString() : "unknown";
         }
         return Value;
+    }
+
+    bool operator==(const TGenericArg& other) const {
+        if (Kind != other.Kind) {
+            return false;
+        }
+        if (Kind == EKind::Type) {
+            return Type == other.Type;
+        }
+        return Value == other.Value;
+    }
+
+    std::strong_ordering operator<=>(const TGenericArg& other) const {
+        if (auto cmp = Kind <=> other.Kind; cmp != 0) {
+            return cmp;
+        }
+        if (Kind == EKind::Type) {
+            return Type <=> other.Type;
+        }
+        return Value <=> other.Value;
     }
 };
 
@@ -336,7 +357,7 @@ struct TNamedType : TType {
     std::optional<std::string> Reference; // Set = imported from this module; not printed in AST
 
     explicit TNamedType(
-        std::string name,
+        const std::string& name,
         const TTypePtr& underlying,
         std::vector<TGenericArg>&& typeArgs = {})
         : Name(std::move(name))

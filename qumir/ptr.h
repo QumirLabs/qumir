@@ -1,6 +1,8 @@
 #pragma once
 
+#include <compare>
 #include <cstddef>
+#include <functional>
 #include <type_traits>
 #include <utility>
 
@@ -95,16 +97,16 @@ struct TIntrusivePtr {
         return Ptr == other.Ptr;
     }
 
-    bool operator!=(const TIntrusivePtr& other) const noexcept {
-        return Ptr != other.Ptr;
+    std::strong_ordering operator<=>(const TIntrusivePtr& other) const noexcept {
+        return std::compare_three_way{}(Ptr, other.Ptr);
     }
 
     bool operator==(const T* other) const noexcept {
         return Ptr == other;
     }
 
-    bool operator!=(const T* other) const noexcept {
-        return Ptr != other;
+    std::strong_ordering operator<=>(const T* other) const noexcept {
+        return std::compare_three_way{}(Ptr, other);
     }
 
     T* Get() const noexcept {
@@ -137,3 +139,10 @@ TIntrusivePtr<To> StaticPointerCast(const TIntrusivePtr<From>& from) noexcept {
 }
 
 } // namespace NQumir
+
+template<typename T>
+struct std::hash<NQumir::TIntrusivePtr<T>> {
+    size_t operator()(const NQumir::TIntrusivePtr<T>& ptr) const noexcept {
+        return std::hash<T*>{}(ptr.Get());
+    }
+};
