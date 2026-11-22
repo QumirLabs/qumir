@@ -188,7 +188,8 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
         PrintType(t.Cast()->ReferencedType, level);
         *Out << '>';
     } else if (auto t = TMaybeType<TNamedType>(type)) {
-        PrintNamedType(t.Cast()->Name, t.Cast()->TypeArgs, t.Cast()->UnderlyingType(), level);
+        const auto* named = t.Cast();
+        PrintNamedType(named->Name, named->TypeArgs, named->UnderlyingType(), level);
     } else if (auto t = TMaybeType<TStructType>(type)) {
         PrintStructType(*t.Cast(), level);
     } else if (auto it = Options.TypePrinters.find(type->TypeName()); it != Options.TypePrinters.end()) {
