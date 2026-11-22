@@ -517,7 +517,7 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     if (head == "vec") {
         auto elementType = co_await ParseType(context);
         auto sizeToken = context.Stream.Next();
-        TTypePtr vector;
+        TTypePtr vector = nullptr;
         if (sizeToken.Type == TToken::Integer) {
             vector = context.Types.MakeVector(elementType, std::string_view(std::to_string(sizeToken.Value.i64)));
         } else if (sizeToken.Type == TToken::Identifier) {

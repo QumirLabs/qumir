@@ -8,8 +8,6 @@
 #include <vector>
 #include <optional>
 
-#include <qumir/ptr.h>
-
 namespace NQumir {
 namespace NAst {
 
@@ -22,18 +20,25 @@ struct TAccess {
     bool operator==(const TAccess&) const = default;
 };
 
-struct TType : TRefCounted<TType> {
+// Only TTypeFactory creates types (their constructors are private), owns and interns
+// them. Types are never copied: equal types are one object.
+struct TType {
+    TType(const TType&) = delete;
+    TType& operator=(const TType&) = delete;
     virtual ~TType() = default;
     virtual std::string ToString() const { return ""; }
     virtual const std::string_view TypeName() const = 0;
+
+protected:
+    TType() = default;
 };
 
-// Types are immutable and shared (interned by TTypeFactory), hence pointers to const.
-using TTypePtr = TIntrusivePtr<const TType>;
+// A type lives as long as its factory, so a plain pointer to const is enough.
+using TTypePtr = const TType*;
 
 template<typename T>
 requires std::is_base_of_v<TType, T>
-using TConcreteTypePtr = TIntrusivePtr<const T>;
+using TConcreteTypePtr = const T*;
 
 struct TGenericArg {
     enum class EKind {
@@ -42,7 +47,7 @@ struct TGenericArg {
     };
 
     EKind Kind = EKind::Type;
-    TTypePtr Type;
+    TTypePtr Type = nullptr;
     std::string Value;
 
     static TGenericArg TypeArg(const TTypePtr& type) {
@@ -81,14 +86,13 @@ struct TGenericArg {
             return cmp;
         }
         if (Kind == EKind::Type) {
-            return Type <=> other.Type;
+            return std::compare_three_way{}(Type, other.Type);
         }
         return Value <=> other.Value;
     }
 };
 
-// Non-owning view of a type as kind T, or null: checking and Cast() touch no
-// reference count, so the type must stay owned elsewhere while the view is used.
+// A type as kind T, or null.
 template<typename T>
 struct TMaybeType {
     TMaybeType(const TType* type)
@@ -96,15 +100,6 @@ struct TMaybeType {
             ? static_cast<const T*>(type)
             : nullptr)
     { }
-
-    template<typename U>
-    TMaybeType(const TIntrusivePtr<U>& type)
-        : TMaybeType(static_cast<const TType*>(type.Get()))
-    { }
-
-    // A temporary owner would release the type before the view is used.
-    template<typename U>
-    TMaybeType(TIntrusivePtr<U>&& type) = delete;
 
     const T* Cast() const {
         return Type;
@@ -130,11 +125,15 @@ struct TIntegerType : TType {
         U128,
     } Kind = I64;
 
+private:
+    friend class TTypeFactory;
+
     TIntegerType() = default;
     explicit TIntegerType(EKind kind)
         : Kind(kind)
     {}
 
+public:
     int BitWidth() const {
         switch (Kind) {
             case I8:
@@ -203,11 +202,15 @@ struct TFloatType : TType {
         F64,
     } Kind = F64;
 
+private:
+    friend class TTypeFactory;
+
     TFloatType() = default;
     explicit TFloatType(EKind kind)
         : Kind(kind)
     {}
 
+public:
     int BitWidth() const {
         return Kind == F32 ? 32 : 64;
     }
@@ -224,54 +227,70 @@ struct TFloatType : TType {
 struct TBoolType : TType {
     static constexpr const char* TypeId = "Bool";
 
-    TBoolType() = default;
-
     const std::string_view TypeName() const override {
         return TBoolType::TypeId;
     }
+
+private:
+    friend class TTypeFactory;
+
+    TBoolType() = default;
 };
 
 struct TStringType : TType {
     static constexpr const char* TypeId = "String";
 
-    TStringType() = default;
-
     const std::string_view TypeName() const override {
         return TStringType::TypeId;
     }
+
+private:
+    friend class TTypeFactory;
+
+    TStringType() = default;
 };
 
 struct TSymbolType : TType {
     static constexpr const char* TypeId = "Char";
 
-    TSymbolType() = default;
-
     const std::string_view TypeName() const override {
         return TSymbolType::TypeId;
     }
+
+private:
+    friend class TTypeFactory;
+
+    TSymbolType() = default;
 };
 
 struct TVoidType : TType {
     static constexpr const char* TypeId = "Void";
 
-    TVoidType() = default;
-
     const std::string_view TypeName() const override {
         return TVoidType::TypeId;
     }
+
+private:
+    friend class TTypeFactory;
+
+    TVoidType() = default;
 };
 
 struct TFunctionType : TType {
     static constexpr const char* TypeId = "Fun";
 
     std::vector<TTypePtr> ParamTypes;
-    TTypePtr ReturnType;
+    TTypePtr ReturnType = nullptr;
+
+private:
+    friend class TTypeFactory;
 
     TFunctionType(std::vector<TTypePtr>&& params, const TTypePtr& ret)
         : ParamTypes(std::move(params))
         , ReturnType(ret)
     {}
 
+public:
     std::string ToString() const override {
         std::string s = "(";
         for (size_t i = 0; i < ParamTypes.size(); ++i) {
@@ -293,12 +312,16 @@ struct TFunctionType : TType {
 struct TFutureType : TType {
     static constexpr const char* TypeId = "Future";
 
-    TTypePtr ResultType;
+    TTypePtr ResultType = nullptr;
+
+private:
+    friend class TTypeFactory;
 
     explicit TFutureType(const TTypePtr& result)
         : ResultType(result)
     {}
 
+public:
     std::string ToString() const override {
         return "Future<" + (ResultType ? ResultType->ToString() : std::string("unknown")) + ">";
     }
@@ -311,8 +334,11 @@ struct TFutureType : TType {
 struct TArrayType : TType {
     static constexpr const char* TypeId = "Array";
 
-    TTypePtr ElementType;
+    TTypePtr ElementType = nullptr;
     int Arity{0}; // 0 - scalar, 1 - 1D, 2 - 2D, etc.
+
+private:
+    friend class TTypeFactory;
 
     TArrayType() = default;
 
@@ -321,6 +347,7 @@ struct TArrayType : TType {
         , Arity(arity)
     {}
 
+public:
     std::string ToString() const override {
         return "[" + (ElementType ? std::string(ElementType->TypeName()) : "unknown") + "; " +
                (Arity > 0 ? std::to_string(Arity) : "?") + "]";
@@ -334,12 +361,16 @@ struct TArrayType : TType {
 struct TPointerType : TType {
     static constexpr const char* TypeId = "Ptr";
 
-    TTypePtr PointeeType;
+    TTypePtr PointeeType = nullptr;
+
+private:
+    friend class TTypeFactory;
 
     explicit TPointerType(const TTypePtr& pt)
         : PointeeType(pt)
     {}
 
+public:
     std::string ToString() const override {
         return "*" + (PointeeType ? std::string(PointeeType->TypeName()) : "unknown");
     }
@@ -352,12 +383,16 @@ struct TPointerType : TType {
 struct TReferenceType : TType {
     static constexpr const char* TypeId = "Ref";
 
-    TTypePtr ReferencedType;
+    TTypePtr ReferencedType = nullptr;
+
+private:
+    friend class TTypeFactory;
 
     explicit TReferenceType(const TTypePtr& rt)
         : ReferencedType(rt)
     {}
 
+public:
     std::string ToString() const override {
         return "&" + (ReferencedType ? std::string(ReferencedType->TypeName()) : "unknown");
     }
@@ -372,6 +407,8 @@ struct TNamedType : TType {
     std::string Name;
     std::vector<TGenericArg> TypeArgs;
 
+protected:
+    // Protected: host type kinds (e.g. a decimal) derive from a named type.
     explicit TNamedType(
         const std::string& name,
         const TTypePtr& underlying,
@@ -383,13 +420,14 @@ struct TNamedType : TType {
         , Reference_(std::move(reference))
     {}
 
+public:
     // A named type is declared by name and completed later (name resolution, imports), so
     // these two are the only parts of a type that are set after creation. Only the type
     // factory writes them (TTypeFactory::MakeNamed completes an existing type once); the
     // object itself stays const for everyone else.
 
     // Resolved on name resolution phase, exported by modules.
-    const TTypePtr& UnderlyingType() const { return UnderlyingType_; }
+    TTypePtr UnderlyingType() const { return UnderlyingType_; }
 
     // Set = imported from this module; not printed in AST.
     const std::optional<std::string>& Reference() const { return Reference_; }
@@ -419,11 +457,11 @@ struct TNamedType : TType {
 private:
     friend class TTypeFactory;
 
-    void SetUnderlyingType(const TTypePtr& type) const { UnderlyingType_ = type; }
-    void SetReference(std::optional<std::string> reference) const { Reference_ = std::move(reference); }
+    void SetUnderlyingType(const TTypePtr& type) { UnderlyingType_ = type; }
+    void SetReference(std::optional<std::string> reference) { Reference_ = std::move(reference); }
 
-    mutable TTypePtr UnderlyingType_;
-    mutable std::optional<std::string> Reference_;
+    TTypePtr UnderlyingType_ = nullptr;
+    std::optional<std::string> Reference_;
 };
 
 struct TStructType : TType {
@@ -431,10 +469,14 @@ struct TStructType : TType {
 
     std::vector<std::pair<std::string, TTypePtr>> Fields;
 
+private:
+    friend class TTypeFactory;
+
     explicit TStructType(std::vector<std::pair<std::string, TTypePtr>>&& fields)
         : Fields(std::move(fields))
     {}
 
+public:
     std::string ToString() const override {
         std::string s = "struct { ";
         for (const auto& [name, type] : Fields) {
@@ -488,10 +530,13 @@ struct TStructType : TType {
 struct TVectorType : TType {
     static constexpr const char* TypeId = "Vector";
 
-    TTypePtr ElementType;
+    TTypePtr ElementType = nullptr;
     int Size{0};
     // Name of the generic value parameter while the size is not bound yet.
     std::string SizeParam;
+
+private:
+    friend class TTypeFactory;
 
     TVectorType(const TTypePtr& et, int size, std::string sizeParam = {})
         : ElementType(et)
@@ -499,6 +544,7 @@ struct TVectorType : TType {
         , SizeParam(std::move(sizeParam))
     {}
 
+public:
     std::string SizeText() const {
         return SizeParam.empty()
             ? std::to_string(Size)
@@ -529,8 +575,11 @@ struct TVectorType : TType {
 struct TTensorType : TType {
     static constexpr const char* TypeId = "Tensor";
 
-    TTypePtr ElementType;
+    TTypePtr ElementType = nullptr;
     std::vector<int> Shape;
+
+private:
+    friend class TTypeFactory;
 
     TTensorType() = default;
 
@@ -539,6 +588,7 @@ struct TTensorType : TType {
         , Shape(std::move(shape))
     {}
 
+public:
     std::string ToString() const override {
         std::string s = (ElementType ? std::string(ElementType->TypeName()) : "unknown");
         for (int dim : Shape) {
@@ -554,41 +604,31 @@ struct TTensorType : TType {
 
 std::ostream& operator<<(std::ostream& os, const TType& expr);
 
-// The Unwrap helpers return a reference to `type` or to a field of the type it
-// points to, so `type` must outlive the result; temporaries are rejected.
-inline const TTypePtr& UnwrapReferenceType(const TTypePtr& type) {
+inline TTypePtr UnwrapReferenceType(const TTypePtr& type) {
     if (auto maybeRef = TMaybeType<TReferenceType>(type)) {
         return maybeRef.Cast()->ReferencedType;
     }
     return type;
 }
 
-const TTypePtr& UnwrapReferenceType(TTypePtr&& type) = delete;
-
-inline const TTypePtr& UnwrapNamedType(const TTypePtr& type) {
+inline TTypePtr UnwrapNamedType(const TTypePtr& type) {
     if (auto named = TMaybeType<TNamedType>(type)) {
         return named.Cast()->UnderlyingType();
     }
     return type;
 }
 
-const TTypePtr& UnwrapNamedType(TTypePtr&& type) = delete;
-
 inline bool IsFutureType(const TTypePtr& type) {
     return static_cast<bool>(TMaybeType<TFutureType>(type));
 }
 
-inline constexpr TTypePtr NullTypePtr;
-
-// The result type of a future, or NullTypePtr for any other type.
-inline const TTypePtr& FutureResultType(const TTypePtr& type) {
+// The result type of a future, or null for any other type.
+inline TTypePtr FutureResultType(const TTypePtr& type) {
     if (auto future = TMaybeType<TFutureType>(type)) {
         return future.Cast()->ResultType;
     }
-    return NullTypePtr;
+    return nullptr;
 }
-
-const TTypePtr& FutureResultType(TTypePtr&& type) = delete;
 
 inline std::string TypeDiagnosticName(const TTypePtr& type);
 

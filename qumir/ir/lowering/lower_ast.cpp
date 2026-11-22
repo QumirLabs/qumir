@@ -66,15 +66,13 @@ const T* AsKind(const NAst::TExprPtr& expr)
     return expr->NodeName() == T::NodeId ? static_cast<const T*>(expr.Get()) : nullptr;
 }
 
-const NAst::TTypePtr& PhysicalCallResultType(const NAst::TTypePtr& type)
+NAst::TTypePtr PhysicalCallResultType(const NAst::TTypePtr& type)
 {
     if (const auto& futureResult = NAst::FutureResultType(type)) {
         return futureResult;
     }
     return type;
 }
-
-const NAst::TTypePtr& PhysicalCallResultType(NAst::TTypePtr&& type) = delete;
 
 bool IsRawArraySymbol(NAst::TExpr* node)
 {

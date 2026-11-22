@@ -94,7 +94,7 @@ struct TScope {
     // params, see TFunDecl::Scope) by AnnotateFunDecl. For coroutines this is
     // the unwrapped Future<T> result type. Looked up via FuncScope by
     // AnnotateReturn for any (return ...) inside the function body.
-    NAst::TTypePtr RetType;
+    NAst::TTypePtr RetType = nullptr;
 };
 
 class TEditDistance {
@@ -223,7 +223,7 @@ public:
 
     struct TRegisteredOp {
         std::string SynthName;
-        NAst::TTypePtr ReturnType;
+        NAst::TTypePtr ReturnType = nullptr;
     };
     // Exact match only; two-level (cast) logic lives in the type annotator
     std::optional<TRegisteredOp> GetBinaryOp(const std::string& op,
@@ -243,7 +243,7 @@ public:
 
 private:
     struct TRegisteredTypeDecl {
-        NAst::TTypePtr UnderlyingType;
+        NAst::TTypePtr UnderlyingType = nullptr;
         std::vector<NAst::TGenericParam> GenericParams;
     };
 

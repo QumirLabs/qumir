@@ -12,7 +12,7 @@ struct TExternalFunction {
     using TPacked = uint64_t(*)(const uint64_t* args, size_t argCount);
     TPacked Packed = nullptr; // packed thunk
     std::vector<NAst::TTypePtr> ArgTypes;
-    NAst::TTypePtr ReturnType;
+    NAst::TTypePtr ReturnType = nullptr;
     bool RequireArgsMaterialization = false; // if true, arguments must be materialized before calling, used for strings
     bool IsOp = false; // if true, Name is an operator symbol; no name conflict check on import
     // The compiler calls builtin::record_locator(line, byte, column of the call)
@@ -29,7 +29,7 @@ struct TExternalFunction {
 
 struct TExternalType {
     std::string Name;
-    NAst::TTypePtr Type; // must be unwrapped type, not named type
+    NAst::TTypePtr Type = nullptr; // must be unwrapped type, not named type
     bool IsAlias = false;
 };
 

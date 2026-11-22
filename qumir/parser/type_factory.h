@@ -4,14 +4,25 @@
 
 #include <unordered_map>
 #include <map>
+#include <memory>
 #include <tuple>
 
 namespace NQumir {
 namespace NAst {
 
-// Interns immutable types: two calls with equal arguments return the same object, so
-// type equality is pointer equality. One factory is shared by every layer of a
-// compilation (modules, parsers, name resolution, passes) through their contexts.
+// The kinds TTypeFactory interns: MakeCustom must not create a second, unequal object of one.
+template<typename T>
+inline constexpr bool IsInternedTypeKind =
+    std::is_same_v<T, TIntegerType> || std::is_same_v<T, TFloatType> || std::is_same_v<T, TBoolType>
+    || std::is_same_v<T, TStringType> || std::is_same_v<T, TSymbolType> || std::is_same_v<T, TVoidType>
+    || std::is_same_v<T, TFunctionType> || std::is_same_v<T, TFutureType> || std::is_same_v<T, TArrayType>
+    || std::is_same_v<T, TPointerType> || std::is_same_v<T, TReferenceType> || std::is_same_v<T, TNamedType>
+    || std::is_same_v<T, TStructType> || std::is_same_v<T, TVectorType> || std::is_same_v<T, TTensorType>;
+
+// Creates, owns and interns immutable types: two calls with equal arguments return the
+// same object, so type equality is pointer equality. A type lives as long as its factory,
+// so the factory must outlive every AST, pass, IR module and codegen that refers to its
+// types. One factory is shared by every layer of a compilation through their contexts.
 class TTypeFactory {
 public:
     // Parameterless singleton types: bool, string, char, void.
@@ -20,29 +31,29 @@ public:
     TConcreteTypePtr<T> Make() {
         auto& ret = Types_[T::TypeId];
         if (!ret) {
-            ret = MakeIntrusive<T>();
+            ret = New<T>();
         }
-        return StaticPointerCast<const T>(ret);
+        return static_cast<const T*>(ret);
     }
 
     TConcreteTypePtr<TIntegerType> MakeInteger(TIntegerType::EKind kind = TIntegerType::I64) {
         auto& ret = IntegerTypes_[kind];
-        return ret ? ret : (ret = MakeIntrusive<TIntegerType>(kind));
+        return ret ? ret : (ret = New<TIntegerType>(kind));
     }
 
     TConcreteTypePtr<TFloatType> MakeFloat(TFloatType::EKind kind = TFloatType::F64) {
         auto& ret = FloatTypes_[kind];
-        return ret ? ret : (ret = MakeIntrusive<TFloatType>(kind));
+        return ret ? ret : (ret = New<TFloatType>(kind));
     }
 
     TConcreteTypePtr<TFunctionType> MakeFunction(std::vector<TTypePtr>&& params, const TTypePtr& retType) {
         auto& ret = FunctionTypes_[{params, retType}];
-        return ret ? ret : (ret = MakeIntrusive<TFunctionType>(std::move(params), retType));
+        return ret ? ret : (ret = New<TFunctionType>(std::move(params), retType));
     }
 
     TConcreteTypePtr<TFutureType> MakeFuture(const TTypePtr& type) {
         auto& ret = FutureTypes_[type];
-        return ret ? ret : (ret = MakeIntrusive<TFutureType>(type));
+        return ret ? ret : (ret = New<TFutureType>(type));
     }
 
     // `future T`, or the type itself if it is already a future.
@@ -55,17 +66,17 @@ public:
 
     TConcreteTypePtr<TArrayType> MakeArray(const TTypePtr& elementType, int arity) {
         auto& ret = ArrayTypes_[{elementType, arity}];
-        return ret ? ret : (ret = MakeIntrusive<TArrayType>(elementType, arity));
+        return ret ? ret : (ret = New<TArrayType>(elementType, arity));
     }
 
     TConcreteTypePtr<TPointerType> MakePointer(const TTypePtr& pointee) {
         auto& ret = PointerTypes_[pointee];
-        return ret ? ret : (ret = MakeIntrusive<TPointerType>(pointee));
+        return ret ? ret : (ret = New<TPointerType>(pointee));
     }
 
     TConcreteTypePtr<TReferenceType> MakeReference(const TTypePtr& referenced) {
         auto& ret = ReferenceTypes_[referenced];
-        return ret ? ret : (ret = MakeIntrusive<TReferenceType>(referenced));
+        return ret ? ret : (ret = New<TReferenceType>(referenced));
     }
 
     // Interned by (name, typeArgs). UnderlyingType and Reference are not part of the key: a
@@ -82,7 +93,7 @@ public:
     {
         auto& ret = NamedTypes_[{name, typeArgs}];
         if (!ret || (underlying && ret->UnderlyingType() && ret->UnderlyingType() != underlying)) {
-            return ret = MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs), std::move(reference));
+            return ret = New<TNamedType>(name, underlying, std::move(typeArgs), std::move(reference));
         }
         if (underlying && !ret->UnderlyingType()) {
             ret->SetUnderlyingType(underlying);
@@ -95,23 +106,23 @@ public:
 
     TConcreteTypePtr<TStructType> MakeStruct(std::vector<std::pair<std::string, TTypePtr>>&& fields) {
         auto& ret = TStructTypes_[fields];
-        return ret ? ret : (ret = MakeIntrusive<TStructType>(std::move(fields)));
+        return ret ? ret : (ret = New<TStructType>(std::move(fields)));
     }
 
     TConcreteTypePtr<TTensorType> MakeTensor(const TTypePtr& elementType, std::vector<int>&& shape) {
         auto& ret = TensorTypes_[{elementType, shape}];
-        return ret ? ret : (ret = MakeIntrusive<TTensorType>(elementType, std::move(shape)));
+        return ret ? ret : (ret = New<TTensorType>(elementType, std::move(shape)));
     }
 
     TConcreteTypePtr<TVectorType> MakeVector(const TTypePtr& elementType, int size) {
         auto& ret = VectorTypes_[{elementType, size, std::string{}}];
-        return ret ? ret : (ret = MakeIntrusive<TVectorType>(elementType, size));
+        return ret ? ret : (ret = New<TVectorType>(elementType, size));
     }
 
     // Size is a generic value parameter that is not bound yet.
     TConcreteTypePtr<TVectorType> MakeGenericVector(const TTypePtr& elementType, const std::string& sizeParam) {
         auto& ret = VectorTypes_[{elementType, 0, sizeParam}];
-        return ret ? ret : (ret = MakeIntrusive<TVectorType>(elementType, 0, sizeParam));
+        return ret ? ret : (ret = New<TVectorType>(elementType, 0, sizeParam));
     }
 
     // Size from a bound generic value argument (0 if it is not an integer).
@@ -119,7 +130,25 @@ public:
         return MakeVector(elementType, TVectorType::ParseSize(sizeValue));
     }
 
+    // A type kind defined outside Qumir (a host or a test); owned, not interned. The kind
+    // makes its constructors private and befriends TTypeFactory, like the built-in kinds.
+    template<typename T, typename... TArgs>
+    requires (std::is_base_of_v<TType, T> && !IsInternedTypeKind<T>)
+    TConcreteTypePtr<T> MakeCustom(TArgs&&... args) {
+        return New<T>(std::forward<TArgs>(args)...);
+    }
+
 private:
+    // `new`, not std::make_unique: the constructors are private to the factory.
+    template<typename T, typename... TArgs>
+    T* New(TArgs&&... args) {
+        std::unique_ptr<T> type(new T(std::forward<TArgs>(args)...));
+        auto* ret = type.get();
+        Owned_.push_back(std::move(type));
+        return ret;
+    }
+
+    std::vector<std::unique_ptr<TType>> Owned_;
     std::unordered_map<std::string_view, TTypePtr> Types_;
     std::unordered_map<TIntegerType::EKind, TConcreteTypePtr<TIntegerType>> IntegerTypes_;
     std::unordered_map<TFloatType::EKind, TConcreteTypePtr<TFloatType>> FloatTypes_;
@@ -130,7 +159,8 @@ private:
     std::map<TTypePtr, TConcreteTypePtr<TReferenceType>> ReferenceTypes_;
     std::map<std::vector<std::pair<std::string, TTypePtr>>, TConcreteTypePtr<TStructType>> TStructTypes_;
     std::map<std::tuple<TTypePtr, int, std::string>, TConcreteTypePtr<TVectorType>> VectorTypes_;
-    std::map<std::pair<std::string, std::vector<TGenericArg>>, TConcreteTypePtr<TNamedType>> NamedTypes_;
+    // Not const: MakeNamed completes these in place.
+    std::map<std::pair<std::string, std::vector<TGenericArg>>, TNamedType*> NamedTypes_;
     std::map<std::pair<TTypePtr, std::vector<int>>, TConcreteTypePtr<TTensorType>> TensorTypes_;
 };
 

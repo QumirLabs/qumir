@@ -21,6 +21,11 @@ struct TUnknownManagedType : TType {
     const std::string_view TypeName() const override {
         return TypeId;
     }
+
+private:
+    friend class NQumir::NAst::TTypeFactory;
+
+    TUnknownManagedType() = default;
 };
 
 void ExpectTraits(
@@ -122,7 +127,7 @@ TEST(LifetimeTraits, NestedStructPropagatesFieldTraits) {
 }
 
 TEST(LifetimeTraits, UnknownManagedShapeIsRejected) {
-    auto type = MakeIntrusive<TUnknownManagedType>();
+    auto type = NQumir::NTest::TestTypes().MakeCustom<TUnknownManagedType>();
     EXPECT_THROW(GetLifetimeTraits(type), std::invalid_argument);
 }
 

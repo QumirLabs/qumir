@@ -15,21 +15,17 @@ enum class EValueOwnership {
     Literal,
 };
 
-// A reference to `type` or to a type it points to, so `type` must outlive it.
-const TTypePtr& ValueType(const TTypePtr& type) {
-    const TTypePtr* current = &type;
+TTypePtr ValueType(TTypePtr type) {
     while (true) {
-        if (auto reference = TMaybeType<TReferenceType>(*current)) {
-            current = &reference.Cast()->ReferencedType;
-        } else if (auto named = TMaybeType<TNamedType>(*current)) {
-            current = &named.Cast()->UnderlyingType();
+        if (auto reference = TMaybeType<TReferenceType>(type)) {
+            type = reference.Cast()->ReferencedType;
+        } else if (auto named = TMaybeType<TNamedType>(type)) {
+            type = named.Cast()->UnderlyingType();
         } else {
-            return *current;
+            return type;
         }
     }
 }
-
-const TTypePtr& ValueType(TTypePtr&& type) = delete;
 
 bool IsString(const TTypePtr& type) {
     return static_cast<bool>(TMaybeType<TStringType>(ValueType(type)));
@@ -252,7 +248,7 @@ private:
     struct TLocal {
         TLocation Location;
         std::string Name;
-        TTypePtr Type;
+        TTypePtr Type = nullptr;
         std::optional<std::string> AuxName;
     };
 
@@ -681,7 +677,7 @@ private:
         auto collectionType = declaration
             ? ValueType(declaration->Type)
             : nullptr;
-        TTypePtr elementType;
+        TTypePtr elementType = nullptr;
         if (auto array = TMaybeType<TArrayType>(collectionType)) {
             elementType = array.Cast()->ElementType;
         } else if (auto pointer = TMaybeType<TPointerType>(collectionType)) {

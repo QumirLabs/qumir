@@ -6,10 +6,41 @@
 #include <qumir/semantics/name_resolution/name_resolver.h>
 
 #include <sstream>
+#include <type_traits>
 #include <unordered_set>
 
 using namespace NQumir;
 using namespace NQumir::NAst;
+
+// Type constructors are private to the factory, and types are not copied.
+static_assert(!std::is_default_constructible_v<TBoolType>);
+static_assert(!std::is_constructible_v<TIntegerType, TIntegerType::EKind>);
+static_assert(!std::is_constructible_v<TNamedType, std::string, TTypePtr>);
+static_assert(!std::is_copy_constructible_v<TIntegerType>);
+
+namespace {
+
+// A host kind derived from a named type, like QumirDB's decimal.
+struct THostNamedType : TNamedType {
+private:
+    friend class NQumir::NAst::TTypeFactory;
+
+    THostNamedType()
+        : TNamedType("Host", nullptr)
+    {}
+};
+
+template<typename T, typename... TArgs>
+concept CanMakeCustom = requires(TTypeFactory& types, TArgs... args) {
+    types.MakeCustom<T>(args...);
+};
+
+} // namespace
+
+// MakeCustom takes host kinds only: a built-in kind made there would not be interned.
+static_assert(CanMakeCustom<THostNamedType>);
+static_assert(!CanMakeCustom<TIntegerType, TIntegerType::EKind>);
+static_assert(!CanMakeCustom<TNamedType, std::string, TTypePtr>);
 
 TEST(TypeFactory, InternsImmutableTypes) {
     TTypeFactory types;

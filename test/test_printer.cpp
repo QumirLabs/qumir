@@ -81,9 +81,9 @@ TExprPtr MakeIdent(std::string name) {
 } // namespace
 
 namespace {
-template<typename To, typename From>
-TIntrusivePtr<const To> DynCast(const TIntrusivePtr<From>& from) {
-    return TIntrusivePtr<const To>(dynamic_cast<const To*>(from.Get()));
+template<typename To>
+const To* DynCast(TTypePtr from) {
+    return dynamic_cast<const To*>(from);
 }
 } // namespace
 
@@ -370,19 +370,25 @@ namespace {
 struct TOptType : TType {
     static constexpr const char* TypeId = "Opt";
 
-    TTypePtr Inner;
+    TTypePtr Inner = nullptr;
+
+    const std::string_view TypeName() const override { return TypeId; }
+
+private:
+    friend class NQumir::NAst::TTypeFactory;
 
     explicit TOptType(TTypePtr inner)
         : Inner(std::move(inner))
     {}
-
-    const std::string_view TypeName() const override { return TypeId; }
 };
 
 // Custom named type with value args: <named Dec [precision scale]>
 struct TDecType : TNamedType {
     int Precision;
     int Scale;
+
+private:
+    friend class NQumir::NAst::TTypeFactory;
 
     TDecType(int precision, int scale)
         : TNamedType("Dec", nullptr, {
@@ -396,6 +402,9 @@ struct TDecType : TNamedType {
 
 // Custom named type without args, printed short: Unit
 struct TUnitType : TNamedType {
+private:
+    friend class NQumir::NAst::TTypeFactory;
+
     TUnitType()
         : TNamedType("Unit", nullptr)
     {}
@@ -404,8 +413,8 @@ struct TUnitType : TNamedType {
 TPrintOptions MakeTypePrintOptions() {
     TPrintOptions opts;
     opts.TypePrinters[TOptType::TypeId] = [](const TType& type, TPrinter& p, int level) {
-        TNamedType named("Opt", nullptr, {TGenericArg::TypeArg(static_cast<const TOptType&>(type).Inner)});
-        p.PrintType(MakeIntrusive<TNamedType>(std::move(named)), level);
+        p.PrintType(NQumir::NTest::TestTypes().MakeNamed(
+            "Opt", nullptr, {TGenericArg::TypeArg(static_cast<const TOptType&>(type).Inner)}), level);
     };
     return opts;
 }
@@ -416,19 +425,19 @@ TTypeParserMap MakeTypeParsers() {
         if (args.size() != 1 || args[0].Kind != TGenericArg::EKind::Type) {
             return std::unexpected("Opt expects one type argument");
         }
-        return MakeIntrusive<TOptType>(std::move(args[0].Type));
+        return NQumir::NTest::TestTypes().MakeCustom<TOptType>(args[0].Type);
     };
     parsers["Unit"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (!args.empty()) {
             return std::unexpected("Unit expects no arguments");
         }
-        return MakeIntrusive<TUnitType>();
+        return NQumir::NTest::TestTypes().MakeCustom<TUnitType>();
     };
     parsers["Dec"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (args.size() != 2 || args[0].Kind != TGenericArg::EKind::Value || args[1].Kind != TGenericArg::EKind::Value) {
             return std::unexpected("Dec expects two value arguments");
         }
-        return MakeIntrusive<TDecType>(std::stoi(args[0].Value), std::stoi(args[1].Value));
+        return NQumir::NTest::TestTypes().MakeCustom<TDecType>(std::stoi(args[0].Value), std::stoi(args[1].Value));
     };
     return parsers;
 }
@@ -440,9 +449,9 @@ std::expected<TTypePtr, TError> ParseTypeText(const std::string& src, const TTyp
 }
 
 TTypePtr MakeNestedType() {
-    auto dec = MakeIntrusive<TDecType>(18, 4);
-    auto opt = MakeIntrusive<TOptType>(dec);
-    auto optOpt = MakeIntrusive<TOptType>(opt);
+    auto dec = NQumir::NTest::TestTypes().MakeCustom<TDecType>(18, 4);
+    auto opt = NQumir::NTest::TestTypes().MakeCustom<TOptType>(dec);
+    auto optOpt = NQumir::NTest::TestTypes().MakeCustom<TOptType>(opt);
     return NQumir::NTest::TestTypes().MakeStruct(std::vector<std::pair<std::string, TTypePtr>>{
         {"a", optOpt},
         {"b", dec},
@@ -453,14 +462,14 @@ TTypePtr MakeNestedType() {
 } // namespace
 
 TEST(TypeExtensions, PrintWithoutPrinterThrows) {
-    EXPECT_THROW(PrintType(MakeIntrusive<TOptType>(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64))), std::runtime_error);
+    EXPECT_THROW(PrintType(NQumir::NTest::TestTypes().MakeCustom<TOptType>(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64))), std::runtime_error);
 }
 
 TEST(TypeExtensions, PrintCustomTypes) {
     auto opts = MakeTypePrintOptions();
-    EXPECT_EQ(PrintType(MakeIntrusive<TOptType>(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64)), opts),
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeCustom<TOptType>(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64)), opts),
               "<named Opt [i64]>");
-    EXPECT_EQ(PrintType(MakeIntrusive<TDecType>(18, 4), opts), "<named Dec [18 4]>");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeCustom<TDecType>(18, 4), opts), "<named Dec [18 4]>");
 }
 
 TEST(TypeExtensions, ParseWithoutParsersKeepsNamedType) {
@@ -473,7 +482,7 @@ TEST(TypeExtensions, ParseWithoutParsersKeepsNamedType) {
 TEST(TypeExtensions, BareNamedTypeConsultsParsers) {
     TPrintOptions opts;
     opts.ShortNamedTypes.insert("Unit");
-    auto text = PrintType(MakeIntrusive<TUnitType>(), opts);
+    auto text = PrintType(NQumir::NTest::TestTypes().MakeCustom<TUnitType>(), opts);
     EXPECT_EQ(text, "Unit");
     auto parsed = ParseTypeText(text, MakeTypeParsers());
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();

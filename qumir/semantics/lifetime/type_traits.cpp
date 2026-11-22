@@ -16,11 +16,11 @@ TLifetimeTraits Classify(
     }
 
     if (auto named = NAst::TMaybeType<NAst::TNamedType>(type)) {
-        if (!activeTypes.insert(type.Get()).second) {
+        if (!activeTypes.insert(type).second) {
             throw std::invalid_argument("cyclic named type in lifetime classification");
         }
         auto result = Classify(named.Cast()->UnderlyingType(), activeTypes);
-        activeTypes.erase(type.Get());
+        activeTypes.erase(type);
         return result;
     }
 
@@ -65,7 +65,7 @@ TLifetimeTraits Classify(
     }
 
     if (auto structType = NAst::TMaybeType<NAst::TStructType>(type)) {
-        if (!activeTypes.insert(type.Get()).second) {
+        if (!activeTypes.insert(type).second) {
             throw std::invalid_argument("cyclic struct type in lifetime classification");
         }
 
@@ -79,7 +79,7 @@ TLifetimeTraits Classify(
             result.CanCopy = result.CanCopy && fieldTraits.CanCopy;
             result.NeedsDestroy = result.NeedsDestroy || fieldTraits.NeedsDestroy;
         }
-        activeTypes.erase(type.Get());
+        activeTypes.erase(type);
         return result;
     }
 

@@ -56,7 +56,7 @@ public:
                 if (i != 0) {
                     out << ", ";
                 }
-                NAst::TTypePtr fieldAstType;
+                NAst::TTypePtr fieldAstType = nullptr;
                 if (astStruct && i < astStruct->Fields.size()) {
                     out << astStruct->Fields[i].first;
                     fieldAstType = astStruct->Fields[i].second;

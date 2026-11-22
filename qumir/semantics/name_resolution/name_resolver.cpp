@@ -373,7 +373,7 @@ std::optional<TError> TNameResolver::ResolveTypeRef(TTypePtr& type, const TLocat
                 throw std::runtime_error("resolveTypeRef: RegisteredTypes['" + named->Name
                     + "'] is a TNamedType with the same name — double wrap would result");
             }
-            NAst::TTypePtr underlying;
+            NAst::TTypePtr underlying = nullptr;
             std::vector<TGenericArg> resolvedArgs;
             if (typeDecl.GenericParams.empty()) {
                 if (!named->TypeArgs.empty()) {

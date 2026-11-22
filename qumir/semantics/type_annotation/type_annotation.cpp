@@ -58,7 +58,7 @@ bool IsWideIntegerType(const TTypePtr& type) {
 std::optional<TError> ValidateVectorTypes(const TTypePtr& type, const TLocation& location) {
     std::unordered_set<const TType*> checked;
     auto validate = [&](auto& self, const TTypePtr& current) -> std::optional<TError> {
-        if (!current || !checked.insert(current.Get()).second) {
+        if (!current || !checked.insert(current).second) {
             return {};
         }
         if (auto vector = TMaybeType<TVectorType>(current)) {
@@ -556,8 +556,8 @@ std::string FormatStructCastMismatch(const TStructType& source, const TStructTyp
     }
 
     if (details.empty()) {
-        return "исходная структура: " + TypeDiagnosticName(MakeIntrusive<TStructType>(source))
-            + ", целевая структура: " + TypeDiagnosticName(MakeIntrusive<TStructType>(target));
+        return "исходная структура: " + TypeDiagnosticName(&source)
+            + ", целевая структура: " + TypeDiagnosticName(&target);
     }
 
     std::string result;
@@ -1080,9 +1080,9 @@ void RetypeIntegerLiteralOperands(TExprPtr& leftExpr, TExprPtr& rightExpr, TType
 }
 
 struct TBinaryOpTypes {
-    TTypePtr Left;
-    TTypePtr Right;
-    TTypePtr Result;
+    TTypePtr Left = nullptr;
+    TTypePtr Right = nullptr;
+    TTypePtr Result = nullptr;
 };
 
 using TBinaryOpTypesResult = std::expected<TBinaryOpTypes, TError>;
@@ -3067,15 +3067,13 @@ TTask AnnotateAwait(TAwaitExpr* awaitExpr, NSemantics::TNameResolver& context, N
 // Not used for the common-type computation below: there a future is meaningful
 // on its own, and unwrapping it would make `если c то <future<цел>> иначе <цел>
 // все' insert a bogus cast.
-const TTypePtr& SettledBranchType(const TTypePtr& type) {
+TTypePtr SettledBranchType(const TTypePtr& type) {
     const auto& unwrapped = UnwrapReferenceType(type);
     if (const auto& awaited = FutureResultType(unwrapped)) {
         return awaited;
     }
     return unwrapped;
 }
-
-const TTypePtr& SettledBranchType(TTypePtr&& type) = delete;
 
 TTask AnnotateIfExpr(TIfExpr* ifExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     ifExpr->Cond = co_await DoAnnotate(ifExpr->Cond, context, scopeId);

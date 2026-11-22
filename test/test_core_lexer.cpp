@@ -240,29 +240,21 @@ TEST(CoreTypeTest, TypeMangleKeyUsesPlainNamedAndStructLayout) {
         "__overload_key_clone_owned$void__$AggKey_i32_n$Ptr_u8");
 }
 
-TEST(CoreTypeTest, ViewsAndUnwrapsTakeNoReference) {
-    // Shared types are read from several threads, and the reference count is not atomic.
+TEST(CoreTypeTest, NodeViewsTakeNoReference) {
+    // Shared nodes are read from several threads, and the node reference count is not
+    // atomic. Types have no count: the factory owns them.
     auto& types = NQumir::NTest::TestTypes();
     TTypePtr integer = types.MakeInteger(TIntegerType::I16);
-    TTypePtr reference = types.MakeReference(integer);
-    TTypePtr named = types.MakeNamed("RefI16", reference);
+    TTypePtr named = types.MakeNamed("RefI16", types.MakeReference(integer));
     NQumir::NAst::TExprPtr node = MakeIntrusive<TVarStmt>(NQumir::TLocation{}, "x", named);
-    const int integerCount = integer->Count;
-    const int referenceCount = reference->Count;
-    const int namedCount = named->Count;
     const int nodeCount = node->Count;
 
-    const auto& unwrapped = NQumir::NAst::UnwrapReferenceType(NQumir::NAst::UnwrapNamedType(named));
-    auto maybeInteger = TMaybeType<TIntegerType>(unwrapped);
-    ASSERT_TRUE(maybeInteger);
-    EXPECT_EQ(maybeInteger.Cast(), integer.Get());
+    auto unwrapped = NQumir::NAst::UnwrapReferenceType(NQumir::NAst::UnwrapNamedType(named));
+    EXPECT_EQ(TMaybeType<TIntegerType>(unwrapped).Cast(), integer);
     auto maybeVariable = TMaybeNode<TVarStmt>(node);
     ASSERT_TRUE(maybeVariable);
     EXPECT_EQ(maybeVariable.Cast()->Type, named);
 
-    EXPECT_EQ(integer->Count, integerCount);
-    EXPECT_EQ(reference->Count, referenceCount);
-    EXPECT_EQ(named->Count, namedCount);
     EXPECT_EQ(node->Count, nodeCount);
 }
 
