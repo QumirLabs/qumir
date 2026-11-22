@@ -170,7 +170,7 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
         }
         *Out << '>';
     } else if (auto t = TMaybeType<TFunctionType>(type)) {
-        PrintFunctionType(t.Cast(), level);
+        PrintFunctionType(*t.Cast(), level);
     } else if (auto t = TMaybeType<TFutureType>(type)) {
         *Out << "<future ";
         PrintType(t.Cast()->ResultType, level);
@@ -218,7 +218,7 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
         }
         *Out << '>';
     } else if (auto t = TMaybeType<TStructType>(type)) {
-        PrintStructType(t.Cast(), level);
+        PrintStructType(*t.Cast(), level);
     } else if (auto it = Options.TypePrinters.find(type->TypeName()); it != Options.TypePrinters.end()) {
         it->second(*type, *this, level);
     } else {
@@ -593,29 +593,29 @@ void TPrinter::PrintStructConstruct(TStructConstructExpr& node, int level) {
     *Out << "))";
 }
 
-TConcreteTypePtr<TStructType> TPrinter::GetStructType(const TTypePtr& type) {
+TStructType* TPrinter::GetStructType(const TTypePtr& type) {
     if (auto named = TMaybeType<TNamedType>(type)) {
         return TMaybeType<TStructType>(named.Cast()->UnderlyingType).Cast();
     }
     return TMaybeType<TStructType>(type).Cast();
 }
 
-void TPrinter::PrintFunctionType(const TConcreteTypePtr<TFunctionType>& type, int level) {
+void TPrinter::PrintFunctionType(const TFunctionType& type, int level) {
     *Out << "<fun ";
-    PrintType(type->ReturnType, level);
+    PrintType(type.ReturnType, level);
     *Out << " (";
-    for (size_t i = 0; i < type->ParamTypes.size(); ++i) {
+    for (size_t i = 0; i < type.ParamTypes.size(); ++i) {
         if (i != 0) {
             Space();
         }
-        PrintType(type->ParamTypes[i], level);
+        PrintType(type.ParamTypes[i], level);
     }
     *Out << ")>";
 }
 
-void TPrinter::PrintStructType(const TConcreteTypePtr<TStructType>& type, int level) {
+void TPrinter::PrintStructType(const TStructType& type, int level) {
     *Out << "<struct";
-    for (const auto& [name, fieldType] : type->Fields) {
+    for (const auto& [name, fieldType] : type.Fields) {
         *Out << " (";
         PrintIdentifier(name);
         Space();
@@ -629,7 +629,7 @@ namespace NImpl {
 
 namespace {
 
-using TNamedTypeMap = std::map<std::string, TConcreteTypePtr<TNamedType>>;
+using TNamedTypeMap = std::map<std::string, TNamedType*>;
 
 void CollectFromType(const TTypePtr& type, TNamedTypeMap& out) {
     if (!type) return;

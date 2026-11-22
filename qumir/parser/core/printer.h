@@ -81,12 +81,12 @@ private:
     void PrintCompact(const TExprPtr& expr, bool allowTypeWrap, int level);
     bool ShouldWrapType(const TExprPtr& expr) const;
     bool IsNonDefaultNumberLiteral(const TExprPtr& expr) const;
-    void PrintFunctionType(const TConcreteTypePtr<TFunctionType>& type, int level);
-    void PrintStructType(const TConcreteTypePtr<TStructType>& type, int level);
+    void PrintFunctionType(const TFunctionType& type, int level);
+    void PrintStructType(const TStructType& type, int level);
     void PrintGenericParams(const std::vector<TGenericParam>& params, int level);
     std::vector<std::string> PushGenericTypeParamShortNames(const std::vector<TGenericParam>& params);
     void PopShortNamedTypes(const std::vector<std::string>& names);
-    TConcreteTypePtr<TStructType> GetStructType(const TTypePtr& type);
+    TStructType* GetStructType(const TTypePtr& type);
 
     void PrintArrayAssign(TArrayAssignExpr& node, int level);
     void PrintIndexVector(const std::vector<TExprPtr>& indices, int level);

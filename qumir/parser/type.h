@@ -86,19 +86,30 @@ struct TGenericArg {
     }
 };
 
+// Non-owning view of a type as kind T, or null: checking and Cast() touch no
+// reference count, so the type must stay owned elsewhere while the view is used.
 template<typename T>
 struct TMaybeType {
-    TMaybeType(const TTypePtr& node)
-        : Type(node && std::string_view(T::TypeId) == node->TypeName()
-            ? StaticPointerCast<T>(std::move(node))
+    TMaybeType(TType* type)
+        : Type(type && std::string_view(T::TypeId) == type->TypeName()
+            ? static_cast<T*>(type)
             : nullptr)
     { }
 
-    TIntrusivePtr<T> Cast() {
-        return StaticPointerCast<T>(Type);
+    template<typename U>
+    TMaybeType(const TIntrusivePtr<U>& type)
+        : TMaybeType(static_cast<TType*>(type.Get()))
+    { }
+
+    // A temporary owner would release the type before the view is used.
+    template<typename U>
+    TMaybeType(TIntrusivePtr<U>&& type) = delete;
+
+    T* Cast() const {
+        return Type;
     }
 
-    TTypePtr Type;
+    T* Type;
     operator bool() const { return Type != nullptr; }
 };
 
@@ -520,30 +531,41 @@ struct TTensorType : TType {
 
 std::ostream& operator<<(std::ostream& os, const TType& expr);
 
-inline TTypePtr UnwrapReferenceType(const TTypePtr& type) {
+// The Unwrap helpers return a reference to `type` or to a field of the type it
+// points to, so `type` must outlive the result; temporaries are rejected.
+inline const TTypePtr& UnwrapReferenceType(const TTypePtr& type) {
     if (auto maybeRef = TMaybeType<TReferenceType>(type)) {
         return maybeRef.Cast()->ReferencedType;
     }
     return type;
 }
 
-inline TTypePtr UnwrapNamedType(const TTypePtr& type) {
+const TTypePtr& UnwrapReferenceType(TTypePtr&& type) = delete;
+
+inline const TTypePtr& UnwrapNamedType(const TTypePtr& type) {
     if (auto named = TMaybeType<TNamedType>(type)) {
         return named.Cast()->UnderlyingType;
     }
     return type;
 }
 
+const TTypePtr& UnwrapNamedType(TTypePtr&& type) = delete;
+
 inline bool IsFutureType(const TTypePtr& type) {
     return static_cast<bool>(TMaybeType<TFutureType>(type));
 }
 
-inline TTypePtr FutureResultType(const TTypePtr& type) {
+inline const TTypePtr NullTypePtr;
+
+// The result type of a future, or NullTypePtr for any other type.
+inline const TTypePtr& FutureResultType(const TTypePtr& type) {
     if (auto future = TMaybeType<TFutureType>(type)) {
         return future.Cast()->ResultType;
     }
-    return nullptr;
+    return NullTypePtr;
 }
+
+const TTypePtr& FutureResultType(TTypePtr&& type) = delete;
 
 inline std::string TypeDiagnosticName(const TTypePtr& type);
 

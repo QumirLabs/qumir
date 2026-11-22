@@ -533,11 +533,11 @@ TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
 
     auto rootBlock = TMaybeNode<TBlockExpr>(root).Cast();
     size_t cleanupCount = 0;
-    TIntrusivePtr<TGlobalCleanupExpr> cleanup;
+    TExprPtr cleanup;
     for (const auto& statement : rootBlock->Stmts) {
-        if (auto candidate = TMaybeNode<TGlobalCleanupExpr>(statement)) {
+        if (TMaybeNode<TGlobalCleanupExpr>(statement)) {
             ++cleanupCount;
-            cleanup = candidate.Cast();
+            cleanup = statement;
         }
     }
     EXPECT_EQ(cleanupCount, 1u);

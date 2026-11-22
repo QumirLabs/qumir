@@ -41,15 +41,26 @@ struct TCleanupExitExpr;
 struct TGlobalCleanupExpr;
 // End lifetime AST node forward declarations.
 
+// Non-owning view of a node as kind T, or null: checking and Cast() touch no
+// reference count, so the node must stay owned elsewhere while the view is used.
 template<typename T>
 struct TMaybeNode {
-    TMaybeNode(const TExprPtr& node);
+    TMaybeNode(TExpr* node);
 
-    TExprPtrOf<T> Cast() {
-        return StaticPointerCast<T>(Node);
+    template<typename U>
+    TMaybeNode(const TIntrusivePtr<U>& node)
+        : TMaybeNode(static_cast<TExpr*>(node.Get()))
+    { }
+
+    // A temporary owner would release the node before the view is used.
+    template<typename U>
+    TMaybeNode(TIntrusivePtr<U>&& node) = delete;
+
+    T* Cast() const {
+        return Node;
     }
 
-    TExprPtr Node;
+    T* Node;
     operator bool() const { return Node != nullptr; }
 };
 
@@ -84,9 +95,9 @@ struct TExpr : TRefCounted<TExpr> {
 };
 
 template<typename T>
-inline TMaybeNode<T>::TMaybeNode(const TExprPtr& node)
+inline TMaybeNode<T>::TMaybeNode(TExpr* node)
     : Node(node && std::string_view(T::NodeId) == node->NodeName()
-        ? std::move(node)
+        ? static_cast<T*>(node)
         : nullptr)
 { }
 

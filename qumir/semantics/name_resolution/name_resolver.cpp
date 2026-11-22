@@ -1011,10 +1011,10 @@ std::expected<TSymbolId, TError> TNameResolver::ResolveInstantiatedFunDecl(const
     return publishedSymId.value_or(TSymbolId{-1});
 }
 
-std::vector<std::pair<int, TExprPtrOf<NAst::TFunDecl>>> TNameResolver::GetExternalFunctions() {
+std::vector<std::pair<int, NAst::TFunDecl*>> TNameResolver::GetExternalFunctions() {
     auto scope = GetOrCreateRootScope();
 
-    std::vector<std::pair<int, TExprPtrOf<NAst::TFunDecl>>> result;
+    std::vector<std::pair<int, NAst::TFunDecl*>> result;
     for (auto& symbolId : scope->Symbols) {
         auto& symbol = Symbols[symbolId];
         if (auto maybeFun = TMaybeNode<TFunDecl>(symbol.Node)) {
@@ -1127,11 +1127,11 @@ TScopePtr TNameResolver::GetOrCreateRootScope() {
     return Scopes[0];
 }
 
-TExprPtr TNameResolver::GetSymbolNode(TSymbolId id) const {
+TExpr* TNameResolver::GetSymbolNode(TSymbolId id) const {
     if (id.Id < 0 || static_cast<size_t>(id.Id) >= Symbols.size()) {
         return nullptr;
     }
-    return Symbols[id.Id].Node;
+    return Symbols[id.Id].Node.Get();
 }
 
 std::optional<TNameResolver::TRegisteredOp> TNameResolver::GetBinaryOp(
@@ -1154,16 +1154,16 @@ void TNameResolver::RegisterUnaryOp(const std::string& op, const NAst::TTypePtr&
     ImportedUnaryOps[{op, TypeKey(operand)}] = std::move(target);
 }
 
-std::vector<TExprPtrOf<NAst::TFunDecl>> TNameResolver::LookupGenericOperatorDecls(
+std::vector<NAst::TFunDecl*> TNameResolver::LookupGenericOperatorDecls(
     const std::string& op,
     std::size_t arity) const
 {
-    std::vector<TExprPtrOf<NAst::TFunDecl>> result;
+    std::vector<NAst::TFunDecl*> result;
     for (const auto& decl : GenericOperatorDecls) {
         if (!decl->OperatorName || *decl->OperatorName != op || decl->Params.size() != arity) {
             continue;
         }
-        result.push_back(decl);
+        result.push_back(decl.Get());
     }
     return result;
 }
@@ -1238,7 +1238,7 @@ std::optional<TError> TNameResolver::RegisterOperatorDecls(const NAst::TExprPtr&
                 }
             }
             if (std::find(GenericOperatorDecls.begin(), GenericOperatorDecls.end(), fun) == GenericOperatorDecls.end()) {
-                GenericOperatorDecls.push_back(fun);
+                GenericOperatorDecls.push_back(TExprPtrOf<NAst::TFunDecl>(fun));
             }
             continue;
         }

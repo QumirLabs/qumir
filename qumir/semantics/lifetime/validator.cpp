@@ -43,14 +43,16 @@ bool ContainsLifetimeNode(const TExprPtr& expr) {
     return false;
 }
 
-TTypePtr ValueType(TTypePtr type) {
+// A reference to `type` or to a type it points to, so `type` must outlive it.
+const TTypePtr& ValueType(const TTypePtr& type) {
+    const TTypePtr* current = &type;
     while (true) {
-        if (auto reference = TMaybeType<TReferenceType>(type)) {
-            type = reference.Cast()->ReferencedType;
-        } else if (auto named = TMaybeType<TNamedType>(type)) {
-            type = named.Cast()->UnderlyingType;
+        if (auto reference = TMaybeType<TReferenceType>(*current)) {
+            current = &reference.Cast()->ReferencedType;
+        } else if (auto named = TMaybeType<TNamedType>(*current)) {
+            current = &named.Cast()->UnderlyingType;
         } else {
-            return type;
+            return *current;
         }
     }
 }
@@ -159,7 +161,7 @@ private:
         if (!TMaybeNode<TVarStmt>(declaration)) {
             return false;
         }
-        return !Parameters_.contains(declaration.Get());
+        return !Parameters_.contains(declaration);
     }
 
     std::expected<void, TError> ValidateNode(

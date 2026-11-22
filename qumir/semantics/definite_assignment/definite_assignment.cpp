@@ -55,28 +55,28 @@ TDefiniteAssignmentChecker::Union(const TAssignedSet& a, const TAssignedSet& b)
 std::expected<int, TError> TDefiniteAssignmentChecker::GetSymbolId(
     const std::string& name,
     TScopeId scopeId,
-    const NAst::TExprPtr& where)
+    const NAst::TExpr& where)
 {
     auto symbolId = Context.Lookup(name, scopeId);
     if (!symbolId) {
         auto suggestion = Context.Suggest(name, scopeId, /*includeFunctions=*/ true);
         auto suggestionMsg = suggestion ? suggestion->ToString() : "";
-        return std::unexpected(TError(where->Location,
+        return std::unexpected(TError(where.Location,
             "Идентификатор '" + name + "' не определён." + suggestionMsg));
     }
     return symbolId->Id;
 }
 
-std::expected<NAst::TExprPtr, TError> TDefiniteAssignmentChecker::GetSymbolNode(
+std::expected<NAst::TExpr*, TError> TDefiniteAssignmentChecker::GetSymbolNode(
     const std::string& name,
     TScopeId scopeId,
-    const NAst::TExprPtr& where)
+    const NAst::TExpr& where)
 {
     auto symbolId = Context.Lookup(name, scopeId);
     if (!symbolId) {
         auto suggestion = Context.Suggest(name, scopeId, /*includeFunctions=*/ true);
         auto suggestionMsg = suggestion ? suggestion->ToString() : "";
-        return std::unexpected(TError(where->Location,
+        return std::unexpected(TError(where.Location,
             "Идентификатор '" + name + "' не определён." + suggestionMsg));
     }
     return Context.GetSymbolNode(TSymbolId{symbolId->Id});
@@ -93,45 +93,45 @@ TDefiniteAssignmentChecker::CheckExpr(
     }
 
     if (auto maybeBlock = TMaybeNode<TBlockExpr>(expr)) {
-        return CheckBlock(maybeBlock.Cast(),
+        return CheckBlock(*maybeBlock.Cast(),
                           TScopeId{maybeBlock.Cast()->Scope},
                           inAssigned);
     }
 
     if (auto maybeIf = TMaybeNode<TIfExpr>(expr)) {
-        return CheckIfExpr(maybeIf.Cast(), scopeId, inAssigned);
+        return CheckIfExpr(*maybeIf.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeLoop = TMaybeNode<TWhileStmtExpr>(expr)) {
-        return CheckWhile(maybeLoop.Cast(), scopeId, inAssigned);
+        return CheckWhile(*maybeLoop.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeLoop = TMaybeNode<TRepeatStmtExpr>(expr)) {
-        return CheckRepeat(maybeLoop.Cast(), scopeId, inAssigned);
+        return CheckRepeat(*maybeLoop.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeLoop = TMaybeNode<TForStmtExpr>(expr)) {
-        return CheckFor(maybeLoop.Cast(), scopeId, inAssigned);
+        return CheckFor(*maybeLoop.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeLoop = TMaybeNode<TTimesStmtExpr>(expr)) {
-        return CheckTimes(maybeLoop.Cast(), scopeId, inAssigned);
+        return CheckTimes(*maybeLoop.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeAssign = TMaybeNode<TAssignExpr>(expr)) {
-        return CheckAssign(maybeAssign.Cast(), scopeId, inAssigned);
+        return CheckAssign(*maybeAssign.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeVar = TMaybeNode<TVarStmt>(expr)) {
-        return CheckVar(maybeVar.Cast(), scopeId, inAssigned);
+        return CheckVar(*maybeVar.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeIdent = TMaybeNode<TIdentExpr>(expr)) {
-        return CheckIdent(maybeIdent.Cast(), scopeId, inAssigned);
+        return CheckIdent(*maybeIdent.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeFunDecl = TMaybeNode<TFunDecl>(expr)) {
-        return CheckFunDecl(maybeFunDecl.Cast(), scopeId, inAssigned);
+        return CheckFunDecl(*maybeFunDecl.Cast(), scopeId, inAssigned);
     }
 
     if (auto maybeFieldAssign = TMaybeNode<TFieldAssignExpr>(expr)) {
@@ -141,7 +141,7 @@ TDefiniteAssignmentChecker::CheckExpr(
         TAssignedSet state = std::move(*valueRes);
         // Writing any field counts as initializing the struct variable.
         if (auto maybeIdent = TMaybeNode<TIdentExpr>(fa->Object)) {
-            auto symId = GetSymbolId(maybeIdent.Cast()->Name, scopeId, fa->Object);
+            auto symId = GetSymbolId(maybeIdent.Cast()->Name, scopeId, *fa->Object);
             if (symId) {
                 state.insert(*symId);
             }
@@ -170,7 +170,7 @@ TDefiniteAssignmentChecker::CheckExpr(
         return state;
     }
     if (auto maybeCall = TMaybeNode<TCallExpr>(expr)) {
-        return CheckCall(maybeCall.Cast(), scopeId, inAssigned);
+        return CheckCall(*maybeCall.Cast(), scopeId, inAssigned);
     }
 
     TAssignedSet state = inAssigned;
@@ -188,23 +188,23 @@ TDefiniteAssignmentChecker::CheckExpr(
 }
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignmentChecker::CheckCall(
-    const NAst::TExprPtrOf<NAst::TCallExpr>& call,
+    const NAst::TCallExpr& call,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    auto maybeIdent = TMaybeNode<TIdentExpr>(call->Callee);
+    auto maybeIdent = TMaybeNode<TIdentExpr>(call.Callee);
     if (!maybeIdent) {
         return inAssigned;
     }
 
-    auto maybeNode = GetSymbolNode(maybeIdent.Cast()->Name, scopeId, call->Callee);
+    auto maybeNode = GetSymbolNode(maybeIdent.Cast()->Name, scopeId, *call.Callee);
     if (!maybeNode) {
         return std::unexpected(maybeNode.error());
     }
 
     auto result = inAssigned;
     std::list<TError> errors;
-    auto& args = call->Args;
+    auto& args = call.Args;
     if (auto fun = TMaybeNode<TFunDecl>(maybeNode.value())) {
         int i = 0;
         for (auto& param : fun.Cast()->Params) {
@@ -221,7 +221,7 @@ std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignm
                     // out param, add to assigned set
                     auto maybeIdentArg = TMaybeNode<TIdentExpr>(args[i]);
                     if (maybeIdentArg) {
-                        auto symbolId = GetSymbolId(maybeIdentArg.Cast()->Name, scopeId, args[i]);
+                        auto symbolId = GetSymbolId(maybeIdentArg.Cast()->Name, scopeId, *args[i]);
                         if (!symbolId) {
                             errors.push_back(symbolId.error());
                         } else {
@@ -248,7 +248,7 @@ std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignm
 
 
     if (!errors.empty()) {
-        return std::unexpected(TError(call->Location, errors));
+        return std::unexpected(TError(call.Location, errors));
     }
 
     return result;
@@ -256,15 +256,15 @@ std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignm
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckBlock(
-    const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
+    const NAst::TBlockExpr& block,
     TScopeId /*scopeId*/,
     const TAssignedSet& inAssigned)
 {
     TAssignedSet state = inAssigned;
-    TScopeId blockScope{block->Scope};
+    TScopeId blockScope{block.Scope};
 
     std::list<TError> errors;
-    for (auto& stmt : block->Stmts) {
+    for (auto& stmt : block.Stmts) {
         auto res = CheckExpr(stmt, blockScope, state);
         if (!res) {
             errors.push_back(res.error());
@@ -273,33 +273,33 @@ TDefiniteAssignmentChecker::CheckBlock(
         }
     }
     if (!errors.empty()) {
-        return std::unexpected(TError(block->Location, errors));
+        return std::unexpected(TError(block.Location, errors));
     }
     return state;
 }
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckIfExpr(
-    const NAst::TExprPtrOf<NAst::TIfExpr>& ifExpr,
+    const NAst::TIfExpr& ifExpr,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    auto condRes = CheckExpr(ifExpr->Cond, scopeId, inAssigned);
+    auto condRes = CheckExpr(ifExpr.Cond, scopeId, inAssigned);
     if (!condRes) {
         return std::unexpected(condRes.error());
     }
     TAssignedSet afterCond = std::move(*condRes);
 
-    auto thenRes = CheckExpr(ifExpr->Then, scopeId, afterCond);
+    auto thenRes = CheckExpr(ifExpr.Then, scopeId, afterCond);
     if (!thenRes) {
         return std::unexpected(thenRes.error());
     }
 
-    if (!ifExpr->Else) {
+    if (!ifExpr.Else) {
         return inAssigned;
     }
 
-    auto elseRes = CheckExpr(ifExpr->Else, scopeId, afterCond);
+    auto elseRes = CheckExpr(ifExpr.Else, scopeId, afterCond);
     if (!elseRes) {
         return std::unexpected(elseRes.error());
     }
@@ -309,15 +309,15 @@ TDefiniteAssignmentChecker::CheckIfExpr(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckWhile(
-    const NAst::TExprPtrOf<NAst::TWhileStmtExpr>& loop,
+    const NAst::TWhileStmtExpr& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    auto condRes = CheckExpr(loop->Cond, scopeId, inAssigned);
+    auto condRes = CheckExpr(loop.Cond, scopeId, inAssigned);
     if (!condRes) {
         return std::unexpected(condRes.error());
     }
-    auto bodyRes = CheckExpr(loop->Body, scopeId, *condRes);
+    auto bodyRes = CheckExpr(loop.Body, scopeId, *condRes);
     if (!bodyRes) {
         return std::unexpected(bodyRes.error());
     }
@@ -326,15 +326,15 @@ TDefiniteAssignmentChecker::CheckWhile(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckRepeat(
-    const NAst::TExprPtrOf<NAst::TRepeatStmtExpr>& loop,
+    const NAst::TRepeatStmtExpr& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    auto bodyRes = CheckExpr(loop->Body, scopeId, inAssigned);
+    auto bodyRes = CheckExpr(loop.Body, scopeId, inAssigned);
     if (!bodyRes) {
         return std::unexpected(bodyRes.error());
     }
-    auto condRes = CheckExpr(loop->Cond, scopeId, *bodyRes);
+    auto condRes = CheckExpr(loop.Cond, scopeId, *bodyRes);
     if (!condRes) {
         return std::unexpected(condRes.error());
     }
@@ -343,12 +343,12 @@ TDefiniteAssignmentChecker::CheckRepeat(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckFor(
-    const NAst::TExprPtrOf<NAst::TForStmtExpr>& loop,
+    const NAst::TForStmtExpr& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
     TAssignedSet state = inAssigned;
-    for (const auto& expr : {loop->From, loop->To, loop->Step}) {
+    for (const auto& expr : {loop.From, loop.To, loop.Step}) {
         if (!expr) {
             continue;
         }
@@ -359,13 +359,13 @@ TDefiniteAssignmentChecker::CheckFor(
         state = std::move(*res);
     }
 
-    auto symbolId = GetSymbolId(loop->VarName, scopeId, loop);
+    auto symbolId = GetSymbolId(loop.VarName, scopeId, loop);
     if (!symbolId) {
         return std::unexpected(symbolId.error());
     }
     state.insert(*symbolId);
 
-    auto bodyRes = CheckExpr(loop->Body, scopeId, state);
+    auto bodyRes = CheckExpr(loop.Body, scopeId, state);
     if (!bodyRes) {
         return std::unexpected(bodyRes.error());
     }
@@ -374,15 +374,15 @@ TDefiniteAssignmentChecker::CheckFor(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckTimes(
-    const NAst::TExprPtrOf<NAst::TTimesStmtExpr>& loop,
+    const NAst::TTimesStmtExpr& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    auto countRes = CheckExpr(loop->Count, scopeId, inAssigned);
+    auto countRes = CheckExpr(loop.Count, scopeId, inAssigned);
     if (!countRes) {
         return std::unexpected(countRes.error());
     }
-    auto bodyRes = CheckExpr(loop->Body, scopeId, *countRes);
+    auto bodyRes = CheckExpr(loop.Body, scopeId, *countRes);
     if (!bodyRes) {
         return std::unexpected(bodyRes.error());
     }
@@ -391,18 +391,18 @@ TDefiniteAssignmentChecker::CheckTimes(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckAssign(
-    const NAst::TExprPtrOf<NAst::TAssignExpr>& assign,
+    const NAst::TAssignExpr& assign,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    auto valueRes = CheckExpr(assign->Value, scopeId, inAssigned);
+    auto valueRes = CheckExpr(assign.Value, scopeId, inAssigned);
     if (!valueRes) {
         return std::unexpected(valueRes.error());
     }
 
     TAssignedSet state = std::move(*valueRes);
 
-    auto symbolId = GetSymbolId(assign->Name, scopeId, assign);
+    auto symbolId = GetSymbolId(assign.Name, scopeId, assign);
     if (!symbolId) {
         return std::unexpected(symbolId.error());
     }
@@ -413,24 +413,24 @@ TDefiniteAssignmentChecker::CheckAssign(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckVar(
-    const NAst::TExprPtrOf<NAst::TVarStmt>& var,
+    const NAst::TVarStmt& var,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    if (!var->Init && !TMaybeType<TArrayType>(var->Type)) {
+    if (!var.Init && !TMaybeType<TArrayType>(var.Type)) {
         return inAssigned;
     }
 
     TAssignedSet out = inAssigned;
-    if (var->Init) {
-        auto res = CheckExpr(var->Init, scopeId, inAssigned);
+    if (var.Init) {
+        auto res = CheckExpr(var.Init, scopeId, inAssigned);
         if (!res) {
             return std::unexpected(res.error());
         }
         out = std::move(*res);
     }
 
-    auto symbolId = GetSymbolId(var->Name, scopeId, var);
+    auto symbolId = GetSymbolId(var.Name, scopeId, var);
     if (!symbolId) {
         return std::unexpected(symbolId.error());
     }
@@ -440,11 +440,11 @@ TDefiniteAssignmentChecker::CheckVar(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckIdent(
-    const NAst::TExprPtrOf<NAst::TIdentExpr>& ident,
+    const NAst::TIdentExpr& ident,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
-    auto symbolId = GetSymbolId(ident->Name, scopeId, ident);
+    auto symbolId = GetSymbolId(ident.Name, scopeId, ident);
     if (!symbolId) {
         return std::unexpected(symbolId.error());
     }
@@ -456,8 +456,8 @@ TDefiniteAssignmentChecker::CheckIdent(
     if (TMaybeNode<TVarStmt>(symNode)) {
         if (!inAssigned.contains(id)) {
             return std::unexpected(TError(
-                ident->Location,
-                "Переменная '" + ident->Name + "' используется до первого присваивания значения. "
+                ident.Location,
+                "Переменная '" + ident.Name + "' используется до первого присваивания значения. "
                 "Необходимо присвоить значение перед использованием."));
         }
     }
@@ -467,15 +467,15 @@ TDefiniteAssignmentChecker::CheckIdent(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckFunDecl(
-    const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl,
+    const NAst::TFunDecl& funDecl,
     TScopeId /*scopeId*/,
     const TAssignedSet& inAssigned)
 {
     TAssignedSet initialAssigned = GlobalAssigned;
 
-    TScopeId bodyScope{funDecl->Body->Scope};
+    TScopeId bodyScope{funDecl.Body->Scope};
 
-    for (auto& param : funDecl->Params) {
+    for (auto& param : funDecl.Params) {
         auto symbolId = Context.Lookup(param->Name, bodyScope);
         if (!symbolId) {
             return std::unexpected(TError(
@@ -486,7 +486,7 @@ TDefiniteAssignmentChecker::CheckFunDecl(
         initialAssigned.insert(symbolId->Id);
     }
 
-    auto bodyRes = CheckExpr(funDecl->Body, bodyScope, initialAssigned);
+    auto bodyRes = CheckExpr(funDecl.Body, bodyScope, initialAssigned);
     if (!bodyRes) {
         return std::unexpected(bodyRes.error());
     }

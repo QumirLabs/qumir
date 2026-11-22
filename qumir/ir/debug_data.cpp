@@ -26,8 +26,8 @@ void Location(std::ostream& out, const TLocation& loc) {
     out << "\"line\":" << loc.Line << ",\"column\":" << loc.Column << ",\"byte\":" << loc.Byte;
 }
 
-void Type(std::ostream& out, NAst::TTypePtr type) {
-    type = NAst::UnwrapNamedType(type);
+void Type(std::ostream& out, const NAst::TTypePtr& namedType) {
+    const auto& type = NAst::UnwrapNamedType(namedType);
     out << "{\"kind\":" << Quote(type ? type->TypeName() : "unknown");
     if (auto integer = NAst::TMaybeType<NAst::TIntegerType>(type)) {
         out << ",\"bits\":" << integer.Cast()->BitWidth()

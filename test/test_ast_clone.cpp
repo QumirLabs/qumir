@@ -71,9 +71,10 @@ TEST(AstClone, LifetimeAndHiddenChildrenAreDeeplyCloned) {
         function,
     });
 
-    auto clone = TMaybeNode<TBlockExpr>(DeepCloneExpr(original)).Cast();
+    auto clonedRoot = DeepCloneExpr(original);
+    auto clone = TMaybeNode<TBlockExpr>(clonedRoot).Cast();
     ASSERT_NE(clone, nullptr);
-    ExpectDisjointChildren(original, clone);
+    ExpectDisjointChildren(original, clonedRoot);
 
     auto clonedVars = TMaybeNode<TVarsBlockExpr>(clone->Stmts[8]).Cast();
     ASSERT_NE(clonedVars, nullptr);

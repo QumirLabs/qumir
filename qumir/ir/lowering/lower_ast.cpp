@@ -59,29 +59,28 @@ struct TInstrEmitter {
     }
 };
 
-// The node as kind T, or null. Unlike TMaybeNode it copies no shared_ptr, so the
-// dispatcher frame stays small.
+// The node as kind T, or null.
 template <class T>
 const T* AsKind(const NAst::TExprPtr& expr)
 {
     return expr->NodeName() == T::NodeId ? static_cast<const T*>(expr.Get()) : nullptr;
 }
 
-NAst::TTypePtr PhysicalCallResultType(const NAst::TTypePtr& type)
+const NAst::TTypePtr& PhysicalCallResultType(const NAst::TTypePtr& type)
 {
-    if (auto futureResult = NAst::FutureResultType(type)) {
+    if (const auto& futureResult = NAst::FutureResultType(type)) {
         return futureResult;
     }
     return type;
 }
 
-bool IsRawArraySymbol(const NAst::TExprPtr& node)
+bool IsRawArraySymbol(NAst::TExpr* node)
 {
     auto var = NAst::TMaybeNode<NAst::TVarStmt>(node);
     if (!var) {
         return false;
     }
-    auto type = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(var.Cast()->Type));
+    const auto& type = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(var.Cast()->Type));
     return NAst::TMaybeType<NAst::TArrayType>(type) && var.Cast()->Bounds.empty();
 }
 
@@ -641,7 +640,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         auto i64 = Module.Types.I(EKind::I64);
 
         TOperand byteOffset;
-        auto collectionType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(index->Collection->Type));
+        const auto& collectionType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(index->Collection->Type));
         if (NAst::TMaybeType<NAst::TPointerType>(collectionType) || IsRawArraySymbol(symbolNode)) {
             auto offset = emitter.Emit1("*"_op, {*indexValue.Value, TImm{elemByteSize, i64}});
             Builder.SetType(offset, i64);
@@ -707,7 +706,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
             objAddr = *res.Value;
         }
 
-        auto objAstType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(object->Type));
+        const auto& objAstType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(object->Type));
         int structTypeId = FromAstType(objAstType, Module.Types);
         int64_t fieldByteOffset = Module.Types.FieldOffset(structTypeId, field->FieldIndex);
 
@@ -749,13 +748,13 @@ TExpectedTask<std::monostate, TError, TLocation> TAstLowerer::EmitLifetimeDestro
     int32_t scopeId)
 {
     TInstrEmitter emitter{Builder, InstDebugInfo(loc, scopeId), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
-    auto type = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(inputType));
+    const auto& type = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(inputType));
     std::string destructorName;
     bool usesAux = false;
     if (NAst::TMaybeType<NAst::TStringType>(type)) {
         destructorName = "str_release";
     } else if (auto array = NAst::TMaybeType<NAst::TArrayType>(type)) {
-        auto elementType = NAst::UnwrapNamedType(array.Cast()->ElementType);
+        const auto& elementType = NAst::UnwrapNamedType(array.Cast()->ElementType);
         if (NAst::TMaybeType<NAst::TStringType>(elementType)) {
             if (!aux) {
                 co_return TError(loc, "array<string> destroy requires an allocation-size operand");
@@ -1017,7 +1016,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         co_return TError(replace.Target->Location,
             "replace target must be addressable");
     }
-    auto targetType = NAst::UnwrapReferenceType(
+    const auto& targetType = NAst::UnwrapReferenceType(
         NAst::UnwrapNamedType(replace.Target->Type));
     auto targetTypeId = FromAstType(targetType, Module.Types);
     auto oldValue = emitter.Emit1("lde"_op, {*address.Value});
@@ -1094,8 +1093,8 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         co_return TError(bitcast.Operand->Location, "bitcast operand must be a value");
     }
     const auto& types = Module.Types;
-    auto sourceType = NAst::UnwrapNamedType(NAst::UnwrapReferenceType(bitcast.Operand->Type));
-    auto targetType = NAst::UnwrapNamedType(bitcast.Type);
+    const auto& sourceType = NAst::UnwrapNamedType(NAst::UnwrapReferenceType(bitcast.Operand->Type));
+    const auto& targetType = NAst::UnwrapNamedType(bitcast.Type);
     int sourceTypeId = FromAstType(sourceType, Module.Types);
     int targetTypeId = FromAstType(targetType, Module.Types);
     // An address travels as a 64-bit integer whatever the pointer width, and
@@ -1584,7 +1583,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
 
 TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerStructConstruct(const NAst::TStructConstructExpr& sc, const TBlockScope& scope) {
     TInstrEmitter emitter{Builder, InstDebugInfo(sc.Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
-    auto objAstType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(sc.Type));
+    const auto& objAstType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(sc.Type));
     int structTypeId = FromAstType(objAstType, Module.Types);
     int64_t totalSize = Module.Types.SizeInBytes(structTypeId);
     int ptrTypeId = Module.Types.Ptr(structTypeId);
@@ -1696,14 +1695,14 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     TOperand storeOperand = (localSlot.Idx >= 0) ? TOperand{localSlot} : TOperand{storeSlot};
     // slot type was set on variable declaration
 
-    auto nodeType = NAst::UnwrapNamedType(node->Type);
+    const auto& nodeType = NAst::UnwrapNamedType(node->Type);
 
     if (auto maybeRef = NAst::TMaybeType<NAst::TReferenceType>(nodeType)) {
         auto ref = maybeRef.Cast();
         auto addrTmp = emitter.Emit1("load"_op, {storeOperand});
         Builder.SetType(addrTmp, FromAstType(node->Type, Module.Types));
 
-        auto refType = NAst::UnwrapNamedType(ref->ReferencedType);
+        const auto& refType = NAst::UnwrapNamedType(ref->ReferencedType);
         if (NAst::TMaybeType<NAst::TStructType>(refType).Cast() != nullptr) {
             // рез компл: addrTmp is Tmp pointer to destination, rhs is Tmp pointer to source
             int refTypeId = FromAstType(refType, Module.Types);
@@ -1746,7 +1745,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     // tmp contains the address of the variable
     if (auto maybeRef = NAst::TMaybeType<NAst::TReferenceType>(node->Type)) {
         auto ref = maybeRef.Cast();
-        auto refType = NAst::UnwrapNamedType(ref->ReferencedType);
+        const auto& refType = NAst::UnwrapNamedType(ref->ReferencedType);
         if (NAst::TMaybeType<NAst::TStructType>(refType)) {
             Builder.SetType(tmp, Module.Types.Ptr(FromAstType(ref->ReferencedType, Module.Types)));
         } else {
@@ -1846,7 +1845,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
             .AstType = fun.Type,
         };
     }
-    auto coroutineResultType = NAst::FutureResultType(fun.RetType);
+    const auto& coroutineResultType = NAst::FutureResultType(fun.RetType);
     const bool isCoroutine = static_cast<bool>(coroutineResultType);
     auto physicalReturnAstType = isCoroutine
         ? Context.Types().MakePointer(Context.Types().Make<NAst::TVoidType>())
@@ -2007,7 +2006,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     if (auto op = NSemantics::VectorIntrinsic(funDecl->MangledName); !op.empty()) {
         co_return co_await LowerVectorIntrinsic(call, op, scope);
     }
-    auto futureResultType = NAst::FutureResultType(funDecl->RetType);
+    const auto& futureResultType = NAst::FutureResultType(funDecl->RetType);
     NAst::TTypePtr returnType = futureResultType
         ? Context.Types().MakePointer(Context.Types().Make<NAst::TVoidType>())
         : PhysicalCallResultType(funDecl->RetType);
@@ -2029,7 +2028,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         TValueWithBlock av;
 
         if (NAst::TMaybeType<NAst::TReferenceType>(argType)) {
-            auto valueType = NAst::UnwrapNamedType(NAst::UnwrapReferenceType(a->Type));
+            const auto& valueType = NAst::UnwrapNamedType(NAst::UnwrapReferenceType(a->Type));
             if (NAst::TMaybeType<NAst::TVectorType>(valueType)
                 && !NAst::TMaybeNode<NAst::TIdentExpr>(a) && !NAst::TMaybeNode<NAst::TFieldAccessExpr>(a)
                 && !NAst::TMaybeNode<NAst::TIndexExpr>(a))
@@ -2129,7 +2128,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         objAddr = *res.Value;
     }
 
-    auto objAstType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(object->Type));
+    const auto& objAstType = NAst::UnwrapReferenceType(NAst::UnwrapNamedType(object->Type));
     int structTypeId = FromAstType(objAstType, Module.Types);
     int64_t fieldByteOffset = Module.Types.FieldOffset(structTypeId, fieldIndex);
 
@@ -2309,10 +2308,10 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(
         }
     };
 
-    std::function<void(const NAst::TExprPtrOf<NAst::TBlockExpr>&, NSemantics::TScopeId)> collectTopLevelRoots =
-        [&](const NAst::TExprPtrOf<NAst::TBlockExpr>& block, NSemantics::TScopeId currentScope)
+    std::function<void(const NAst::TBlockExpr&, NSemantics::TScopeId)> collectTopLevelRoots =
+        [&](const NAst::TBlockExpr& block, NSemantics::TScopeId currentScope)
     {
-        for (const auto& stmt : block->Stmts) {
+        for (const auto& stmt : block.Stmts) {
             Module.HasSourceModules |= stmt && stmt->Origin.has_value();
             if (auto fun = NAst::TMaybeNode<NAst::TFunDecl>(stmt)) {
                 const bool root = fun.Cast()->Used
@@ -2323,13 +2322,13 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(
                     }
                 }
             } else if (auto nestedBlock = NAst::TMaybeNode<NAst::TBlockExpr>(stmt)) {
-                collectTopLevelRoots(nestedBlock.Cast(), currentScope);
+                collectTopLevelRoots(*nestedBlock.Cast(), currentScope);
             } else {
                 collectReferencedFunctions(stmt, currentScope);
             }
         }
     };
-    collectTopLevelRoots(block, scope.Id);
+    collectTopLevelRoots(*block, scope.Id);
 
     if (Module.DebugOptions.EmitDebugPoints) {
         if (auto symbol = Context.Lookup("__qumir_debug_point", scope.Id)) {
@@ -2352,9 +2351,9 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(
         }
     };
 
-    std::function<std::expected<std::monostate, TError>(const NAst::TExprPtrOf<NAst::TBlockExpr>&, const TBlockScope&)> lowerTopBlock = [&](const NAst::TExprPtrOf<NAst::TBlockExpr>& block, const TBlockScope& scope) -> std::expected<std::monostate, TError>
+    std::function<std::expected<std::monostate, TError>(const NAst::TBlockExpr&, const TBlockScope&)> lowerTopBlock = [&](const NAst::TBlockExpr& block, const TBlockScope& scope) -> std::expected<std::monostate, TError>
     {
-        for (auto& s : block->Stmts) {
+        for (auto& s : block.Stmts) {
             if (auto maybeFun = NAst::TMaybeNode<NAst::TFunDecl>(s)) {
                 if (auto symbol = Context.Lookup(maybeFun.Cast()->Name, scope.Id)) {
                     if ((entries || s->Origin) && !reachableFunctions.contains(symbol->Id)) {
@@ -2367,7 +2366,7 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(
                 }
                 functionSeen = true;
             } else if (auto maybeBlock = NAst::TMaybeNode<NAst::TBlockExpr>(s)) {
-                auto res = lowerTopBlock(maybeBlock.Cast(), scope);
+                auto res = lowerTopBlock(*maybeBlock.Cast(), scope);
                 if (!res) {
                     return std::unexpected(res.error());
                 }
@@ -2489,7 +2488,7 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(
         return {};
     };
 
-    if (auto res = lowerTopBlock(block, scope); !res) {
+    if (auto res = lowerTopBlock(*block, scope); !res) {
         return res;
     }
     if (constructorFunctionId != -1) {

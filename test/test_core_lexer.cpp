@@ -87,7 +87,7 @@ NQumir::NAst::TExprPtrOf<TVarStmt> ParseVar(const std::string& type) {
         ADD_FAILURE() << "expected variable declaration";
         return nullptr;
     }
-    return variable;
+    return NQumir::NAst::TExprPtrOf<TVarStmt>(variable);
 }
 
 TTypePtr ParseVarType(const std::string& type) {
@@ -240,6 +240,32 @@ TEST(CoreTypeTest, TypeMangleKeyUsesPlainNamedAndStructLayout) {
         "__overload_key_clone_owned$void__$AggKey_i32_n$Ptr_u8");
 }
 
+TEST(CoreTypeTest, ViewsAndUnwrapsTakeNoReference) {
+    // Shared types are read from several threads, and the reference count is not atomic.
+    auto& types = NQumir::NTest::TestTypes();
+    TTypePtr integer = types.MakeInteger(TIntegerType::I16);
+    TTypePtr reference = types.MakeReference(integer);
+    TTypePtr named = types.MakeNamed("RefI16", reference);
+    NQumir::NAst::TExprPtr node = MakeIntrusive<TVarStmt>(NQumir::TLocation{}, "x", named);
+    const int integerCount = integer->Count;
+    const int referenceCount = reference->Count;
+    const int namedCount = named->Count;
+    const int nodeCount = node->Count;
+
+    const auto& unwrapped = NQumir::NAst::UnwrapReferenceType(NQumir::NAst::UnwrapNamedType(named));
+    auto maybeInteger = TMaybeType<TIntegerType>(unwrapped);
+    ASSERT_TRUE(maybeInteger);
+    EXPECT_EQ(maybeInteger.Cast(), integer.Get());
+    auto maybeVariable = TMaybeNode<TVarStmt>(node);
+    ASSERT_TRUE(maybeVariable);
+    EXPECT_EQ(maybeVariable.Cast()->Type, named);
+
+    EXPECT_EQ(integer->Count, integerCount);
+    EXPECT_EQ(reference->Count, referenceCount);
+    EXPECT_EQ(named->Count, namedCount);
+    EXPECT_EQ(node->Count, nodeCount);
+}
+
 TEST(CoreTypeTest, ParametricTypeDeclPrintsAndParses) {
     std::istringstream input("(block (type Nullable [T] <struct (Value T) (Valid i8)>))");
     TTokenStream tokens(input);
@@ -271,7 +297,7 @@ TEST(CoreTypeTest, ParametricTypeDeclPrintsAndParses) {
     EXPECT_EQ(value->Name, "T");
 
     const auto expected = std::string("(type Nullable [T] <struct (Value T) (Valid i8)>)");
-    EXPECT_EQ(PrintAst(typeDecl, TPrintOptions{.Pretty = false}), expected);
+    EXPECT_EQ(PrintAst(block->Stmts[0], TPrintOptions{.Pretty = false}), expected);
     EXPECT_EQ(PrintAst(*parsed, TPrintOptions{.Pretty = false}), "(block " + expected + ")");
 }
 
@@ -298,7 +324,7 @@ TEST(CoreTypeTest, ParametricTypeDeclConstParamsPrintAndParse) {
     EXPECT_TRUE(TMaybeType<TIntegerType>(typeDecl->GenericParams[1].ValueType));
 
     const auto expected = std::string("(type Decimal [(const Scale i32) (const Precision i32)] <struct (Lo i64) (Hi i64)>)");
-    EXPECT_EQ(PrintAst(typeDecl, TPrintOptions{.Pretty = false}), expected);
+    EXPECT_EQ(PrintAst(block->Stmts[0], TPrintOptions{.Pretty = false}), expected);
     EXPECT_EQ(PrintAst(*parsed, TPrintOptions{.Pretty = false}), "(block " + expected + ")");
 }
 

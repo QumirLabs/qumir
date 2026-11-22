@@ -154,8 +154,8 @@ public:
     std::vector<std::string> ModulesWithFunction(const std::string& name, size_t argCount) const;
 
     TSymbolId DeclareFunction(const std::string& name, const NAst::TExprPtr& node);
-    NAst::TExprPtr GetSymbolNode(TSymbolId id) const;
-    std::vector<std::pair<int, NAst::TExprPtrOf<NAst::TFunDecl>>> GetExternalFunctions();
+    NAst::TExpr* GetSymbolNode(TSymbolId id) const;
+    std::vector<std::pair<int, NAst::TFunDecl*>> GetExternalFunctions();
 
     // A clone needs fresh scopes: the generic declaration's symbols refer to
     // its original AST nodes.
@@ -231,7 +231,7 @@ public:
     std::optional<TRegisteredOp> GetUnaryOp(const std::string& op,
         const NAst::TTypePtr& operand) const;
     void RegisterUnaryOp(const std::string& op, const NAst::TTypePtr& operand, TRegisteredOp target);
-    std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> LookupGenericOperatorDecls(
+    std::vector<NAst::TFunDecl*> LookupGenericOperatorDecls(
         const std::string& op,
         std::size_t arity) const;
 

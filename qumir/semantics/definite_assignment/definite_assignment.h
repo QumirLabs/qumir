@@ -24,53 +24,53 @@ private:
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckBlock(
-        const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
+        const NAst::TBlockExpr& block,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckIfExpr(
-        const NAst::TExprPtrOf<NAst::TIfExpr>& ifExpr,
+        const NAst::TIfExpr& ifExpr,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckWhile(
-        const NAst::TExprPtrOf<NAst::TWhileStmtExpr>& loop,
+        const NAst::TWhileStmtExpr& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckRepeat(
-        const NAst::TExprPtrOf<NAst::TRepeatStmtExpr>& loop,
+        const NAst::TRepeatStmtExpr& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckFor(
-        const NAst::TExprPtrOf<NAst::TForStmtExpr>& loop,
+        const NAst::TForStmtExpr& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckTimes(
-        const NAst::TExprPtrOf<NAst::TTimesStmtExpr>& loop,
+        const NAst::TTimesStmtExpr& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckAssign(
-        const NAst::TExprPtrOf<NAst::TAssignExpr>& assign,
+        const NAst::TAssignExpr& assign,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckVar(
-        const NAst::TExprPtrOf<NAst::TVarStmt>& var,
+        const NAst::TVarStmt& var,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckIdent(
-        const NAst::TExprPtrOf<NAst::TIdentExpr>& ident,
+        const NAst::TIdentExpr& ident,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckFunDecl(
-        const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl,
+        const NAst::TFunDecl& funDecl,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckCall(
-        const NAst::TExprPtrOf<NAst::TCallExpr>& call,
+        const NAst::TCallExpr& call,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
@@ -80,11 +80,11 @@ private:
     std::expected<int, TError> GetSymbolId(
         const std::string& name,
         TScopeId scopeId,
-        const NAst::TExprPtr& where);
-    std::expected<NAst::TExprPtr, TError> GetSymbolNode(
+        const NAst::TExpr& where);
+    std::expected<NAst::TExpr*, TError> GetSymbolNode(
         const std::string& name,
         TScopeId scopeId,
-        const NAst::TExprPtr& where);
+        const NAst::TExpr& where);
 
     TNameResolver& Context;
     TAssignedSet GlobalAssigned;

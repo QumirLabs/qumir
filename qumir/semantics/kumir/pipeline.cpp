@@ -16,7 +16,7 @@ std::expected<bool, TError> PowerTransform(
             if (!binary || binary.Cast()->Operator != "**") {
                 return node;
             }
-            auto rightType = NAst::UnwrapReferenceType(binary.Cast()->Right->Type);
+            const auto& rightType = NAst::UnwrapReferenceType(binary.Cast()->Right->Type);
             std::string functionName = "pow";
             if (NAst::TMaybeType<NAst::TIntegerType>(rightType)) {
                 functionName = "fpow";

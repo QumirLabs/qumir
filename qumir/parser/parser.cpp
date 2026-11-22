@@ -556,7 +556,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
                     auto tmpArgs = co_await var_decl_list(context, true);
                     for (auto& arg : tmpArgs) {
                         if (auto varArg = TMaybeNode<TVarStmt>(arg)) {
-                            args.push_back(varArg.Cast());
+                            args.push_back(TExprPtrOf<TVarStmt>(varArg.Cast()));
                         } else {
                             co_return TError(arg->Location, "ожидался параметр функции");
                         }

@@ -10,10 +10,8 @@ namespace {
 using namespace NAst;
 
 bool IsVoidReturn(const TFunDecl& function) {
-    auto returnType = FutureResultType(function.RetType);
-    if (!returnType) {
-        returnType = function.RetType;
-    }
+    const auto& futureResult = FutureResultType(function.RetType);
+    const auto& returnType = futureResult ? futureResult : function.RetType;
     if (TMaybeType<TVoidType>(returnType)) {
         return true;
     }
@@ -21,7 +19,7 @@ bool IsVoidReturn(const TFunDecl& function) {
 }
 
 // Replaces one function's fallthrough with an explicit return.
-bool NormalizeFunction(const TExprPtrOf<TFunDecl>& function) {
+bool NormalizeFunction(TFunDecl* function) {
     if (!function->Body || function->IsExternal() || AlwaysReturns(function->Body)) {
         return false;
     }
@@ -57,7 +55,7 @@ bool NormalizeFunctions(TExprPtr& expr) {
         bool changed = NormalizeFunction(function.Cast());
         TExprPtr body = function.Cast()->Body;
         changed = NormalizeFunctions(body) || changed;
-        function.Cast()->Body = TMaybeNode<TBlockExpr>(body).Cast();
+        function.Cast()->Body = TExprPtrOf<TBlockExpr>(TMaybeNode<TBlockExpr>(body).Cast());
         return changed;
     }
 
