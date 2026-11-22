@@ -517,11 +517,11 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     if (head == "vec") {
         auto elementType = co_await ParseType(context);
         auto sizeToken = context.Stream.Next();
-        auto vector = context.Types.MakeUnboundVector(elementType);
+        TTypePtr vector;
         if (sizeToken.Type == TToken::Integer) {
-            vector->BindSize(std::to_string(sizeToken.Value.i64));
+            vector = context.Types.MakeVector(elementType, std::string_view(std::to_string(sizeToken.Value.i64)));
         } else if (sizeToken.Type == TToken::Identifier) {
-            vector->SizeParam = sizeToken.Name;
+            vector = context.Types.MakeGenericVector(elementType, sizeToken.Name);
         } else {
             co_return Error(sizeToken, "expected vector size or generic value parameter");
         }

@@ -50,7 +50,7 @@ const TTypePtr& ValueType(const TTypePtr& type) {
         if (auto reference = TMaybeType<TReferenceType>(*current)) {
             current = &reference.Cast()->ReferencedType;
         } else if (auto named = TMaybeType<TNamedType>(*current)) {
-            current = &named.Cast()->UnderlyingType;
+            current = &named.Cast()->UnderlyingType();
         } else {
             return *current;
         }

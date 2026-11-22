@@ -1812,7 +1812,7 @@ TAstTask stmt(TParserContext& context) {
                     auto named = TMaybeType<TNamedType>(td.Cast()->Type);
                     if (!named) continue;
                     if (mm) {
-                        mm->RegisterImportedType(named.Cast()->Name, named.Cast()->UnderlyingType);
+                        mm->RegisterImportedType(named.Cast()->Name, named.Cast()->UnderlyingType());
                     }
                     if (context.LexerContext) {
                         context.LexerContext->ImportTypeNames({named.Cast()->Name});

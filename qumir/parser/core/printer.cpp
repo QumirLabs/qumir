@@ -190,7 +190,7 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
     } else if (auto t = TMaybeType<TNamedType>(type)) {
         if (Options.ShortNamedTypes.contains(t.Cast()->Name)
             && t.Cast()->TypeArgs.empty()
-            && !t.Cast()->UnderlyingType)
+            && !t.Cast()->UnderlyingType())
         {
             PrintIdentifier(t.Cast()->Name);
             return;
@@ -212,9 +212,9 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
             }
             *Out << ']';
         }
-        if (!Options.ShortNamedTypes.contains(t.Cast()->Name) && t.Cast()->UnderlyingType) {
+        if (!Options.ShortNamedTypes.contains(t.Cast()->Name) && t.Cast()->UnderlyingType()) {
             *Out << ' ';
-            PrintType(t.Cast()->UnderlyingType, level);
+            PrintType(t.Cast()->UnderlyingType(), level);
         }
         *Out << '>';
     } else if (auto t = TMaybeType<TStructType>(type)) {
@@ -593,9 +593,9 @@ void TPrinter::PrintStructConstruct(TStructConstructExpr& node, int level) {
     *Out << "))";
 }
 
-TStructType* TPrinter::GetStructType(const TTypePtr& type) {
+const TStructType* TPrinter::GetStructType(const TTypePtr& type) {
     if (auto named = TMaybeType<TNamedType>(type)) {
-        return TMaybeType<TStructType>(named.Cast()->UnderlyingType).Cast();
+        return TMaybeType<TStructType>(named.Cast()->UnderlyingType()).Cast();
     }
     return TMaybeType<TStructType>(type).Cast();
 }
@@ -629,7 +629,7 @@ namespace NImpl {
 
 namespace {
 
-using TNamedTypeMap = std::map<std::string, TNamedType*>;
+using TNamedTypeMap = std::map<std::string, const TNamedType*>;
 
 void CollectFromType(const TTypePtr& type, TNamedTypeMap& out) {
     if (!type) return;
@@ -640,9 +640,9 @@ void CollectFromType(const TTypePtr& type, TNamedTypeMap& out) {
                 CollectFromType(arg.Type, out);
             }
         }
-        if (named->UnderlyingType && !out.contains(named->Name)) {
+        if (named->UnderlyingType() && !out.contains(named->Name)) {
             out[named->Name] = named;
-            CollectFromType(named->UnderlyingType, out);
+            CollectFromType(named->UnderlyingType(), out);
         }
         return;
     }
@@ -820,12 +820,12 @@ struct TPrintExpr : public IVisitor {
                 if (hiddenTypeNames.contains(name) || explicitTypeNames.contains(name)) {
                     continue;
                 }
-                if (namedType->Reference.has_value()) continue;
+                if (namedType->Reference().has_value()) continue;
                 Printer.Separator(childLevel);
                 *Out << "(type ";
                 Printer.PrintIdentifier(name);
                 Printer.Space();
-                Printer.PrintType(namedType->UnderlyingType, childLevel);
+                Printer.PrintType(namedType->UnderlyingType(), childLevel);
                 *Out << ')';
             }
             // Pass 3: everything else
@@ -855,7 +855,7 @@ struct TPrintExpr : public IVisitor {
         auto shortNames = Printer.PushGenericTypeParamShortNames(node.GenericParams);
         Printer.PrintGenericParams(node.GenericParams, Frame.Level + 1);
         Printer.Space();
-        Printer.PrintType(named.Cast()->UnderlyingType, Frame.Level + 1);
+        Printer.PrintType(named.Cast()->UnderlyingType(), Frame.Level + 1);
         *Out << ')';
         Printer.PopShortNamedTypes(shortNames);
     }

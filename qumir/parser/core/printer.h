@@ -39,7 +39,7 @@ using TPrintExprFactory = std::unordered_map<std::string_view, TNodePrinter>;
 
 // Prints a type unknown to the core printer, found by TypeName(). To stay parseable,
 // emit "<named Name [args]>" (e.g. by printing a TNamedType through the printer).
-using TTypePrinter = std::function<void(TType&, TPrinter&, int level)>;
+using TTypePrinter = std::function<void(const TType&, TPrinter&, int level)>;
 using TPrintTypeFactory = std::unordered_map<std::string_view, TTypePrinter>;
 
 struct TPrintOptions {
@@ -86,7 +86,7 @@ private:
     void PrintGenericParams(const std::vector<TGenericParam>& params, int level);
     std::vector<std::string> PushGenericTypeParamShortNames(const std::vector<TGenericParam>& params);
     void PopShortNamedTypes(const std::vector<std::string>& names);
-    TStructType* GetStructType(const TTypePtr& type);
+    const TStructType* GetStructType(const TTypePtr& type);
 
     void PrintArrayAssign(TArrayAssignExpr& node, int level);
     void PrintIndexVector(const std::vector<TExprPtr>& indices, int level);

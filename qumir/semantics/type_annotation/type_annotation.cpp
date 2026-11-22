@@ -82,7 +82,7 @@ std::optional<TError> ValidateVectorTypes(const TTypePtr& type, const TLocation&
                     return error;
                 }
             }
-            return self(self, named.Cast()->UnderlyingType);
+            return self(self, named.Cast()->UnderlyingType());
         }
         if (auto reference = TMaybeType<TReferenceType>(current)) {
             return self(self, reference.Cast()->ReferencedType);
@@ -637,14 +637,36 @@ bool ApplyStructConstructContext(const TExprPtr& expr, const TTypePtr& targetTyp
     return false;
 }
 
-void BackfillStructFieldTypes(TStructConstructExpr* structure) {
+// Replaces the struct inside `type` (looking through references and named types) with `replacement`.
+TTypePtr ReplaceStructType(TTypeFactory& types, const TTypePtr& type, const TTypePtr& replacement) {
+    if (TMaybeType<TStructType>(type)) {
+        return replacement;
+    }
+    if (auto reference = TMaybeType<TReferenceType>(type)) {
+        return types.MakeReference(ReplaceStructType(types, reference.Cast()->ReferencedType, replacement));
+    }
+    if (auto named = TMaybeType<TNamedType>(type)) {
+        return types.MakeNamed(
+            named.Cast()->Name,
+            ReplaceStructType(types, named.Cast()->UnderlyingType(), replacement),
+            auto(named.Cast()->TypeArgs));
+    }
+    return type;
+}
+
+// The struct type of a struct construction without a target type is built with unknown
+// field types; they are only known after the fields are annotated. Types are immutable,
+// so the struct type is rebuilt with the field types filled in.
+void BackfillStructFieldTypes(TTypeFactory& types, TStructConstructExpr* structure) {
     auto structType = TMaybeType<TStructType>(UnwrapNamedType(structure->Type)).Cast();
     if (!structType) {
         return;
     }
-    for (size_t i = 0; i < structure->Fields.size() && i < structType->Fields.size(); ++i) {
-        structType->Fields[i].second = structure->Fields[i]->Type;
+    auto fields = structType->Fields;
+    for (size_t i = 0; i < structure->Fields.size() && i < fields.size(); ++i) {
+        fields[i].second = structure->Fields[i]->Type;
     }
+    structure->Type = ReplaceStructType(types, structure->Type, types.MakeStruct(std::move(fields)));
 }
 
 TTask AnnotateStructConstruct(TStructConstructExpr* structure, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
@@ -653,7 +675,7 @@ TTask AnnotateStructConstruct(TStructConstructExpr* structure, NSemantics::TName
         for (auto& field : structure->Fields) {
             field = co_await DoAnnotate(field, context, scopeId);
         }
-        BackfillStructFieldTypes(structure);
+        BackfillStructFieldTypes(context.Types(), structure);
         co_return TExprPtr(structure);
     }
 
@@ -1675,8 +1697,8 @@ TTypePtr SubstituteGenericType(
             return it->second;
         }
 
-        auto underlying = SubstituteGenericType(types, placeholder->UnderlyingType, genericParams, bindings);
-        bool changed = underlying != placeholder->UnderlyingType;
+        auto underlying = SubstituteGenericType(types, placeholder->UnderlyingType(), genericParams, bindings);
+        bool changed = underlying != placeholder->UnderlyingType();
         std::vector<TGenericArg> typeArgs;
         typeArgs.reserve(placeholder->TypeArgs.size());
         for (const auto& arg : placeholder->TypeArgs) {
@@ -1698,8 +1720,8 @@ TTypePtr SubstituteGenericType(
             return type;
         }
         auto result = types.MakeNamed(placeholder->Name, std::move(underlying), std::move(typeArgs));
-        if (placeholder->Reference) {
-            result->Reference = placeholder->Reference;
+        if (placeholder->Reference()) {
+            result->SetReference(placeholder->Reference());
         }
         return result;
     }
@@ -1711,13 +1733,15 @@ TTypePtr SubstituteGenericType(
         return result;
     }
     if (auto vector = TMaybeType<TVectorType>(type)) {
-        // not interned: the size may be a generic parameter bound below
-        auto result = MakeIntrusive<TVectorType>(*vector.Cast());
-        result->ElementType = SubstituteGenericType(types, result->ElementType, genericParams, bindings);
-        if (auto it = bindings.Values.find(result->SizeParam); it != bindings.Values.end()) {
-            result->BindSize(it->second);
+        auto src = vector.Cast();
+        auto element = SubstituteGenericType(types, src->ElementType, genericParams, bindings);
+        if (src->SizeParam.empty()) {
+            return types.MakeVector(element, src->Size);
         }
-        return result;
+        if (auto it = bindings.Values.find(src->SizeParam); it != bindings.Values.end()) {
+            return types.MakeVector(element, std::string_view(it->second));
+        }
+        return types.MakeGenericVector(element, src->SizeParam);
     }
     if (auto ptr = TMaybeType<TPointerType>(type)) {
         auto src = ptr.Cast();
@@ -2119,7 +2143,7 @@ bool ContainsGenericParam(
                 return true;
             }
         }
-        return ContainsGenericParam(src->UnderlyingType, genericParams);
+        return ContainsGenericParam(src->UnderlyingType(), genericParams);
     }
     if (auto arr = TMaybeType<TArrayType>(type)) {
         return ContainsGenericParam(arr.Cast()->ElementType, genericParams);
@@ -3341,7 +3365,7 @@ TTask AnnotateFieldAccess(TFieldAccessExpr* fieldAccess, NSemantics::TNameResolv
         "Поле '" + fieldAccess->FieldName + "' не найдено в структуре. Доступные поля: " + available + ".");
 }
 
-static std::pair<TStructType*, std::string>
+static std::pair<const TStructType*, std::string>
 ResolveStructField(const TTypePtr& objType, const std::string& fieldName, int& outIndex) {
     auto structType = TMaybeType<TStructType>(UnwrapNamedType(UnwrapReferenceType(objType))).Cast();
     if (!structType) return {nullptr, ""};

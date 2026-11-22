@@ -19,7 +19,7 @@ TLifetimeTraits Classify(
         if (!activeTypes.insert(type.Get()).second) {
             throw std::invalid_argument("cyclic named type in lifetime classification");
         }
-        auto result = Classify(named.Cast()->UnderlyingType, activeTypes);
+        auto result = Classify(named.Cast()->UnderlyingType(), activeTypes);
         activeTypes.erase(type.Get());
         return result;
     }

@@ -4,6 +4,7 @@
 
 #include <unordered_map>
 #include <map>
+#include <tuple>
 
 namespace NQumir {
 namespace NAst {
@@ -11,7 +12,6 @@ namespace NAst {
 // Interns immutable types: two calls with equal arguments return the same object, so
 // type equality is pointer equality. One factory is shared by every layer of a
 // compilation (modules, parsers, name resolution, passes) through their contexts.
-// Generic-sized TVectorType is not interned (its size is bound after creation).
 class TTypeFactory {
 public:
     // Parameterless singleton types: bool, string, char, void.
@@ -22,7 +22,7 @@ public:
         if (!ret) {
             ret = MakeIntrusive<T>();
         }
-        return StaticPointerCast<T>(ret);
+        return StaticPointerCast<const T>(ret);
     }
 
     TConcreteTypePtr<TIntegerType> MakeInteger(TIntegerType::EKind kind = TIntegerType::I64) {
@@ -85,11 +85,11 @@ public:
         if (!underlying) {
             return ret;
         }
-        if (!ret->UnderlyingType) {
-            ret->UnderlyingType = underlying;
+        if (!ret->UnderlyingType()) {
+            ret->SetUnderlyingType(underlying);
             return ret;
         }
-        if (ret->UnderlyingType == underlying || TypeKey(ret->UnderlyingType) == TypeKey(underlying)) {
+        if (ret->UnderlyingType() == underlying || TypeKey(ret->UnderlyingType()) == TypeKey(underlying)) {
             return ret;
         }
         return ret = MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs));
@@ -100,19 +100,25 @@ public:
         return ret ? ret : (ret = MakeIntrusive<TStructType>(std::move(fields)));
     }
 
-    // Not interned: the size can be a generic parameter bound after creation (BindSize).
-    TConcreteTypePtr<TVectorType> MakeUnboundVector(const TTypePtr& elementType) {
-        return MakeIntrusive<TVectorType>(elementType, 0);
-    }
-
     TConcreteTypePtr<TTensorType> MakeTensor(const TTypePtr& elementType, std::vector<int>&& shape) {
         auto& ret = TensorTypes_[{elementType, shape}];
         return ret ? ret : (ret = MakeIntrusive<TTensorType>(elementType, std::move(shape)));
     }
 
     TConcreteTypePtr<TVectorType> MakeVector(const TTypePtr& elementType, int size) {
-        auto& ret = VectorTypes_[{elementType, size}];
+        auto& ret = VectorTypes_[{elementType, size, std::string{}}];
         return ret ? ret : (ret = MakeIntrusive<TVectorType>(elementType, size));
+    }
+
+    // Size is a generic value parameter that is not bound yet.
+    TConcreteTypePtr<TVectorType> MakeGenericVector(const TTypePtr& elementType, const std::string& sizeParam) {
+        auto& ret = VectorTypes_[{elementType, 0, sizeParam}];
+        return ret ? ret : (ret = MakeIntrusive<TVectorType>(elementType, 0, sizeParam));
+    }
+
+    // Size from a bound generic value argument (0 if it is not an integer).
+    TConcreteTypePtr<TVectorType> MakeVector(const TTypePtr& elementType, std::string_view sizeValue) {
+        return MakeVector(elementType, TVectorType::ParseSize(sizeValue));
     }
 
 private:
@@ -125,7 +131,7 @@ private:
     std::map<TTypePtr, TConcreteTypePtr<TPointerType>> PointerTypes_;
     std::map<TTypePtr, TConcreteTypePtr<TReferenceType>> ReferenceTypes_;
     std::map<std::vector<std::pair<std::string, TTypePtr>>, TConcreteTypePtr<TStructType>> TStructTypes_;
-    std::map<std::pair<TTypePtr, int>, TConcreteTypePtr<TVectorType>> VectorTypes_;
+    std::map<std::tuple<TTypePtr, int, std::string>, TConcreteTypePtr<TVectorType>> VectorTypes_;
     std::map<std::pair<std::string, std::vector<TGenericArg>>, TConcreteTypePtr<TNamedType>> NamedTypes_;
     std::map<std::pair<TTypePtr, std::vector<int>>, TConcreteTypePtr<TTensorType>> TensorTypes_;
 };

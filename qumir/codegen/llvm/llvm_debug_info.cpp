@@ -38,7 +38,7 @@ llvm::DIType* TLLVMDebugInfo::GetType(const NAst::TTypePtr& astType, int typeId)
         return cached = Builder_.createUnspecifiedType("unknown");
     }
     if (auto named = NAst::TMaybeType<NAst::TNamedType>(astType)) {
-        return cached = GetType(named.Cast()->UnderlyingType, typeId);
+        return cached = GetType(named.Cast()->UnderlyingType(), typeId);
     }
     const auto kind = types.GetKind(typeId);
     if (kind == NIR::EKind::Void) {

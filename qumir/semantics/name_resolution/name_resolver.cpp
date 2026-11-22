@@ -81,14 +81,15 @@ TTypePtr CloneTypeWithGenericBindings(
                 src->Arity);
     }
     if (auto t = TMaybeType<TVectorType>(type)) {
-        // not interned: the size may be a generic parameter bound below
-        auto result = MakeIntrusive<TVectorType>(*t.Cast());
-        result->ElementType = CloneTypeWithGenericBindings(types, 
-            result->ElementType, genericTypeParams, bindings, genericValueParams, valueBindings);
-        if (auto it = valueBindings.find(result->SizeParam); it != valueBindings.end()) {
-            result->BindSize(it->second);
+        auto src = t.Cast();
+        auto element = CloneTypeWithGenericBindings(types, src->ElementType, genericTypeParams, bindings, genericValueParams, valueBindings);
+        if (src->SizeParam.empty()) {
+            return types.MakeVector(element, src->Size);
         }
-        return result;
+        if (auto it = valueBindings.find(src->SizeParam); it != valueBindings.end()) {
+            return types.MakeVector(element, std::string_view(it->second));
+        }
+        return types.MakeGenericVector(element, src->SizeParam);
     }
     if (auto t = TMaybeType<TPointerType>(type)) {
         return types.MakePointer(CloneTypeWithGenericBindings(types, t.Cast()->PointeeType, genericTypeParams, bindings, genericValueParams, valueBindings));
@@ -106,10 +107,10 @@ TTypePtr CloneTypeWithGenericBindings(
         }
         auto result = types.MakeNamed(
             src->Name,
-            CloneTypeWithGenericBindings(types, src->UnderlyingType, genericTypeParams, bindings, genericValueParams, valueBindings),
+            CloneTypeWithGenericBindings(types, src->UnderlyingType(), genericTypeParams, bindings, genericValueParams, valueBindings),
             CloneGenericArgsWithBindings(types, src->TypeArgs, genericTypeParams, bindings, genericValueParams, valueBindings));
-        if (src->Reference) {
-            result->Reference = src->Reference;
+        if (src->Reference()) {
+            result->SetReference(src->Reference());
         }
         return std::move(result);
     }
@@ -433,9 +434,9 @@ std::optional<TError> TNameResolver::ResolveTypeRef(TTypePtr& type, const TLocat
             auto result = Types().MakeNamed(named->Name, underlying, std::move(resolvedArgs));
             auto modIt = ImportedModuleSymbols.find(named->Name);
             if (modIt != ImportedModuleSymbols.end()) {
-                result->Reference = modIt->second; // marks type as imported from this module
+                result->SetReference(modIt->second); // marks type as imported from this module
             }
-            if (auto err = self(self, result->UnderlyingType, loc, typeScope); !err) {
+            if (auto err = self(self, result->UnderlyingType(), loc, typeScope); !err) {
                 return err;
             }
             return NAst::TTypePtr(result);
@@ -465,9 +466,13 @@ std::optional<TError> TNameResolver::ResolveTypeRef(TTypePtr& type, const TLocat
             if (!element) {
                 return element;
             }
-            // Vectors are not interned (the size is bound after creation): updated in place.
-            vector.Cast()->ElementType = *element;
-            return type;
+            if (*element == vector.Cast()->ElementType) {
+                return type;
+            }
+            if (vector.Cast()->SizeParam.empty()) {
+                return NAst::TTypePtr(Types().MakeVector(*element, vector.Cast()->Size));
+            }
+            return NAst::TTypePtr(Types().MakeGenericVector(*element, vector.Cast()->SizeParam));
         } else if (auto maybeFun = TMaybeType<TFunctionType>(type)) {
             auto fun = maybeFun.Cast();
             auto returnType = self(self, fun->ReturnType, loc, typeScope);
@@ -652,9 +657,11 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
                 typeScope = NewScope(scope, funcScope);
                 AddGenericParamsToScope(typeDecl->GenericParams, typeScope);
             }
-            if (auto err = ResolveTypeRef(named->UnderlyingType, typeDecl->Location, typeScope)) {
+            auto underlying = named->UnderlyingType();
+            if (auto err = ResolveTypeRef(underlying, typeDecl->Location, typeScope)) {
                 co_return *err;
             }
+            named->SetUnderlyingType(underlying);
         }
         co_return {};
     }
@@ -1207,7 +1214,7 @@ std::optional<TError> TNameResolver::RegisterTypeDecls(const NAst::TExprPtr& roo
         if (ImportedModuleSymbols.contains(n->Name) || !localTypeNames.insert(n->Name).second) {
             return TError(stmt->Location, "Тип уже объявлен или импортирован: " + n->Name);
         }
-        RegisterTypeDecl(n->Name, n->UnderlyingType, td.Cast()->GenericParams);
+        RegisterTypeDecl(n->Name, n->UnderlyingType(), td.Cast()->GenericParams);
     }
     return {};
 }
