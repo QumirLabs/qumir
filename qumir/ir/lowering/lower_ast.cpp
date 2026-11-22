@@ -1592,7 +1592,8 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     auto ptr = emitter.Emit1("salloc"_op, {TImm{totalSize, i64}});
     Builder.SetType(ptr, ptrTypeId);
 
-    const auto& fieldTypes = Module.Types.GetStructFields(structTypeId);
+    // A copy: lowering a field can register a struct and reallocate the type table.
+    const auto fieldTypes = Module.Types.GetStructFields(structTypeId);
     auto astStructType = NAst::TMaybeType<NAst::TStructType>(objAstType).Cast();
     for (size_t i = 0; i < sc.Fields.size(); ++i) {
         auto fieldVal = co_await Lower(sc.Fields[i], scope);
