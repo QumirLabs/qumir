@@ -61,8 +61,8 @@ public:
         std::string KernelObject;
     };
 
-    // The host picks the codegen backend of Run() and CompileKernelAst; null
-    // means TLLVMBackend. The object and cache kernel APIs always use LLVM.
+    // The host picks the codegen backend of Run() and of the kernel APIs; null
+    // means TLLVMBackend. The cache kernel APIs need TLLVMBackend.
     TLLVMRunner(TLLVMRunnerOptions options = {}, std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr);
 
     void RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import = false);
@@ -97,6 +97,7 @@ public:
 
     // Same pipeline as CompileKernelAst, but emits a target object file (per
     // Options.TargetTriple) instead of JIT-compiling. Returns object bytes.
+    // Another backend emits, for the host, the object that CompileKernelAst links.
     std::optional<std::string> CompileKernelAstToObject(
         NAst::TExprPtr ast,
         const std::vector<std::string>& entryNames,
@@ -176,8 +177,16 @@ private:
     bool KernelsUseBackend() const;
     // Prints the IR chunks not printed yet when Options.PrintIr is set.
     void PrintModuleIr();
-    // Emits the lowered Module with Backend_ and links it with ORC JITLink.
+    // Lowers `ast` and emits Module with Backend_ into one object.
+    std::optional<std::string> EmitBackendKernels(
+        NAst::TExprPtr ast,
+        const std::vector<std::string>& entryNames,
+        std::string* error,
+        std::vector<NAst::TPragma> mainPragmas = {},
+        const std::vector<std::string>& llvmBitcode = {});
+    // Links an object of EmitBackendKernels with ORC JITLink.
     std::unordered_map<std::string, void*> LinkBackendKernels(
+        std::string object,
         const std::vector<std::string>& entryNames,
         std::string* error);
 
@@ -196,7 +205,7 @@ private:
     std::vector<std::shared_ptr<NRegistry::IModule>> RegisteredModules;
     std::vector<std::shared_ptr<NRegistry::IModule>> AvailableModules;
 
-    std::unique_ptr<NCodeGen::ICodegenBackend> Backend_; // Run(), and CompileKernelAst unless TLLVMBackend
+    std::unique_ptr<NCodeGen::ICodegenBackend> Backend_; // Run(), and the kernel APIs unless TLLVMBackend
     NCodeGen::TLlvmRunner LlvmRunner_; // persistent; keeps compiled kernels alive
     std::vector<std::shared_ptr<void>> BackendKernels_; // JITs of LinkBackendKernels
 };

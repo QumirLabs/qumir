@@ -18,8 +18,9 @@ enum class EObjectUse {
     // Linked into a program: the module constructor and destructor run from
     // the platform init and fini lists.
     Link,
-    // Loaded into this process by the JIT, which calls `$$module_constructor`
-    // and `$$module_destructor` itself, so the object exports them.
+    // Loaded by a JIT, in this process or on another node: no init lists run,
+    // so the object exports `$$module_constructor` and `$$module_destructor`
+    // for the loader to call when it needs them.
     Load,
 };
 
