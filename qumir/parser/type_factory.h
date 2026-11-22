@@ -10,6 +10,15 @@
 namespace NQumir {
 namespace NAst {
 
+// The kinds TTypeFactory interns: MakeCustom must not create a second, unequal object of one.
+template<typename T>
+inline constexpr bool IsInternedTypeKind =
+    std::is_same_v<T, TIntegerType> || std::is_same_v<T, TFloatType> || std::is_same_v<T, TBoolType>
+    || std::is_same_v<T, TStringType> || std::is_same_v<T, TSymbolType> || std::is_same_v<T, TVoidType>
+    || std::is_same_v<T, TFunctionType> || std::is_same_v<T, TFutureType> || std::is_same_v<T, TArrayType>
+    || std::is_same_v<T, TPointerType> || std::is_same_v<T, TReferenceType> || std::is_same_v<T, TNamedType>
+    || std::is_same_v<T, TStructType> || std::is_same_v<T, TVectorType> || std::is_same_v<T, TTensorType>;
+
 // Creates, owns and interns immutable types: two calls with equal arguments return the
 // same object, so type equality is pointer equality. A type lives as long as its factory,
 // so the factory must outlive every AST, pass, IR module and codegen that refers to its
@@ -124,7 +133,7 @@ public:
     // A type kind defined outside Qumir (a host or a test); owned, not interned. The kind
     // makes its constructors private and befriends TTypeFactory, like the built-in kinds.
     template<typename T, typename... TArgs>
-    requires std::is_base_of_v<TType, T>
+    requires (std::is_base_of_v<TType, T> && !IsInternedTypeKind<T>)
     TConcreteTypePtr<T> MakeCustom(TArgs&&... args) {
         return New<T>(std::forward<TArgs>(args)...);
     }
