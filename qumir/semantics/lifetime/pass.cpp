@@ -42,22 +42,22 @@ bool IsStringArray(const TTypePtr& type) {
 
 TExprPtr Integer(const TLocation& location, int64_t value) {
     auto result = MakeIntrusive<TNumberExpr>(location, value);
-    result->Type = std::make_shared<TIntegerType>();
+    result->Type = MakeIntrusive<TIntegerType>();
     return result;
 }
 
 TExprPtr Binary(
     const TLocation& location,
     TOperator op,
-    TExprPtr left,
-    TExprPtr right)
+    const TExprPtr& left,
+    const TExprPtr& right)
 {
     auto result = MakeIntrusive<TBinaryExpr>(
         location,
         op,
-        std::move(left),
-        std::move(right));
-    result->Type = std::make_shared<TIntegerType>();
+        left,
+        right);
+    result->Type = MakeIntrusive<TIntegerType>();
     return result;
 }
 
@@ -145,7 +145,7 @@ std::expected<EValueOwnership, TError> ClassifyOwnership(const TExprPtr& expr) {
             + std::string(expr->NodeName()) + "'."));
 }
 
-std::expected<TExprPtr, TError> RequireOwned(TExprPtr value) {
+std::expected<TExprPtr, TError> RequireOwned(const TExprPtr& value) {
     auto ownership = ClassifyOwnership(value);
     if (!ownership) {
         return std::unexpected(ownership.error());
@@ -153,13 +153,13 @@ std::expected<TExprPtr, TError> RequireOwned(TExprPtr value) {
     auto loc = value->Location;
     switch (*ownership) {
     case EValueOwnership::Literal:
-        return MakeIntrusive<TOwnLiteralExpr>(loc, std::move(value));
+        return MakeIntrusive<TOwnLiteralExpr>(loc, value);
     case EValueOwnership::Borrowed:
         return MakeIntrusive<TRetainExpr>(
             loc,
-            MakeIntrusive<TBorrowExpr>(loc, std::move(value)));
+            MakeIntrusive<TBorrowExpr>(loc, value));
     case EValueOwnership::Owned:
-        return MakeIntrusive<TMoveExpr>(loc, std::move(value));
+        return MakeIntrusive<TMoveExpr>(loc, value);
     case EValueOwnership::NotApplicable:
         return std::unexpected(TError(
             loc,
@@ -170,7 +170,7 @@ std::expected<TExprPtr, TError> RequireOwned(TExprPtr value) {
 
 TExprPtr MakeNullString(const TLocation& location, const TTypePtr& type) {
     auto zero = MakeIntrusive<TNumberExpr>(location, int64_t{0});
-    zero->Type = std::make_shared<TIntegerType>();
+    zero->Type = MakeIntrusive<TIntegerType>();
     return MakeIntrusive<TBitcastExpr>(location, std::move(zero), type);
 }
 
@@ -261,7 +261,7 @@ private:
         TExprPtr aux;
         if (local.AuxName) {
             aux = MakeIntrusive<TIdentExpr>(local.Location, *local.AuxName);
-            aux->Type = std::make_shared<TIntegerType>();
+            aux->Type = MakeIntrusive<TIntegerType>();
         }
         return MakeIntrusive<TDestroyExpr>(
             local.Location,
@@ -329,7 +329,7 @@ private:
             auto result = MakeIntrusive<TVarStmt>(
                 returnExpr->Location,
                 resultName,
-                std::make_shared<TStringType>());
+                MakeIntrusive<TStringType>());
             result->Init = std::move(owned.value());
             auto resultValue = MakeIntrusive<TIdentExpr>(
                 returnExpr->Location,
@@ -345,7 +345,7 @@ private:
             auto wrapper = MakeIntrusive<TBlockExpr>(
                 returnExpr->Location,
                 std::vector<TExprPtr>{std::move(result), std::move(exit)});
-            wrapper->Type = std::make_shared<TVoidType>();
+            wrapper->Type = MakeIntrusive<TVoidType>();
             expr = std::move(wrapper);
             return true;
         }
@@ -450,7 +450,7 @@ private:
                             auto boundValue = MakeIntrusive<TVarStmt>(
                                 boundLocation,
                                 boundName,
-                                std::make_shared<TIntegerType>());
+                                MakeIntrusive<TIntegerType>());
                             if (FunctionBoundary_) {
                                 boundValue->Init = std::move(*bound);
                             }
@@ -464,7 +464,7 @@ private:
                             auto savedBound = MakeIntrusive<TIdentExpr>(
                                 variable.Cast()->Location,
                                 boundName);
-                            savedBound->Type = std::make_shared<TIntegerType>();
+                            savedBound->Type = MakeIntrusive<TIntegerType>();
                             *bound = std::move(savedBound);
                             changed = true;
                         }
@@ -478,7 +478,7 @@ private:
                     auto allocationSize = MakeIntrusive<TVarStmt>(
                         variable.Cast()->Location,
                         *auxName,
-                        std::make_shared<TIntegerType>());
+                        MakeIntrusive<TIntegerType>());
                     if (FunctionBoundary_) {
                         allocationSize->Init = ArrayAllocationSize(*variable.Cast());
                     }
@@ -847,7 +847,7 @@ private:
             auto temporary = MakeIntrusive<TVarStmt>(
                 call->Location,
                 name,
-                std::make_shared<TStringType>());
+                MakeIntrusive<TStringType>());
             temporary->Init = std::move(owned.value());
             prefix.push_back(temporary);
 

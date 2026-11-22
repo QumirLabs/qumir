@@ -227,7 +227,7 @@ std::expected<const TSourceModule*, TError> TSourceModuleLoader::Load(const std:
 
 std::expected<const TSourceModule*, TError> TSourceModuleLoader::LoadAst(
     const std::string& name,
-    TExprPtr ast,
+    const TExprPtr& ast,
     std::vector<std::string> llvmBitcode,
     std::vector<TPragma> pragmas,
     fs::path origin)
@@ -260,7 +260,7 @@ std::expected<const TSourceModule*, TError> TSourceModuleLoader::LoadAst(
     auto module = std::make_unique<TSourceModule>();
     module->Name = name;
     module->Path = std::move(origin);
-    module->Ast = std::move(ast);
+    module->Ast = ast;
     module->Pragmas = std::move(pragmas);
     module->LlvmBitcode = std::move(llvmBitcode);
 

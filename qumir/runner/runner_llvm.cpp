@@ -180,9 +180,9 @@ std::expected<std::optional<std::string>, TError> TLLVMRunner::Run(std::istream&
 }
 
 void* TLLVMRunner::CompileKernelAst(
-    NAst::TExprPtr ast, const std::string& entryName, std::string* error)
+    const NAst::TExprPtr& ast, const std::string& entryName, std::string* error)
 {
-    auto entries = CompileKernelAst(std::move(ast), std::vector<std::string>{entryName}, error);
+    auto entries = CompileKernelAst(ast, std::vector<std::string>{entryName}, error);
     auto it = entries.find(entryName);
     return it == entries.end() ? nullptr : it->second;
 }
@@ -361,13 +361,13 @@ std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> TLLVMRunner::EmitLoweredModule(
 }
 
 std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> TLLVMRunner::EmitKernelArtifacts(
-    NAst::TExprPtr ast,
+    const NAst::TExprPtr& ast,
     const std::vector<std::string>& entryNames,
     std::string* error,
     std::vector<NAst::TPragma> mainPragmas,
     const std::vector<std::string>* llvmBitcode)
 {
-    if (!LowerKernelAst(std::move(ast), entryNames, error, std::move(mainPragmas))) {
+    if (!LowerKernelAst(ast, entryNames, error, std::move(mainPragmas))) {
         return nullptr;
     }
     std::unordered_set<std::string> exports(entryNames.begin(), entryNames.end());
@@ -393,7 +393,7 @@ void TLLVMRunner::PrintModuleIr() {
 }
 
 std::optional<std::string> TLLVMRunner::EmitBackendKernels(
-    NAst::TExprPtr ast,
+    const NAst::TExprPtr& ast,
     const std::vector<std::string>& entryNames,
     std::string* error,
     std::vector<NAst::TPragma> mainPragmas,
@@ -405,7 +405,7 @@ std::optional<std::string> TLLVMRunner::EmitBackendKernels(
         }
         return std::nullopt;
     }
-    if (!LowerKernelAst(std::move(ast), entryNames, error, std::move(mainPragmas))) {
+    if (!LowerKernelAst(ast, entryNames, error, std::move(mainPragmas))) {
         return std::nullopt;
     }
     // The LLVM codegen leaves the IR to LLVM -O; another backend gets the
@@ -439,18 +439,18 @@ std::unordered_map<std::string, void*> TLLVMRunner::LinkBackendKernels(
 }
 
 std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
-    NAst::TExprPtr ast,
+    const NAst::TExprPtr& ast,
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
     if (KernelsUseBackend()) {
-        auto object = EmitBackendKernels(std::move(ast), entryNames, error);
+        auto object = EmitBackendKernels(ast, entryNames, error);
         if (!object) {
             return {};
         }
         return LinkBackendKernels(std::move(*object), entryNames, error);
     }
-    auto artifacts = EmitKernelArtifacts(std::move(ast), entryNames, error);
+    auto artifacts = EmitKernelArtifacts(ast, entryNames, error);
     if (!artifacts) {
         return {};
     }
@@ -502,14 +502,14 @@ std::unordered_map<std::string, void*> TLLVMRunner::CompileKernelAst(
 }
 
 std::optional<std::string> TLLVMRunner::CompileKernelAstToObject(
-    NAst::TExprPtr ast,
+    const NAst::TExprPtr& ast,
     const std::vector<std::string>& entryNames,
     std::string* error)
 {
     if (KernelsUseBackend()) {
-        return EmitBackendKernels(std::move(ast), entryNames, error);
+        return EmitBackendKernels(ast, entryNames, error);
     }
-    auto artifacts = EmitKernelArtifacts(std::move(ast), entryNames, error);
+    auto artifacts = EmitKernelArtifacts(ast, entryNames, error);
     if (!artifacts) {
         return std::nullopt;
     }
@@ -546,7 +546,7 @@ std::optional<std::string> TLLVMRunner::CompileKernelAstToObject(
 
 std::optional<TLLVMRunner::TPreparedCachedCompilation>
 TLLVMRunner::PrepareFusedKernelsCached(
-    NAst::TExprPtr ast,
+    const NAst::TExprPtr& ast,
     const std::vector<std::string>& entryNames,
     const std::string& cacheDir,
     const std::string& cacheSchema,
@@ -563,7 +563,7 @@ TLLVMRunner::PrepareFusedKernelsCached(
         return std::nullopt;
     }
     auto started = std::chrono::steady_clock::now();
-    if (!LowerKernelAst(std::move(ast), entryNames, error)) {
+    if (!LowerKernelAst(ast, entryNames, error)) {
         return std::nullopt;
     }
     auto frontendDone = std::chrono::steady_clock::now();
@@ -665,7 +665,7 @@ TLLVMRunner::PrepareFusedKernelsCached(
 }
 
 NCodeGen::TLlvmRunner::TLinkedModule TLLVMRunner::CompileFusedKernelsCached(
-    NAst::TExprPtr ast,
+    const NAst::TExprPtr& ast,
     const std::vector<std::string>& entryNames,
     const std::string& cacheDir,
     const std::string& cacheSchema,
@@ -674,7 +674,7 @@ NCodeGen::TLlvmRunner::TLinkedModule TLLVMRunner::CompileFusedKernelsCached(
 {
     auto tStart = std::chrono::steady_clock::now();
     auto prepared = PrepareFusedKernelsCached(
-        std::move(ast), entryNames, cacheDir, cacheSchema, kernelLibVersion, error);
+        ast, entryNames, cacheDir, cacheSchema, kernelLibVersion, error);
     if (!prepared) {
         return {};
     }
@@ -707,7 +707,7 @@ NCodeGen::TLlvmRunner::TLinkedModule TLLVMRunner::CompileFusedKernelsCached(
 
 std::optional<TLLVMRunner::TCachedObjectModule>
 TLLVMRunner::CompileFusedKernelsToObjectsCached(
-    NAst::TExprPtr ast,
+    const NAst::TExprPtr& ast,
     const std::vector<std::string>& entryNames,
     const std::string& cacheDir,
     const std::string& cacheSchema,
@@ -716,7 +716,7 @@ TLLVMRunner::CompileFusedKernelsToObjectsCached(
 {
     auto tStart = std::chrono::steady_clock::now();
     auto prepared = PrepareFusedKernelsCached(
-        std::move(ast), entryNames, cacheDir, cacheSchema, kernelLibVersion, error);
+        ast, entryNames, cacheDir, cacheSchema, kernelLibVersion, error);
     if (!prepared) {
         return std::nullopt;
     }

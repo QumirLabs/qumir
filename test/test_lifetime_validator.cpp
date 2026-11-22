@@ -20,20 +20,20 @@ TIntrusivePtr<TBlockExpr> Block(std::vector<TExprPtr> statements) {
 TIntrusivePtr<TFunDecl> Function(
     std::string name,
     std::vector<TParam> parameters,
-    TIntrusivePtr<TBlockExpr> body,
-    TTypePtr returnType = std::make_shared<TVoidType>())
+    const TIntrusivePtr<TBlockExpr>& body,
+    const TTypePtr& returnType = MakeIntrusive<TVoidType>())
 {
     return MakeIntrusive<TFunDecl>(
         TLocation{},
         std::move(name),
         std::vector<TGenericParam>{},
         std::move(parameters),
-        std::move(body),
-        std::move(returnType));
+        body,
+        returnType);
 }
 
-TIntrusivePtr<TVarStmt> Variable(std::string name, TTypePtr type) {
-    return MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), std::move(type));
+TIntrusivePtr<TVarStmt> Variable(std::string name, const TTypePtr& type) {
+    return MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), type);
 }
 
 TIntrusivePtr<TIdentExpr> Ident(std::string name) {
@@ -82,7 +82,7 @@ void ExpectErrorContains(
 } // namespace
 
 TEST(LifetimeAnnotation, AnnotatesAllInternalNodesExplicitly) {
-    auto stringType = std::make_shared<TStringType>();
+    auto stringType = MakeIntrusive<TStringType>();
     auto value = Variable("value", stringType);
     auto borrowed = MakeIntrusive<TBorrowExpr>(TLocation{}, Ident("value"));
     auto retained = MakeIntrusive<TRetainExpr>(TLocation{}, borrowed);
@@ -137,7 +137,7 @@ TEST(LifetimeAnnotation, CleanupReturnChecksFunctionReturnType) {
             "value",
             {},
             Block({exit}),
-            std::make_shared<TIntegerType>()),
+            MakeIntrusive<TIntegerType>()),
     });
     TNameResolver resolver;
 
@@ -146,7 +146,7 @@ TEST(LifetimeAnnotation, CleanupReturnChecksFunctionReturnType) {
 }
 
 TEST(LifetimeValidator, AcceptsValidOwnershipGraph) {
-    auto value = Variable("value", std::make_shared<TStringType>());
+    auto value = Variable("value", MakeIntrusive<TStringType>());
     value->Init = OwnedLiteral("initial");
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
@@ -174,7 +174,7 @@ TEST(LifetimeValidator, RejectsRetainOfTrivialValue) {
 }
 
 TEST(LifetimeValidator, RejectsRetainOfUniqueValue) {
-    auto arrayType = std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1);
+    auto arrayType = MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1);
     auto array = Variable("items", arrayType);
     auto retain = MakeIntrusive<TRetainExpr>(
         TLocation{},
@@ -199,7 +199,7 @@ TEST(LifetimeValidator, RejectsDestroyOfTrivialValue) {
 }
 
 TEST(LifetimeValidator, RejectsDestroyOfBorrowedParameter) {
-    auto parameter = Variable("value", std::make_shared<TStringType>());
+    auto parameter = Variable("value", MakeIntrusive<TStringType>());
     auto destroy = MakeIntrusive<TDestroyExpr>(TLocation{}, Ident("value"));
     TExprPtr root = Block({Function("main", {parameter}, Block({destroy}))});
     TNameResolver resolver;
@@ -209,7 +209,7 @@ TEST(LifetimeValidator, RejectsDestroyOfBorrowedParameter) {
 }
 
 TEST(LifetimeValidator, RejectsCopyOfUniqueValue) {
-    auto arrayType = std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1);
+    auto arrayType = MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1);
     auto source = Variable("source", arrayType);
     auto target = Variable("target", arrayType);
     auto replace = MakeIntrusive<TReplaceExpr>(
@@ -225,7 +225,7 @@ TEST(LifetimeValidator, RejectsCopyOfUniqueValue) {
 
 TEST(LifetimeValidator, RejectsUnresolvedSyntheticVariable) {
     auto ident = Ident("__lifetime_missing");
-    ident->Type = std::make_shared<TStringType>();
+    ident->Type = MakeIntrusive<TStringType>();
     TExprPtr root = Block({ident});
     TNameResolver resolver;
 
@@ -234,7 +234,7 @@ TEST(LifetimeValidator, RejectsUnresolvedSyntheticVariable) {
 }
 
 TEST(LifetimeValidator, RejectsRawLiteralInOwnedStorage) {
-    auto value = Variable("value", std::make_shared<TStringType>());
+    auto value = Variable("value", MakeIntrusive<TStringType>());
     value->Init = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "raw");
     auto marker = MakeIntrusive<TGlobalCleanupExpr>(
         TLocation{},

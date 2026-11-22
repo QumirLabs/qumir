@@ -18,15 +18,15 @@ TPrinter::TPrinter(std::ostream& out, TPrintOptions options)
     , Options(options)
 {}
 
-void TPrinter::PrintExpr(TExprPtr expr) {
-    PrintExpr(std::move(expr), /*allowTypeWrap=*/true, /*level=*/0);
+void TPrinter::PrintExpr(const TExprPtr& expr) {
+    PrintExpr(expr, /*allowTypeWrap=*/true, /*level=*/0);
 }
 
-void TPrinter::PrintType(TTypePtr type) {
-    PrintType(std::move(type), /*level=*/0);
+void TPrinter::PrintType(const TTypePtr& type) {
+    PrintType(type, /*level=*/0);
 }
 
-bool TPrinter::FitsOneLine(TExprPtr expr, bool allowTypeWrap, int level) {
+bool TPrinter::FitsOneLine(const TExprPtr& expr, bool allowTypeWrap, int level) {
     if (!Options.Pretty) {
         return true;
     }
@@ -34,7 +34,7 @@ bool TPrinter::FitsOneLine(TExprPtr expr, bool allowTypeWrap, int level) {
     auto* savedOut = Out;
     Out = &buf;
     Options.Pretty = false;
-    PrintExpr(std::move(expr), allowTypeWrap, level);
+    PrintExpr(expr, allowTypeWrap, level);
     Out = savedOut;
     Options.Pretty = true;
     return level * Options.IndentStep + buf.str().size() <= Options.LineWidth;
@@ -46,11 +46,11 @@ bool TPrinter::ForceMultiline(const TExprPtr& expr) const {
         || expr->NodeName() == TFunDecl::NodeId;
 }
 
-void TPrinter::PrintCompact(TExprPtr expr, bool allowTypeWrap, int level) {
+void TPrinter::PrintCompact(const TExprPtr& expr, bool allowTypeWrap, int level) {
     // Restore only Pretty: reassigning the whole options would destroy the node
     // printer that is still running.
     Options.Pretty = false;
-    PrintExpr(std::move(expr), allowTypeWrap, level);
+    PrintExpr(expr, allowTypeWrap, level);
     Options.Pretty = true;
 }
 
@@ -105,11 +105,11 @@ bool TPrinter::IsNonDefaultNumberLiteral(const TExprPtr& expr) const {
     return integerType && integerType.Cast()->Kind != TIntegerType::I64;
 }
 
-bool TPrinter::HasPrintableTypeAttrs(TTypePtr type) const {
+bool TPrinter::HasPrintableTypeAttrs(const TTypePtr& type) const {
     return type && (!type->Readable || !type->Mutable);
 }
 
-void TPrinter::PrintTypeAttrs(TTypePtr type) {
+void TPrinter::PrintTypeAttrs(const TTypePtr& type) {
     if (!HasPrintableTypeAttrs(type)) {
         return;
     }
@@ -132,7 +132,7 @@ void TPrinter::PrintTypeAttrs(TTypePtr type) {
     *Out << ')';
 }
 
-void TPrinter::PrintScalarType(std::string_view name, TTypePtr type) {
+void TPrinter::PrintScalarType(std::string_view name, const TTypePtr& type) {
     if (HasPrintableTypeAttrs(type)) {
         *Out << '<' << name;
         PrintTypeAttrs(type);
@@ -180,7 +180,7 @@ void TPrinter::PopShortNamedTypes(const std::vector<std::string>& names) {
     }
 }
 
-void TPrinter::PrintType(TTypePtr type, int level) {
+void TPrinter::PrintType(const TTypePtr& type, int level) {
     if (!type) {
         *Out << "nil";
     } else if (auto t = TMaybeType<TIntegerType>(type)) {
@@ -381,7 +381,7 @@ void TPrinter::PrintExprList(std::string_view head, const std::vector<TExprPtr>&
     *Out << ')';
 }
 
-void TPrinter::PrintIfLike(std::string_view head, TExprPtr cond, TExprPtr thenBranch, TExprPtr elseBranch, int level) {
+void TPrinter::PrintIfLike(std::string_view head, const TExprPtr& cond, const TExprPtr& thenBranch, const TExprPtr& elseBranch, int level) {
     *Out << '(' << head;
     Separator(level + 1);
     PrintExpr(cond, true, level + 1);
@@ -625,14 +625,14 @@ void TPrinter::PrintStructConstruct(TStructConstructExpr& node, int level) {
     *Out << "))";
 }
 
-std::shared_ptr<TStructType> TPrinter::GetStructType(TTypePtr type) {
+TConcreteTypePtr<TStructType> TPrinter::GetStructType(const TTypePtr& type) {
     if (auto named = TMaybeType<TNamedType>(type)) {
         return TMaybeType<TStructType>(named.Cast()->UnderlyingType).Cast();
     }
     return TMaybeType<TStructType>(type).Cast();
 }
 
-void TPrinter::PrintFunctionType(const std::shared_ptr<TFunctionType>& type, int level) {
+void TPrinter::PrintFunctionType(const TConcreteTypePtr<TFunctionType>& type, int level) {
     *Out << "<fun ";
     PrintType(type->ReturnType, level);
     *Out << " (";
@@ -645,7 +645,7 @@ void TPrinter::PrintFunctionType(const std::shared_ptr<TFunctionType>& type, int
     *Out << ")>";
 }
 
-void TPrinter::PrintStructType(const std::shared_ptr<TStructType>& type, int level) {
+void TPrinter::PrintStructType(const TConcreteTypePtr<TStructType>& type, int level) {
     *Out << "<struct";
     for (const auto& [name, fieldType] : type->Fields) {
         *Out << " (";
@@ -661,7 +661,7 @@ namespace NImpl {
 
 namespace {
 
-using TNamedTypeMap = std::map<std::string, std::shared_ptr<TNamedType>>;
+using TNamedTypeMap = std::map<std::string, TConcreteTypePtr<TNamedType>>;
 
 void CollectFromType(const TTypePtr& type, TNamedTypeMap& out) {
     if (!type) return;
@@ -1124,7 +1124,7 @@ struct TPrintExpr : public IVisitor {
 
 } // namespace NImpl
 
-void TPrinter::PrintExpr(TExprPtr expr, bool allowTypeWrap, int level) {
+void TPrinter::PrintExpr(const TExprPtr& expr, bool allowTypeWrap, int level) {
     if (!expr) {
         *Out << "nil";
         return;
@@ -1132,7 +1132,7 @@ void TPrinter::PrintExpr(TExprPtr expr, bool allowTypeWrap, int level) {
 
     if (allowTypeWrap && ShouldWrapType(expr)) {
         if (Options.Pretty && !ForceMultiline(expr) && FitsOneLine(expr, allowTypeWrap, level)) {
-            PrintCompact(std::move(expr), allowTypeWrap, level);
+            PrintCompact(expr, allowTypeWrap, level);
             return;
         }
         *Out << "(: ";
@@ -1144,7 +1144,7 @@ void TPrinter::PrintExpr(TExprPtr expr, bool allowTypeWrap, int level) {
     }
 
     if (Options.Pretty && !ForceMultiline(expr) && FitsOneLine(expr, allowTypeWrap, level)) {
-        PrintCompact(std::move(expr), allowTypeWrap, level);
+        PrintCompact(expr, allowTypeWrap, level);
         return;
     }
 
@@ -1152,23 +1152,23 @@ void TPrinter::PrintExpr(TExprPtr expr, bool allowTypeWrap, int level) {
     expr->Accept(visitor);
 }
 
-void PrintAst(std::ostream& out, TExprPtr expr, const TPrintOptions& options) {
-    TPrinter(out, options).PrintExpr(std::move(expr));
+void PrintAst(std::ostream& out, const TExprPtr& expr, const TPrintOptions& options) {
+    TPrinter(out, options).PrintExpr(expr);
 }
 
-std::string PrintAst(TExprPtr expr, const TPrintOptions& options) {
+std::string PrintAst(const TExprPtr& expr, const TPrintOptions& options) {
     std::ostringstream out;
-    PrintAst(out, std::move(expr), options);
+    PrintAst(out, expr, options);
     return out.str();
 }
 
-void PrintType(std::ostream& out, TTypePtr type, const TPrintOptions& options) {
-    TPrinter(out, options).PrintType(std::move(type));
+void PrintType(std::ostream& out, const TTypePtr& type, const TPrintOptions& options) {
+    TPrinter(out, options).PrintType(type);
 }
 
-std::string PrintType(TTypePtr type, const TPrintOptions& options) {
+std::string PrintType(const TTypePtr& type, const TPrintOptions& options) {
     std::ostringstream out;
-    PrintType(out, std::move(type), options);
+    PrintType(out, type, options);
     return out.str();
 }
 

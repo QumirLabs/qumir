@@ -12,11 +12,11 @@ using namespace NRuntime;
 
 TurtleModule::TurtleModule()
 {
-    auto integerType = std::make_shared<NAst::TIntegerType>();
-    auto floatType = std::make_shared<NAst::TFloatType>();
-    auto voidType = std::make_shared<NAst::TVoidType>();
-    auto stringType = std::make_shared<NAst::TStringType>();
-    auto voidPtrType = std::make_shared<NAst::TPointerType>(voidType);
+    auto integerType = MakeIntrusive<NAst::TIntegerType>();
+    auto floatType = MakeIntrusive<NAst::TFloatType>();
+    auto voidType = MakeIntrusive<NAst::TVoidType>();
+    auto stringType = MakeIntrusive<NAst::TStringType>();
+    auto voidPtrType = MakeIntrusive<NAst::TPointerType>(voidType);
     auto futureVoidType = NAst::WrapFutureType(voidType);
 
     std::vector<TExternalFunction> functions = {

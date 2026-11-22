@@ -7,10 +7,12 @@
 #include <vector>
 #include <optional>
 
+#include <qumir/ptr.h>
+
 namespace NQumir {
 namespace NAst {
 
-struct TType {
+struct TType : TRefCounted<TType> {
     bool Mutable = true;
     bool Readable = true;
 
@@ -19,11 +21,11 @@ struct TType {
     virtual const std::string_view TypeName() const = 0;
 };
 
-using TTypePtr = std::shared_ptr<TType>;
+using TTypePtr = TIntrusivePtr<TType>;
 
 template<typename T>
 requires std::is_base_of_v<TType, T>
-using TConcreteTypePtr = std::shared_ptr<T>;
+using TConcreteTypePtr = TIntrusivePtr<T>;
 
 struct TGenericArg {
     enum class EKind {
@@ -35,7 +37,7 @@ struct TGenericArg {
     TTypePtr Type;
     std::string Value;
 
-    static TGenericArg TypeArg(TTypePtr type) {
+    static TGenericArg TypeArg(const TTypePtr& type) {
         return TGenericArg{
             .Kind = EKind::Type,
             .Type = std::move(type),
@@ -59,14 +61,14 @@ struct TGenericArg {
 
 template<typename T>
 struct TMaybeType {
-    TMaybeType(TTypePtr node)
+    TMaybeType(const TTypePtr& node)
         : Type(node && std::string_view(T::TypeId) == node->TypeName()
-            ? std::static_pointer_cast<T>(std::move(node))
+            ? StaticPointerCast<T>(std::move(node))
             : nullptr)
     { }
 
-    std::shared_ptr<T> Cast() {
-        return std::static_pointer_cast<T>(Type);
+    TIntrusivePtr<T> Cast() {
+        return StaticPointerCast<T>(Type);
     }
 
     TTypePtr Type;
@@ -226,9 +228,9 @@ struct TFunctionType : TType {
     std::vector<TTypePtr> ParamTypes;
     TTypePtr ReturnType;
 
-    TFunctionType(std::vector<TTypePtr> params, TTypePtr ret)
+    TFunctionType(std::vector<TTypePtr>&& params, const TTypePtr& ret)
         : ParamTypes(std::move(params))
-        , ReturnType(std::move(ret))
+        , ReturnType(ret)
     {}
 
     std::string ToString() const override {
@@ -254,8 +256,8 @@ struct TFutureType : TType {
 
     TTypePtr ResultType;
 
-    explicit TFutureType(TTypePtr result)
-        : ResultType(std::move(result))
+    explicit TFutureType(const TTypePtr& result)
+        : ResultType(result)
     {}
 
     std::string ToString() const override {
@@ -275,8 +277,8 @@ struct TArrayType : TType {
 
     TArrayType() = default;
 
-    explicit TArrayType(TTypePtr et, int arity)
-        : ElementType(std::move(et))
+    explicit TArrayType(const TTypePtr& et, int arity)
+        : ElementType(et)
         , Arity(arity)
     {}
 
@@ -295,8 +297,8 @@ struct TPointerType : TType {
 
     TTypePtr PointeeType;
 
-    explicit TPointerType(TTypePtr pt)
-        : PointeeType(std::move(pt))
+    explicit TPointerType(const TTypePtr& pt)
+        : PointeeType(pt)
     {}
 
     std::string ToString() const override {
@@ -313,8 +315,8 @@ struct TReferenceType : TType {
 
     TTypePtr ReferencedType;
 
-    explicit TReferenceType(TTypePtr rt)
-        : ReferencedType(std::move(rt))
+    explicit TReferenceType(const TTypePtr& rt)
+        : ReferencedType(rt)
     {}
 
     std::string ToString() const override {
@@ -335,8 +337,8 @@ struct TNamedType : TType {
 
     explicit TNamedType(
         std::string name,
-        TTypePtr underlying,
-        std::vector<TGenericArg> typeArgs = {})
+        const TTypePtr& underlying,
+        std::vector<TGenericArg>&& typeArgs = {})
         : Name(std::move(name))
         , TypeArgs(std::move(typeArgs))
         , UnderlyingType(std::move(underlying))
@@ -370,7 +372,7 @@ struct TStructType : TType {
 
     std::vector<std::pair<std::string, TTypePtr>> Fields;
 
-    explicit TStructType(std::vector<std::pair<std::string, TTypePtr>> fields)
+    explicit TStructType(std::vector<std::pair<std::string, TTypePtr>>&& fields)
         : Fields(std::move(fields))
     {}
 
@@ -433,8 +435,8 @@ struct TVectorType : TType {
 
     TVectorType() = default;
 
-    explicit TVectorType(TTypePtr et, int size)
-        : ElementType(std::move(et))
+    explicit TVectorType(const TTypePtr& et, int size)
+        : ElementType(et)
         , Size(size)
     {}
 
@@ -471,8 +473,8 @@ struct TTensorType : TType {
 
     TTensorType() = default;
 
-    explicit TTensorType(TTypePtr et, std::vector<int> shape)
-        : ElementType(std::move(et))
+    explicit TTensorType(const TTypePtr& et, std::vector<int>&& shape)
+        : ElementType(et)
         , Shape(std::move(shape))
     {}
 
@@ -491,36 +493,36 @@ struct TTensorType : TType {
 
 std::ostream& operator<<(std::ostream& os, const TType& expr);
 
-inline TTypePtr UnwrapReferenceType(TTypePtr type) {
+inline TTypePtr UnwrapReferenceType(const TTypePtr& type) {
     if (auto maybeRef = TMaybeType<TReferenceType>(type)) {
         return maybeRef.Cast()->ReferencedType;
     }
     return type;
 }
 
-inline TTypePtr UnwrapNamedType(TTypePtr type) {
+inline TTypePtr UnwrapNamedType(const TTypePtr& type) {
     if (auto named = TMaybeType<TNamedType>(type)) {
         return named.Cast()->UnderlyingType;
     }
     return type;
 }
 
-inline bool IsFutureType(TTypePtr type) {
+inline bool IsFutureType(const TTypePtr& type) {
     return static_cast<bool>(TMaybeType<TFutureType>(type));
 }
 
-inline TTypePtr FutureResultType(TTypePtr type) {
+inline TTypePtr FutureResultType(const TTypePtr& type) {
     if (auto future = TMaybeType<TFutureType>(type)) {
         return future.Cast()->ResultType;
     }
     return nullptr;
 }
 
-inline TTypePtr WrapFutureType(TTypePtr type) {
+inline TTypePtr WrapFutureType(const TTypePtr& type) {
     if (IsFutureType(type)) {
         return type;
     }
-    return std::make_shared<TFutureType>(std::move(type));
+    return MakeIntrusive<TFutureType>(type);
 }
 
 inline std::string TypeDiagnosticName(const TTypePtr& type);

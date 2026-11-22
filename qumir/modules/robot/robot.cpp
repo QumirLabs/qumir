@@ -9,9 +9,9 @@ using namespace NRuntime;
 
 RobotModule::RobotModule()
 {
-    auto boolType = std::make_shared<NAst::TBoolType>();
-    auto floatType = std::make_shared<NAst::TFloatType>();
-    auto voidType = std::make_shared<NAst::TVoidType>();
+    auto boolType = MakeIntrusive<NAst::TBoolType>();
+    auto floatType = MakeIntrusive<NAst::TFloatType>();
+    auto voidType = MakeIntrusive<NAst::TVoidType>();
     auto futureVoidType = NAst::WrapFutureType(voidType);
 
     std::vector<TExternalFunction> functions = {

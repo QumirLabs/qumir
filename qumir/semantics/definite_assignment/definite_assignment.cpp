@@ -13,7 +13,7 @@ TDefiniteAssignmentChecker::TDefiniteAssignmentChecker(TNameResolver& context)
     }
 }
 
-std::expected<void, TError> TDefiniteAssignmentChecker::Check(NAst::TExprPtr root) {
+std::expected<void, TError> TDefiniteAssignmentChecker::Check(const NAst::TExprPtr& root) {
     TAssignedSet empty = GlobalAssigned;
     auto res = CheckExpr(root, TScopeId{0}, empty);
     if (!res) {

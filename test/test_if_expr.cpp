@@ -131,8 +131,8 @@ TExprPtr ident(const std::string& name) {
     return MakeIntrusive<TIdentExpr>(TLocation{}, name);
 }
 
-TExprPtr binary(const std::string& op, TExprPtr left, TExprPtr right) {
-    return MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator(op), std::move(left), std::move(right));
+TExprPtr binary(const std::string& op, const TExprPtr& left, const TExprPtr& right) {
+    return MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator(op), left, right);
 }
 
 TExprPtr call(const std::string& name, std::vector<TExprPtr> args) {
@@ -142,27 +142,27 @@ TExprPtr call(const std::string& name, std::vector<TExprPtr> args) {
         std::move(args));
 }
 
-TExprPtr ifExpr(TExprPtr cond, TExprPtr thenExpr, TExprPtr elseExpr) {
+TExprPtr ifExpr(const TExprPtr& cond, const TExprPtr& thenExpr, const TExprPtr& elseExpr) {
     return MakeIntrusive<TIfExpr>(
         TLocation{},
-        std::move(cond),
-        std::move(thenExpr),
-        std::move(elseExpr));
+        cond,
+        thenExpr,
+        elseExpr);
 }
 
-TExprPtr letExpr(std::string name, TExprPtr value, TExprPtr body) {
+TExprPtr letExpr(std::string name, const TExprPtr& value, const TExprPtr& body) {
     auto var = MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), nullptr);
-    var->Init = std::move(value);
-    return MakeIntrusive<TBlockExpr>(TLocation{}, std::vector<TExprPtr>{std::move(var), std::move(body)});
+    var->Init = value;
+    return MakeIntrusive<TBlockExpr>(TLocation{}, std::vector<TExprPtr>{std::move(var), body});
 }
 
-TExprPtr assign(const std::string& name, TExprPtr value) {
-    return MakeIntrusive<TAssignExpr>(TLocation{}, name, std::move(value));
+TExprPtr assign(const std::string& name, const TExprPtr& value) {
+    return MakeIntrusive<TAssignExpr>(TLocation{}, name, value);
 }
 
-TRunResult RunIntIfExpr(TExprPtr expr, EBackend backend = EBackend::VM) {
+TRunResult RunIntIfExpr(const TExprPtr& expr, EBackend backend = EBackend::VM) {
     const std::string src = "алг\nнач\n  цел x\n  вывод x, нс\nкон\n";
-    return RunWithInjection(src, 1, {assign("x", std::move(expr))}, backend);
+    return RunWithInjection(src, 1, {assign("x", expr)}, backend);
 }
 
 TRunResult RunProgram(const std::string& src, EBackend backend = EBackend::VM) {

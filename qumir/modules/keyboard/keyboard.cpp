@@ -58,31 +58,31 @@ namespace NRegistry {
 
 namespace {
 
-NAst::TExprPtr ScanCodeConst(NAst::TTypePtr scanCodeType, int64_t value) {
+NAst::TExprPtr ScanCodeConst(const NAst::TTypePtr& scanCodeType, int64_t value) {
     auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
-    expr->Type = std::move(scanCodeType);
+    expr->Type = scanCodeType;
     return expr;
 }
 
-NAst::TExprPtr MakeScanCodeCast(NAst::TExprPtr value, NAst::TTypePtr targetType) {
+NAst::TExprPtr MakeScanCodeCast(const NAst::TExprPtr& value, const NAst::TTypePtr& targetType) {
     // A plain TCastExpr would be dispatched back to the module's own `cast`
     // operator by type annotation, looping forever; bitcast bypasses operators.
-    return MakeIntrusive<NAst::TBitcastExpr>(value->Location, std::move(value), std::move(targetType));
+    return MakeIntrusive<NAst::TBitcastExpr>(value->Location, value, targetType);
 }
 
-NAst::TExprPtr MakeBinary(const char* op, NAst::TExprPtr left, NAst::TExprPtr right, NAst::TTypePtr type) {
-    auto expr = MakeIntrusive<NAst::TBinaryExpr>(left->Location, NAst::TOperator(op), std::move(left), std::move(right));
-    expr->Type = std::move(type);
+NAst::TExprPtr MakeBinary(const char* op, const NAst::TExprPtr& left, const NAst::TExprPtr& right, const NAst::TTypePtr& type) {
+    auto expr = MakeIntrusive<NAst::TBinaryExpr>(left->Location, NAst::TOperator(op), left, right);
+    expr->Type = type;
     return expr;
 }
 
 } // namespace
 
 KeyboardModule::KeyboardModule() {
-    auto integerType = std::make_shared<NAst::TIntegerType>();
-    auto boolType = std::make_shared<NAst::TBoolType>();
-    auto voidType = std::make_shared<NAst::TVoidType>();
-    auto scanCodeType = std::make_shared<NAst::TNamedType>("сканкод", integerType);
+    auto integerType = MakeIntrusive<NAst::TIntegerType>();
+    auto boolType = MakeIntrusive<NAst::TBoolType>();
+    auto voidType = MakeIntrusive<NAst::TVoidType>();
+    auto scanCodeType = MakeIntrusive<NAst::TNamedType>("сканкод", integerType);
 
     ExternalTypes_ = {
         {

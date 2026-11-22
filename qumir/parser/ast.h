@@ -189,17 +189,17 @@ struct TNumberExpr : TExpr {
     explicit TNumberExpr(TLocation loc, bool v)
         : TExpr(std::move(loc)), IntValue(v)
     {
-        Type = std::make_shared<TBoolType>();
+        Type = MakeIntrusive<TBoolType>();
     }
     explicit TNumberExpr(TLocation loc, int64_t v)
         : TExpr(std::move(loc)), IntValue(v)
     {
-        Type = std::make_shared<TIntegerType>();
+        Type = MakeIntrusive<TIntegerType>();
     }
     explicit TNumberExpr(TLocation loc, double v)
         : TExpr(std::move(loc)), FloatValue(v)
     {
-        Type = std::make_shared<TFloatType>();
+        Type = MakeIntrusive<TFloatType>();
     }
 
     const std::string_view NodeName() const override {
@@ -257,7 +257,7 @@ struct TStringLiteralExpr : TExpr {
     explicit TStringLiteralExpr(TLocation loc, std::string v)
         : TExpr(std::move(loc)), Value(std::move(v))
     {
-        Type = std::make_shared<TStringType>();
+        Type = MakeIntrusive<TStringType>();
     }
 
     const std::string_view NodeName() const override {
@@ -826,7 +826,7 @@ struct TInputExpr : TExpr {
         : TExpr(std::move(loc))
         , Args(std::move(a))
     {
-        Type = std::make_shared<TVoidType>();
+        Type = MakeIntrusive<TVoidType>();
     }
 
     std::vector<TExprPtr> Children() const override {
@@ -869,7 +869,7 @@ struct TOutputExpr : TExpr {
         : TExpr(std::move(loc))
         , Args(std::move(a))
     {
-        Type = std::make_shared<TVoidType>();
+        Type = MakeIntrusive<TVoidType>();
     }
 
     std::vector<TExprPtr> Children() const override {
@@ -1298,7 +1298,7 @@ struct TDestroyExpr : TExpr {
     TExprPtr Aux;
 
     TDestroyExpr(TLocation loc, const TExprPtr& value, const TExprPtr& aux = nullptr)
-        : TExpr(std::move(loc), std::make_shared<TVoidType>())
+        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
         , Value(value)
         , Aux(aux)
     { }
@@ -1329,7 +1329,7 @@ struct TReplaceExpr : TExpr {
     TExprPtr Value;
 
     TReplaceExpr(TLocation loc, const TExprPtr& target, const TExprPtr& value)
-        : TExpr(std::move(loc), std::make_shared<TVoidType>())
+        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
         , Target(target)
         , Value(value)
     { }
@@ -1358,7 +1358,7 @@ struct TCleanupExitExpr : TExpr {
         ECleanupExitKind kind,
         const TExprPtr& value,
         std::vector<TExprPtr>&& cleanups)
-        : TExpr(std::move(loc), std::make_shared<TVoidType>())
+        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
         , Kind(kind)
         , Value(value)
         , Cleanups(std::move(cleanups))
@@ -1397,7 +1397,7 @@ struct TGlobalCleanupExpr : TExpr {
     std::vector<TExprPtr> Cleanups;
 
     TGlobalCleanupExpr(TLocation loc, std::vector<TExprPtr>&& cleanups)
-        : TExpr(std::move(loc), std::make_shared<TVoidType>())
+        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
         , Cleanups(std::move(cleanups))
     { }
 

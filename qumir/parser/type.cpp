@@ -8,8 +8,12 @@ namespace NAst {
 
 std::ostream& operator<<(std::ostream& os, const TType& expr)
 {
-    TTypePtr ptr(const_cast<TType*>(&expr), [](TType*) {});
-    NCore::PrintType(os, std::move(ptr));
+    // `expr` may not be owned by an intrusive pointer (e.g. a stack object):
+    // hold an extra reference so the temporary pointer never deletes it.
+    auto& mutableExpr = const_cast<TType&>(expr);
+    mutableExpr.Ref();
+    NCore::PrintType(os, TTypePtr(&mutableExpr));
+    --mutableExpr.Count;
     return os;
 }
 

@@ -9,11 +9,11 @@ using namespace NRuntime;
 
 DrawerModule::DrawerModule()
 {
-    auto integerType = std::make_shared<NAst::TIntegerType>();
-    auto floatType = std::make_shared<NAst::TFloatType>();
-    auto voidType = std::make_shared<NAst::TVoidType>();
-    auto stringType = std::make_shared<NAst::TStringType>();
-    auto colorType = std::make_shared<NAst::TNamedType>("цвет", integerType);
+    auto integerType = MakeIntrusive<NAst::TIntegerType>();
+    auto floatType = MakeIntrusive<NAst::TFloatType>();
+    auto voidType = MakeIntrusive<NAst::TVoidType>();
+    auto stringType = MakeIntrusive<NAst::TStringType>();
+    auto colorType = MakeIntrusive<NAst::TNamedType>("цвет", integerType);
     auto futureVoidType = NAst::WrapFutureType(voidType);
 
     std::vector<TExternalFunction> functions = {

@@ -57,13 +57,13 @@ public:
     TPrinter(std::ostream& out, TPrintOptions options);
 
     // main entry points
-    void PrintExpr(TExprPtr expr);
-    void PrintType(TTypePtr type);
+    void PrintExpr(const TExprPtr& expr);
+    void PrintType(const TTypePtr& type);
 
     // helpers
-    bool FitsOneLine(TExprPtr expr, bool allowTypeWrap, int level);
-    void PrintExpr(TExprPtr expr, bool allowTypeWrap, int level);
-    void PrintType(TTypePtr type, int level);
+    bool FitsOneLine(const TExprPtr& expr, bool allowTypeWrap, int level);
+    void PrintExpr(const TExprPtr& expr, bool allowTypeWrap, int level);
+    void PrintType(const TTypePtr& type, int level);
     void Separator(int level);
     void Space();
     void PrintIdentifier(const std::string& value);
@@ -76,23 +76,23 @@ private:
     TPrintOptions Options;
 
     bool ForceMultiline(const TExprPtr& expr) const;
-    void PrintCompact(TExprPtr expr, bool allowTypeWrap, int level);
+    void PrintCompact(const TExprPtr& expr, bool allowTypeWrap, int level);
     bool ShouldWrapType(const TExprPtr& expr) const;
     bool IsNonDefaultNumberLiteral(const TExprPtr& expr) const;
-    bool HasPrintableTypeAttrs(TTypePtr type) const;
-    void PrintTypeAttrs(TTypePtr type);
-    void PrintScalarType(std::string_view name, TTypePtr type);
-    void PrintFunctionType(const std::shared_ptr<TFunctionType>& type, int level);
-    void PrintStructType(const std::shared_ptr<TStructType>& type, int level);
+    bool HasPrintableTypeAttrs(const TTypePtr& type) const;
+    void PrintTypeAttrs(const TTypePtr& type);
+    void PrintScalarType(std::string_view name, const TTypePtr& type);
+    void PrintFunctionType(const TConcreteTypePtr<TFunctionType>& type, int level);
+    void PrintStructType(const TConcreteTypePtr<TStructType>& type, int level);
     void PrintGenericParams(const std::vector<TGenericParam>& params, int level);
     std::vector<std::string> PushGenericTypeParamShortNames(const std::vector<TGenericParam>& params);
     void PopShortNamedTypes(const std::vector<std::string>& names);
-    std::shared_ptr<TStructType> GetStructType(TTypePtr type);
+    TConcreteTypePtr<TStructType> GetStructType(const TTypePtr& type);
 
     void PrintArrayAssign(TArrayAssignExpr& node, int level);
     void PrintIndexVector(const std::vector<TExprPtr>& indices, int level);
     void PrintExprList(std::string_view head, const std::vector<TExprPtr>& items, int level);
-    void PrintIfLike(std::string_view head, TExprPtr cond, TExprPtr thenBranch, TExprPtr elseBranch, int level);
+    void PrintIfLike(std::string_view head, const TExprPtr& cond, const TExprPtr& thenBranch, const TExprPtr& elseBranch, int level);
     void PrintWhile(TWhileStmtExpr& node, int level);
     void PrintRepeat(TRepeatStmtExpr& node, int level);
     void PrintFor(TForStmtExpr& node, int level);
@@ -106,11 +106,11 @@ private:
     void PrintStructConstruct(TStructConstructExpr& node, int level);
 };
 
-void PrintAst(std::ostream& out, TExprPtr expr, const TPrintOptions& options = {});
-std::string PrintAst(TExprPtr expr, const TPrintOptions& options = {});
+void PrintAst(std::ostream& out, const TExprPtr& expr, const TPrintOptions& options = {});
+std::string PrintAst(const TExprPtr& expr, const TPrintOptions& options = {});
 
-void PrintType(std::ostream& out, TTypePtr type, const TPrintOptions& options = {});
-std::string PrintType(TTypePtr type, const TPrintOptions& options = {});
+void PrintType(std::ostream& out, const TTypePtr& type, const TPrintOptions& options = {});
+std::string PrintType(const TTypePtr& type, const TPrintOptions& options = {});
 
 } // namespace NCore
 

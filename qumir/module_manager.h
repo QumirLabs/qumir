@@ -29,7 +29,7 @@ public:
     virtual NAst::TTypePtr LookupType(const std::string& name) const = 0;
     // Registers a type exported by an imported source (`.oz`) module so it
     // resolves during parsing of the importing program. Default no-op.
-    virtual void RegisterImportedType(const std::string& name, NAst::TTypePtr type) {}
+    virtual void RegisterImportedType(const std::string& name, const NAst::TTypePtr& type) {}
     // All type names currently imported (including transitive dependencies)
     virtual std::vector<std::string> GetAllImportedTypeNames() const = 0;
     // All literal suffixes currently imported (including transitive dependencies)

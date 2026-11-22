@@ -32,11 +32,11 @@ public:
         : Functions({TExternalFunction {
             .Name = "__lifetime_0",
             .MangledName = "collision_lifetime_0",
-            .ReturnType = std::make_shared<TVoidType>(),
+            .ReturnType = MakeIntrusive<TVoidType>(),
         }})
         , Types({TExternalType {
             .Name = "__lifetime_1",
-            .Type = std::make_shared<TIntegerType>(),
+            .Type = MakeIntrusive<TIntegerType>(),
         }})
     { }
 
@@ -68,7 +68,7 @@ TIntrusivePtr<TFunDecl> MakeVoidFunction(
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         body,
-        std::make_shared<TVoidType>());
+        MakeIntrusive<TVoidType>());
 }
 
 std::string Print(const TExprPtr& expr) {
@@ -135,7 +135,7 @@ TEST(SyntheticNameGenerator, AvoidsSourceAndImportedNamesPerPass) {
     auto sourceVar = MakeIntrusive<TVarStmt>(
         TLocation{},
         "__lifetime_2",
-        std::make_shared<TIntegerType>());
+        MakeIntrusive<TIntegerType>());
     TExprPtr root = MakeRoot({sourceVar});
     ASSERT_FALSE(resolver.Resolve(root).has_value());
 
@@ -371,7 +371,7 @@ TEST(KumirPipeline, ExpandsPowerWithoutReusingCoreOperator) {
     resolver.RegisterModule(&system);
     ASSERT_TRUE(resolver.ImportModule(system.Name()).has_value());
     auto right = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3});
-    right->Type = std::make_shared<TIntegerType>();
+    right->Type = MakeIntrusive<TIntegerType>();
     TExprPtr ast = MakeIntrusive<TBinaryExpr>(
         TLocation{},
         TOperator("**"),
@@ -423,7 +423,7 @@ TEST(ReturnNormalization, MakesFallthroughReturnsExplicit) {
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         valueBody,
-        std::make_shared<TIntegerType>());
+        MakeIntrusive<TIntegerType>());
     auto voidBody = MakeRoot({});
     auto voidFunction = MakeVoidFunction("action", voidBody);
     TExprPtr root = MakeRoot({valueFunction, voidFunction});
@@ -447,17 +447,17 @@ TEST(ReturnNormalization, PreservesDirectAndFullyTerminatingBranchReturns) {
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         directBody,
-        std::make_shared<TIntegerType>());
+        MakeIntrusive<TIntegerType>());
     auto assertCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    assertCondition->Type = std::make_shared<TBoolType>();
+    assertCondition->Type = MakeIntrusive<TBoolType>();
     directFunction->LastAssert = MakeIntrusive<TAssertStmt>(
         TLocation{},
         assertCondition);
 
     auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    condition->Type = std::make_shared<TBoolType>();
+    condition->Type = MakeIntrusive<TBoolType>();
     auto elseIfCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0});
-    elseIfCondition->Type = std::make_shared<TBoolType>();
+    elseIfCondition->Type = MakeIntrusive<TBoolType>();
     auto elseIf = MakeIntrusive<TIfExpr>(
         TLocation{},
         elseIfCondition,
@@ -481,7 +481,7 @@ TEST(ReturnNormalization, PreservesDirectAndFullyTerminatingBranchReturns) {
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         branchBody,
-        std::make_shared<TIntegerType>());
+        MakeIntrusive<TIntegerType>());
     TExprPtr root = MakeRoot({directFunction, branchFunction});
     TNameResolver resolver;
 
@@ -514,7 +514,7 @@ TEST(FinalSemanticPipeline, ResolvesAndAnnotatesInsertedNestedBlock) {
     auto syntheticVar = MakeIntrusive<TVarStmt>(
         TLocation{},
         syntheticName,
-        std::make_shared<TIntegerType>());
+        MakeIntrusive<TIntegerType>());
     syntheticVar->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{7});
     auto syntheticUse = MakeIntrusive<TIdentExpr>(TLocation{}, syntheticName);
     auto nested = MakeRoot({syntheticVar, syntheticUse});
@@ -720,7 +720,7 @@ TEST(ParametricTypes, RetypesIntegerLiteralToExistingFloatGenericBinding) {
 TEST(FinalSemanticPipeline, DoesNotRerunSourceTransforms) {
     auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, true);
     auto assertNode = MakeIntrusive<TAssertStmt>(TLocation{}, condition);
-    assertNode->Type = std::make_shared<TVoidType>();
+    assertNode->Type = MakeIntrusive<TVoidType>();
     auto body = MakeRoot({assertNode, MakeIntrusive<TReturnExpr>(TLocation{}, nullptr)});
     TExprPtr root = MakeRoot({MakeVoidFunction("main", body)});
     TNameResolver resolver;
