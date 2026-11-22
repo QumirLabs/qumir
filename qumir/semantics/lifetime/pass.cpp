@@ -40,13 +40,14 @@ bool IsStringArray(const TTypePtr& type) {
     return array && IsString(array.Cast()->ElementType);
 }
 
-TExprPtr Integer(const TLocation& location, int64_t value) {
-    auto result = MakeIntrusive<TNumberExpr>(location, value);
-    result->Type = MakeIntrusive<TIntegerType>();
+TExprPtr Integer(TTypeFactory& types, const TLocation& location, int64_t value) {
+    auto result = MakeIntrusive<TNumberExpr>(location, value, types);
+    result->Type = types.MakeInteger();
     return result;
 }
 
 TExprPtr Binary(
+    TTypeFactory& types,
     const TLocation& location,
     TOperator op,
     const TExprPtr& left,
@@ -57,20 +58,20 @@ TExprPtr Binary(
         op,
         left,
         right);
-    result->Type = MakeIntrusive<TIntegerType>();
+    result->Type = types.MakeInteger();
     return result;
 }
 
 // In elements, not bytes: the width of an element belongs to the target.
-TExprPtr ArrayAllocationSize(const TVarStmt& variable) {
-    TExprPtr elements = Integer(variable.Location, 1);
+TExprPtr ArrayAllocationSize(TTypeFactory& types, const TVarStmt& variable) {
+    TExprPtr elements = Integer(types, variable.Location, 1);
     for (const auto& [lower, upper] : variable.Bounds) {
-        auto dimension = Binary(
+        auto dimension = Binary(types, 
             variable.Location,
             '+',
-            Binary(variable.Location, '-', upper, lower),
-            Integer(variable.Location, 1));
-        elements = Binary(
+            Binary(types, variable.Location, '-', upper, lower),
+            Integer(types, variable.Location, 1));
+        elements = Binary(types, 
             variable.Location,
             '*',
             std::move(elements),
@@ -168,9 +169,9 @@ std::expected<TExprPtr, TError> RequireOwned(const TExprPtr& value) {
     return std::unexpected(TError(loc, "Unknown string ownership."));
 }
 
-TExprPtr MakeNullString(const TLocation& location, const TTypePtr& type) {
-    auto zero = MakeIntrusive<TNumberExpr>(location, int64_t{0});
-    zero->Type = MakeIntrusive<TIntegerType>();
+TExprPtr MakeNullString(TTypeFactory& types, const TLocation& location, const TTypePtr& type) {
+    auto zero = MakeIntrusive<TNumberExpr>(location, int64_t{0}, types);
+    zero->Type = types.MakeInteger();
     return MakeIntrusive<TBitcastExpr>(location, std::move(zero), type);
 }
 
@@ -239,7 +240,7 @@ public:
         }
         block.Cast()->Stmts.push_back(MakeIntrusive<TGlobalCleanupExpr>(
             root->Location,
-            std::move(cleanups)));
+            std::move(cleanups), Context_.Types()));
         return true;
     }
 
@@ -261,11 +262,11 @@ private:
         TExprPtr aux;
         if (local.AuxName) {
             aux = MakeIntrusive<TIdentExpr>(local.Location, *local.AuxName);
-            aux->Type = MakeIntrusive<TIntegerType>();
+            aux->Type = Context_.Types().MakeInteger();
         }
         return MakeIntrusive<TDestroyExpr>(
             local.Location,
-            std::move(value),
+            std::move(value), Context_.Types(),
             std::move(aux));
     }
 
@@ -329,7 +330,7 @@ private:
             auto result = MakeIntrusive<TVarStmt>(
                 returnExpr->Location,
                 resultName,
-                MakeIntrusive<TStringType>());
+                Context_.Types().Make<TStringType>());
             result->Init = std::move(owned.value());
             auto resultValue = MakeIntrusive<TIdentExpr>(
                 returnExpr->Location,
@@ -341,11 +342,11 @@ private:
                 MakeIntrusive<TMoveExpr>(
                     returnExpr->Location,
                     std::move(resultValue)),
-                std::move(cleanups));
+                std::move(cleanups), Context_.Types());
             auto wrapper = MakeIntrusive<TBlockExpr>(
                 returnExpr->Location,
                 std::vector<TExprPtr>{std::move(result), std::move(exit)});
-            wrapper->Type = MakeIntrusive<TVoidType>();
+            wrapper->Type = Context_.Types().Make<TVoidType>();
             expr = std::move(wrapper);
             return true;
         }
@@ -354,7 +355,7 @@ private:
             returnExpr->Location,
             ECleanupExitKind::Return,
             std::move(value),
-            std::move(cleanups));
+            std::move(cleanups), Context_.Types());
         return true;
     }
 
@@ -370,7 +371,7 @@ private:
             expr->Location,
             kind,
             nullptr,
-            MakeCleanups(LoopBoundaries_.back()));
+            MakeCleanups(LoopBoundaries_.back()), Context_.Types());
         return true;
     }
 
@@ -450,7 +451,7 @@ private:
                             auto boundValue = MakeIntrusive<TVarStmt>(
                                 boundLocation,
                                 boundName,
-                                MakeIntrusive<TIntegerType>());
+                                Context_.Types().MakeInteger());
                             if (FunctionBoundary_) {
                                 boundValue->Init = std::move(*bound);
                             }
@@ -464,7 +465,7 @@ private:
                             auto savedBound = MakeIntrusive<TIdentExpr>(
                                 variable.Cast()->Location,
                                 boundName);
-                            savedBound->Type = MakeIntrusive<TIntegerType>();
+                            savedBound->Type = Context_.Types().MakeInteger();
                             *bound = std::move(savedBound);
                             changed = true;
                         }
@@ -478,16 +479,16 @@ private:
                     auto allocationSize = MakeIntrusive<TVarStmt>(
                         variable.Cast()->Location,
                         *auxName,
-                        MakeIntrusive<TIntegerType>());
+                        Context_.Types().MakeInteger());
                     if (FunctionBoundary_) {
-                        allocationSize->Init = ArrayAllocationSize(*variable.Cast());
+                        allocationSize->Init = ArrayAllocationSize(Context_.Types(), *variable.Cast());
                     }
                     statements.push_back(std::move(allocationSize));
                     if (!FunctionBoundary_) {
                         statements.push_back(MakeIntrusive<TAssignExpr>(
                             variable.Cast()->Location,
                             *auxName,
-                            ArrayAllocationSize(*variable.Cast())));
+                            ArrayAllocationSize(Context_.Types(), *variable.Cast())));
                     }
                     changed = true;
                 }
@@ -530,7 +531,7 @@ private:
                     continue;
                 }
                 auto init = std::move(variable.Cast()->Init);
-                variable.Cast()->Init = MakeNullString(
+                variable.Cast()->Init = MakeNullString(Context_.Types(), 
                     variable.Cast()->Location,
                     variable.Cast()->Type);
                 statements.push_back(statement);
@@ -552,7 +553,7 @@ private:
                     statements.push_back(MakeIntrusive<TReplaceExpr>(
                         variable.Cast()->Location,
                         std::move(target),
-                        std::move(owned.value())));
+                        std::move(owned.value()), Context_.Types()));
                 }
                 if (FunctionBoundary_) {
                     Scopes_.back().Locals.push_back({
@@ -590,7 +591,7 @@ private:
                         loc,
                         MakeIntrusive<TMoveExpr>(
                             loc,
-                            std::move(statement)));
+                            std::move(statement)), Context_.Types());
                     changed = true;
                 }
             }
@@ -643,7 +644,7 @@ private:
         expr = MakeIntrusive<TReplaceExpr>(
             assign->Location,
             std::move(target),
-            std::move(owned.value()));
+            std::move(owned.value()), Context_.Types());
         return true;
     }
 
@@ -708,7 +709,7 @@ private:
         expr = MakeIntrusive<TReplaceExpr>(
             assign->Location,
             std::move(target),
-            std::move(owned.value()));
+            std::move(owned.value()), Context_.Types());
         return true;
     }
 
@@ -754,7 +755,7 @@ private:
         expr = MakeIntrusive<TReplaceExpr>(
             assign->Location,
             std::move(target),
-            std::move(owned.value()));
+            std::move(owned.value()), Context_.Types());
         return true;
     }
 
@@ -847,7 +848,7 @@ private:
             auto temporary = MakeIntrusive<TVarStmt>(
                 call->Location,
                 name,
-                MakeIntrusive<TStringType>());
+                Context_.Types().Make<TStringType>());
             temporary->Init = std::move(owned.value());
             prefix.push_back(temporary);
 
@@ -865,7 +866,7 @@ private:
             ownedStorage->Type = parameterType;
             cleanups.push_back(MakeIntrusive<TDestroyExpr>(
                 call->Location,
-                std::move(ownedStorage)));
+                std::move(ownedStorage), Context_.Types()));
             changed = true;
         }
 

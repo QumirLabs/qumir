@@ -1,4 +1,5 @@
 #include <qumir/codegen/llvm/llvm_initializer.h>
+#include "test_types.h"
 #include <qumir/modules/builtins/builtins.h>
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
@@ -43,7 +44,7 @@ constexpr const char* Source = R"(
 NAst::TExprPtr Parse(const std::string& source) {
     std::istringstream input(source);
     NAst::NCore::TTokenStream tokens(input);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());
     return parsed
@@ -147,7 +148,7 @@ TEST_P(TByteMatchJit, AllSubsetsAndMaskIteration) {
 }
 
 TEST_P(TByteMatchJit, NativeBackend) {
-    NRegistry::BuiltinsModule builtins;
+    NRegistry::BuiltinsModule builtins(NQumir::NTest::TestTypes());
     for (const auto& function : builtins.ExternalFunctions()) {
         if (function.Name == "builtin::byte_match_backend") {
             EXPECT_EQ(Backend(), function.Packed(nullptr, 0));
@@ -191,7 +192,7 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::Values(0, 3), testing::Bool()));
 
 TEST(ByteMatch, PackedInterpreterFallback) {
-    NRegistry::BuiltinsModule builtins;
+    NRegistry::BuiltinsModule builtins(NQumir::NTest::TestTypes());
     std::unordered_map<std::string, NRegistry::TExternalFunction::TPacked> packed;
     for (const auto& function : builtins.ExternalFunctions()) {
         packed.emplace(function.Name, function.Packed);

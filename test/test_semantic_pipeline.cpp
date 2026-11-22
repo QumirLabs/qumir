@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/modules/module.h>
 #include <qumir/modules/system/system.h>
@@ -32,11 +33,11 @@ public:
         : Functions({TExternalFunction {
             .Name = "__lifetime_0",
             .MangledName = "collision_lifetime_0",
-            .ReturnType = MakeIntrusive<TVoidType>(),
+            .ReturnType = NQumir::NTest::TestTypes().Make<TVoidType>(),
         }})
         , Types({TExternalType {
             .Name = "__lifetime_1",
-            .Type = MakeIntrusive<TIntegerType>(),
+            .Type = NQumir::NTest::TestTypes().MakeInteger(),
         }})
     { }
 
@@ -68,7 +69,7 @@ TIntrusivePtr<TFunDecl> MakeVoidFunction(
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         body,
-        MakeIntrusive<TVoidType>());
+        NQumir::NTest::TestTypes().Make<TVoidType>());
 }
 
 std::string Print(const TExprPtr& expr) {
@@ -80,7 +81,7 @@ std::string Print(const TExprPtr& expr) {
 TExprPtr ParseCore(const std::string& source) {
     std::istringstream input(source);
     NAst::NCore::TTokenStream tokens(input);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     if (!parsed) {
         ADD_FAILURE() << parsed.error().ToString();
@@ -127,7 +128,7 @@ TIntrusivePtr<TCallExpr> FindCallWithCalleePrefix(const TExprPtr& expr, const st
 
 TEST(SyntheticNameGenerator, AvoidsSourceAndImportedNamesPerPass) {
     TCollisionModule module;
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&module);
     auto importResult = resolver.ImportModule(module.Name());
     ASSERT_TRUE(importResult.has_value()) << importResult.error();
@@ -135,7 +136,7 @@ TEST(SyntheticNameGenerator, AvoidsSourceAndImportedNamesPerPass) {
     auto sourceVar = MakeIntrusive<TVarStmt>(
         TLocation{},
         "__lifetime_2",
-        MakeIntrusive<TIntegerType>());
+        NQumir::NTest::TestTypes().MakeInteger());
     TExprPtr root = MakeRoot({sourceVar});
     ASSERT_FALSE(resolver.Resolve(root).has_value());
 
@@ -150,7 +151,7 @@ TEST(SyntheticNameGenerator, AvoidsSourceAndImportedNamesPerPass) {
 TEST(FinalSemanticPipeline, InitialPassesDoNotChangeAst) {
     TExprPtr root = MakeRoot({});
     const auto original = root;
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     TSyntheticNameGenerator names(resolver, root);
 
     auto returnResult = ReturnNormalizationPass(root, resolver);
@@ -165,7 +166,7 @@ TEST(FinalSemanticPipeline, InitialPassesDoNotChangeAst) {
 
 TEST(SourceTransformExtensions, RunInStablePhaseOrder) {
     TExprPtr root = MakeRoot({});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     std::vector<std::string> phases;
     NTransform::TPipelineOptions options;
     options.Extensions.BeforeNameResolution.push_back(
@@ -203,7 +204,7 @@ TEST(SourceTransformExtensions, RunInStablePhaseOrder) {
 
 TEST(SourceTransformExtensions, PropagateErrorsAndStopLaterPasses) {
     TExprPtr root = MakeRoot({});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     bool laterPassRan = false;
     NTransform::TPipelineOptions options;
     options.Extensions.BeforeNameResolution.push_back(
@@ -236,7 +237,7 @@ TEST(PostNameResolutionTransform, WrapsOnlyBareZeroArgumentFunctionIdentifiers) 
     auto caller = MakeVoidFunction("caller", callerBody);
     TExprPtr root = MakeRoot({callee, caller});
 
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     ASSERT_FALSE(resolver.Resolve(root).has_value());
 
     auto result = NTransform::PostNameResolutionTransform(root, resolver);
@@ -259,8 +260,8 @@ TEST(KumirPipeline, InjectsCoroutineAnnotationAfterTypeAnnotation) {
 }
 
 TEST(KumirPipeline, ParserEmitsDistinctPowerOperator) {
-    NRegistry::SystemModule system;
-    TNameResolver resolver;
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
     ASSERT_TRUE(resolver.ImportModule(system.Name()).has_value());
     std::istringstream input(
@@ -270,7 +271,7 @@ TEST(KumirPipeline, ParserEmitsDistinctPowerOperator) {
         "  x := 2 ** 3\n"
         "кон\n");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.parse(tokens, &resolver);
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
     auto root = TMaybeNode<TBlockExpr>(*parsed).Cast();
@@ -285,8 +286,8 @@ TEST(KumirPipeline, ParserEmitsDistinctPowerOperator) {
 }
 
 TEST(KumirParser, ParameterAccessModesAreExplicit) {
-    NRegistry::SystemModule system;
-    TNameResolver resolver;
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
     ASSERT_TRUE(resolver.ImportModule(system.Name()).has_value());
     std::istringstream input(
@@ -294,7 +295,7 @@ TEST(KumirParser, ParameterAccessModesAreExplicit) {
         "нач\n"
         "кон\n");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.parse(tokens, &resolver);
 
@@ -316,8 +317,8 @@ TEST(KumirParser, ParameterAccessModesAreExplicit) {
 }
 
 TEST(ModuleAliases, ResolveImportAndListThroughAlias) {
-    NRegistry::SystemModule system;
-    TNameResolver resolver;
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
 
     // Without an alias the legacy Kumir name is unknown.
@@ -329,7 +330,7 @@ TEST(ModuleAliases, ResolveImportAndListThroughAlias) {
 }
 
 TEST(ModuleAliases, RejectsAliasToUnregisteredModule) {
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     EXPECT_THROW(resolver.RegisterModuleAlias("Файлы", "System"), std::runtime_error);
 }
 
@@ -342,13 +343,13 @@ TEST(ModuleAliases, KumirFrontendAliasesAreSystem) {
 // The same legacy name resolves only when the frontend registers the alias;
 // core and Kumir sessions differ purely by configuration.
 TEST(ModuleAliases, SameUseDiffersBetweenCoreAndKumirSessions) {
-    NRegistry::SystemModule system;
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
 
-    TNameResolver core;
+    TNameResolver core(NQumir::NTest::TestTypes());
     core.RegisterModule(&system);
     EXPECT_FALSE(core.ImportModule("Файлы").has_value());
 
-    TNameResolver kumir;
+    TNameResolver kumir(NQumir::NTest::TestTypes());
     kumir.RegisterModule(&system);
     for (const auto& [alias, canonical] : NKumir::ModuleAliases()) {
         kumir.RegisterModuleAlias(alias, canonical);
@@ -357,25 +358,25 @@ TEST(ModuleAliases, SameUseDiffersBetweenCoreAndKumirSessions) {
 }
 
 TEST(ModulesList, ListsOnlyModulesProgramsImport) {
-    NRegistry::SystemModule system;
-    NRegistry::TurtleModule turtle;
-    TNameResolver resolver;
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
+    NRegistry::TurtleModule turtle(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
     resolver.RegisterModule(&turtle);
     EXPECT_EQ(resolver.ModulesList(), "Черепаха");
 }
 
 TEST(KumirPipeline, ExpandsPowerWithoutReusingCoreOperator) {
-    NRegistry::SystemModule system;
-    TNameResolver resolver;
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
     ASSERT_TRUE(resolver.ImportModule(system.Name()).has_value());
-    auto right = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3});
-    right->Type = MakeIntrusive<TIntegerType>();
+    auto right = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes());
+    right->Type = NQumir::NTest::TestTypes().MakeInteger();
     TExprPtr ast = MakeIntrusive<TBinaryExpr>(
         TLocation{},
         TOperator("**"),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
         std::move(right));
 
     auto result = NSemantics::NKumir::PowerTransform(ast, resolver);
@@ -391,15 +392,15 @@ TEST(KumirPipeline, ExpandsPowerWithoutReusingCoreOperator) {
 }
 
 TEST(KumirPipeline, ExpandsFloatPowerToPow) {
-    NRegistry::SystemModule system;
-    TNameResolver resolver;
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
     ASSERT_TRUE(resolver.ImportModule(system.Name()).has_value());
     TExprPtr ast = MakeIntrusive<TBinaryExpr>(
         TLocation{},
         TOperator("**"),
-        MakeIntrusive<TNumberExpr>(TLocation{}, 2.0),
-        MakeIntrusive<TNumberExpr>(TLocation{}, 0.5));
+        MakeIntrusive<TNumberExpr>(TLocation{}, 2.0, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, 0.5, NQumir::NTest::TestTypes()));
 
     auto result = NTransform::RunSourceTransformFixpoint(
         ast,
@@ -415,7 +416,7 @@ TEST(KumirPipeline, ExpandsFloatPowerToPow) {
 }
 
 TEST(ReturnNormalization, MakesFallthroughReturnsExplicit) {
-    auto implicitValue = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{42});
+    auto implicitValue = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{42}, NQumir::NTest::TestTypes());
     auto valueBody = MakeRoot({implicitValue});
     auto valueFunction = MakeIntrusive<TFunDecl>(
         TLocation{},
@@ -423,11 +424,11 @@ TEST(ReturnNormalization, MakesFallthroughReturnsExplicit) {
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         valueBody,
-        MakeIntrusive<TIntegerType>());
+        NQumir::NTest::TestTypes().MakeInteger());
     auto voidBody = MakeRoot({});
     auto voidFunction = MakeVoidFunction("action", voidBody);
     TExprPtr root = MakeRoot({valueFunction, voidFunction});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = ReturnNormalizationPass(root, resolver);
     ASSERT_TRUE(result.has_value()) << result.error().ToString();
@@ -439,7 +440,7 @@ TEST(ReturnNormalization, MakesFallthroughReturnsExplicit) {
 TEST(ReturnNormalization, PreservesDirectAndFullyTerminatingBranchReturns) {
     auto directReturn = MakeIntrusive<TReturnExpr>(
         TLocation{},
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}));
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()));
     auto directBody = MakeRoot({directReturn});
     auto directFunction = MakeIntrusive<TFunDecl>(
         TLocation{},
@@ -447,32 +448,32 @@ TEST(ReturnNormalization, PreservesDirectAndFullyTerminatingBranchReturns) {
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         directBody,
-        MakeIntrusive<TIntegerType>());
-    auto assertCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    assertCondition->Type = MakeIntrusive<TBoolType>();
+        NQumir::NTest::TestTypes().MakeInteger());
+    auto assertCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
+    assertCondition->Type = NQumir::NTest::TestTypes().Make<TBoolType>();
     directFunction->LastAssert = MakeIntrusive<TAssertStmt>(
         TLocation{},
         assertCondition);
 
-    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    condition->Type = MakeIntrusive<TBoolType>();
-    auto elseIfCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0});
-    elseIfCondition->Type = MakeIntrusive<TBoolType>();
+    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
+    condition->Type = NQumir::NTest::TestTypes().Make<TBoolType>();
+    auto elseIfCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}, NQumir::NTest::TestTypes());
+    elseIfCondition->Type = NQumir::NTest::TestTypes().Make<TBoolType>();
     auto elseIf = MakeIntrusive<TIfExpr>(
         TLocation{},
         elseIfCondition,
         MakeRoot({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}))}),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes()))}),
         MakeRoot({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}))}));
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}, NQumir::NTest::TestTypes()))}));
     auto branch = MakeIntrusive<TIfExpr>(
         TLocation{},
         condition,
         MakeRoot({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}))}),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()))}),
         elseIf);
     auto branchBody = MakeRoot({MakeRoot({MakeRoot({branch})})});
     auto branchFunction = MakeIntrusive<TFunDecl>(
@@ -481,9 +482,9 @@ TEST(ReturnNormalization, PreservesDirectAndFullyTerminatingBranchReturns) {
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         branchBody,
-        MakeIntrusive<TIntegerType>());
+        NQumir::NTest::TestTypes().MakeInteger());
     TExprPtr root = MakeRoot({directFunction, branchFunction});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = ReturnNormalizationPass(root, resolver);
     ASSERT_TRUE(result.has_value()) << result.error().ToString();
@@ -504,7 +505,7 @@ TEST(FinalSemanticPipeline, ResolvesAndAnnotatesInsertedNestedBlock) {
     auto body = MakeRoot({});
     auto function = MakeVoidFunction("main", body);
     TExprPtr root = MakeRoot({function});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto sourceResult = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(sourceResult.has_value()) << sourceResult.error().ToString();
@@ -514,8 +515,8 @@ TEST(FinalSemanticPipeline, ResolvesAndAnnotatesInsertedNestedBlock) {
     auto syntheticVar = MakeIntrusive<TVarStmt>(
         TLocation{},
         syntheticName,
-        MakeIntrusive<TIntegerType>());
-    syntheticVar->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{7});
+        NQumir::NTest::TestTypes().MakeInteger());
+    syntheticVar->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{7}, NQumir::NTest::TestTypes());
     auto syntheticUse = MakeIntrusive<TIdentExpr>(TLocation{}, syntheticName);
     auto nested = MakeRoot({syntheticVar, syntheticUse});
     body->Stmts.push_back(nested);
@@ -548,7 +549,7 @@ TEST(ParametricTypes, ConcreteNamedTypeInstantiationResolvesUnderlyingFields) {
 )__");
     ASSERT_NE(root, nullptr);
 
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
     ASSERT_TRUE(nameResult.has_value()) << nameResult.error().ToString();
     auto typeResult = NTransform::FinalTypeAnnotation(root, resolver);
@@ -587,7 +588,7 @@ TEST(ParametricTypes, GenericFunctionInstantiatesParametricNamedType) {
 )__");
     ASSERT_NE(root, nullptr);
 
-    TNameResolver resolver({.AllowOverloads = true});
+    TNameResolver resolver(NQumir::NTest::TestTypes(), {.AllowOverloads = true});
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
     ASSERT_TRUE(nameResult.has_value()) << nameResult.error().ToString();
     auto typeResult = NTransform::FinalTypeAnnotation(root, resolver);
@@ -609,7 +610,7 @@ TEST(ParametricTypes, RejectsParameterizedGenericPlaceholder) {
 )__");
     ASSERT_NE(root, nullptr);
 
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
     ASSERT_FALSE(nameResult.has_value());
     EXPECT_NE(nameResult.error().ToString().find("Generic type parameter 'T' does not accept parameters"), std::string::npos);
@@ -627,7 +628,7 @@ TEST(ParametricTypes, RejectsAlphaEquivalentGenericOverloads) {
 )__");
     ASSERT_NE(root, nullptr);
 
-    TNameResolver resolver({.AllowOverloads = true});
+    TNameResolver resolver(NQumir::NTest::TestTypes(), {.AllowOverloads = true});
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
     ASSERT_FALSE(nameResult.has_value());
     EXPECT_NE(nameResult.error().ToString().find("overload of 'id' has identical parameter types"), std::string::npos);
@@ -646,7 +647,7 @@ TEST(ParametricTypes, RejectsAlphaEquivalentGenericOperatorOverloads) {
 )__");
     ASSERT_NE(root, nullptr);
 
-    TNameResolver resolver({.AllowOverloads = true});
+    TNameResolver resolver(NQumir::NTest::TestTypes(), {.AllowOverloads = true});
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
     ASSERT_FALSE(nameResult.has_value());
     EXPECT_NE(nameResult.error().ToString().find("operator overload '+' has identical parameter types"), std::string::npos);
@@ -670,7 +671,7 @@ TEST(ParametricTypes, PrefersParametricGenericOverBareGenericOverload) {
 )__");
     ASSERT_NE(root, nullptr);
 
-    TNameResolver resolver({.AllowOverloads = true});
+    TNameResolver resolver(NQumir::NTest::TestTypes(), {.AllowOverloads = true});
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
     ASSERT_TRUE(nameResult.has_value()) << nameResult.error().ToString();
     auto typeResult = NTransform::FinalTypeAnnotation(root, resolver);
@@ -703,7 +704,7 @@ TEST(ParametricTypes, RetypesIntegerLiteralToExistingFloatGenericBinding) {
 )__");
     ASSERT_NE(root, nullptr);
 
-    TNameResolver resolver({.AllowOverloads = true});
+    TNameResolver resolver(NQumir::NTest::TestTypes(), {.AllowOverloads = true});
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
     ASSERT_TRUE(nameResult.has_value()) << nameResult.error().ToString();
     auto typeResult = NTransform::FinalTypeAnnotation(root, resolver);
@@ -718,12 +719,12 @@ TEST(ParametricTypes, RetypesIntegerLiteralToExistingFloatGenericBinding) {
 }
 
 TEST(FinalSemanticPipeline, DoesNotRerunSourceTransforms) {
-    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, true);
+    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, true, NQumir::NTest::TestTypes());
     auto assertNode = MakeIntrusive<TAssertStmt>(TLocation{}, condition);
-    assertNode->Type = MakeIntrusive<TVoidType>();
+    assertNode->Type = NQumir::NTest::TestTypes().Make<TVoidType>();
     auto body = MakeRoot({assertNode, MakeIntrusive<TReturnExpr>(TLocation{}, nullptr)});
     TExprPtr root = MakeRoot({MakeVoidFunction("main", body)});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = NTransform::RunFinalSemanticPipeline(root, resolver);
     ASSERT_TRUE(result.has_value()) << result.error().ToString();

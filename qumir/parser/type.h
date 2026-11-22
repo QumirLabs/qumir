@@ -545,13 +545,6 @@ inline TTypePtr FutureResultType(const TTypePtr& type) {
     return nullptr;
 }
 
-inline TTypePtr WrapFutureType(const TTypePtr& type) {
-    if (IsFutureType(type)) {
-        return type;
-    }
-    return MakeIntrusive<TFutureType>(type);
-}
-
 inline std::string TypeDiagnosticName(const TTypePtr& type);
 
 inline std::string GenericArgDiagnosticName(const TGenericArg& arg) {

@@ -73,14 +73,14 @@ NFrontend::TFrontendOptions FrontendOptions(
 std::vector<std::shared_ptr<NRegistry::IModule>> SetupModules(
     NSemantics::TNameResolver& r, bool coreInput) {
     std::vector<std::shared_ptr<NRegistry::IModule>> modules = {
-        std::make_shared<NRegistry::BuiltinsModule>(),
-        std::make_shared<NRegistry::SystemModule>(),
-        std::make_shared<NRegistry::TurtleModule>(),
-        std::make_shared<NRegistry::RobotModule>(),
-        std::make_shared<NRegistry::DrawerModule>(),
-        std::make_shared<NRegistry::PainterModule>(),
-        std::make_shared<NRegistry::ColorsModule>(),
-        std::make_shared<NRegistry::KeyboardModule>(),
+        std::make_shared<NRegistry::BuiltinsModule>(r.Types()),
+        std::make_shared<NRegistry::SystemModule>(r.Types()),
+        std::make_shared<NRegistry::TurtleModule>(r.Types()),
+        std::make_shared<NRegistry::RobotModule>(r.Types()),
+        std::make_shared<NRegistry::DrawerModule>(r.Types()),
+        std::make_shared<NRegistry::PainterModule>(r.Types()),
+        std::make_shared<NRegistry::ColorsModule>(r.Types()),
+        std::make_shared<NRegistry::KeyboardModule>(r.Types()),
     };
     for (const auto& mod : modules) {
         r.RegisterModule(mod.get());

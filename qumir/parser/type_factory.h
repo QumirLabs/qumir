@@ -8,9 +8,16 @@
 namespace NQumir {
 namespace NAst {
 
+// Interns immutable types: two calls with equal arguments return the same object, so
+// type equality is pointer equality. One factory is shared by every layer of a
+// compilation (modules, parsers, name resolution, passes) through their contexts.
+// Types that are completed after creation (TNamedType, generic-sized TVectorType) are
+// not interned.
 class TTypeFactory {
 public:
+    // Parameterless singleton types: bool, string, char, void.
     template<typename T>
+    requires (!std::is_same_v<T, TIntegerType> && !std::is_same_v<T, TFloatType>)
     TConcreteTypePtr<T> Make() {
         auto& ret = Types_[T::TypeId];
         if (!ret) {
@@ -19,12 +26,12 @@ public:
         return StaticPointerCast<T>(ret);
     }
 
-    TConcreteTypePtr<TIntegerType> MakeInteger(TIntegerType::EKind kind) {
+    TConcreteTypePtr<TIntegerType> MakeInteger(TIntegerType::EKind kind = TIntegerType::I64) {
         auto& ret = IntegerTypes_[kind];
         return ret ? ret : (ret = MakeIntrusive<TIntegerType>(kind));
     }
 
-    TConcreteTypePtr<TFloatType> MakeFloat(TFloatType::EKind kind) {
+    TConcreteTypePtr<TFloatType> MakeFloat(TFloatType::EKind kind = TFloatType::F64) {
         auto& ret = FloatTypes_[kind];
         return ret ? ret : (ret = MakeIntrusive<TFloatType>(kind));
     }
@@ -37,6 +44,14 @@ public:
     TConcreteTypePtr<TFutureType> MakeFuture(const TTypePtr& type) {
         auto& ret = FutureTypes_[type];
         return ret ? ret : (ret = MakeIntrusive<TFutureType>(type));
+    }
+
+    // `future T`, or the type itself if it is already a future.
+    TTypePtr WrapFuture(const TTypePtr& type) {
+        if (TMaybeType<TFutureType>(type)) {
+            return type;
+        }
+        return MakeFuture(type);
     }
 
     TConcreteTypePtr<TArrayType> MakeArray(const TTypePtr& elementType, int arity) {
@@ -69,6 +84,16 @@ public:
         return ret ? ret : (ret = MakeIntrusive<TStructType>(std::move(fields)));
     }
 
+    // Not interned: the size can be a generic parameter bound after creation (BindSize).
+    TConcreteTypePtr<TVectorType> MakeUnboundVector(const TTypePtr& elementType) {
+        return MakeIntrusive<TVectorType>(elementType, 0);
+    }
+
+    TConcreteTypePtr<TTensorType> MakeTensor(const TTypePtr& elementType, std::vector<int>&& shape) {
+        auto& ret = TensorTypes_[{elementType, shape}];
+        return ret ? ret : (ret = MakeIntrusive<TTensorType>(elementType, std::move(shape)));
+    }
+
     TConcreteTypePtr<TVectorType> MakeVector(const TTypePtr& elementType, int size) {
         auto& ret = VectorTypes_[{elementType, size}];
         return ret ? ret : (ret = MakeIntrusive<TVectorType>(elementType, size));
@@ -85,6 +110,7 @@ private:
     std::map<TTypePtr, TConcreteTypePtr<TReferenceType>> ReferenceTypes_;
     std::map<std::vector<std::pair<std::string, TTypePtr>>, TConcreteTypePtr<TStructType>> TStructTypes_;
     std::map<std::pair<TTypePtr, int>, TConcreteTypePtr<TVectorType>> VectorTypes_;
+    std::map<std::pair<TTypePtr, std::vector<int>>, TConcreteTypePtr<TTensorType>> TensorTypes_;
 };
 
 } // namespace NAst

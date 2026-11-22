@@ -7,7 +7,7 @@ namespace NRegistry {
 
 class KeyboardModule : public IModule {
 public:
-    KeyboardModule();
+    explicit KeyboardModule(NAst::TTypeFactory& types);
 
     const std::string& Name() const override {
         static const std::string name = "Клавиатура";

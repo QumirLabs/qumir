@@ -60,7 +60,8 @@ private:
     NIR::TInterpreter Interpreter;
     std::unordered_set<int> PrintedChunks;
 
-    NSemantics::TNameResolver Resolver;
+    NAst::TTypeFactory Types;
+    NSemantics::TNameResolver Resolver{Types};
 
     std::vector<std::shared_ptr<NRegistry::IModule>> RegisteredModules;
     std::vector<std::shared_ptr<NRegistry::IModule>> AvailableModules;

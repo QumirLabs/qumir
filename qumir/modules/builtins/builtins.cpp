@@ -10,14 +10,14 @@
 namespace NQumir {
 namespace NRegistry {
 
-BuiltinsModule::BuiltinsModule() {
-    auto i64Type = MakeIntrusive<NAst::TIntegerType>();
-    auto i32Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::I32);
-    auto u8Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::U8);
-    auto u32Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::U32);
-    auto u64Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::U64);
-    auto ptrU8Type = MakeIntrusive<NAst::TPointerType>(u8Type);
-    auto voidType = MakeIntrusive<NAst::TVoidType>();
+BuiltinsModule::BuiltinsModule(NAst::TTypeFactory& types) {
+    auto i64Type = types.MakeInteger();
+    auto i32Type = types.MakeInteger(NAst::TIntegerType::I32);
+    auto u8Type = types.MakeInteger(NAst::TIntegerType::U8);
+    auto u32Type = types.MakeInteger(NAst::TIntegerType::U32);
+    auto u64Type = types.MakeInteger(NAst::TIntegerType::U64);
+    auto ptrU8Type = types.MakePointer(u8Type);
+    auto voidType = types.Make<NAst::TVoidType>();
 
     ExternalFunctions_ = {
         {

@@ -7,14 +7,14 @@ namespace NRegistry {
 
 using namespace NRuntime;
 
-DrawerModule::DrawerModule()
+DrawerModule::DrawerModule(NAst::TTypeFactory& types)
 {
-    auto integerType = MakeIntrusive<NAst::TIntegerType>();
-    auto floatType = MakeIntrusive<NAst::TFloatType>();
-    auto voidType = MakeIntrusive<NAst::TVoidType>();
-    auto stringType = MakeIntrusive<NAst::TStringType>();
-    auto colorType = MakeIntrusive<NAst::TNamedType>("цвет", integerType);
-    auto futureVoidType = NAst::WrapFutureType(voidType);
+    auto integerType = types.MakeInteger();
+    auto floatType = types.MakeFloat();
+    auto voidType = types.Make<NAst::TVoidType>();
+    auto stringType = types.Make<NAst::TStringType>();
+    auto colorType = types.MakeNamed("цвет", integerType);
+    auto futureVoidType = types.WrapFuture(voidType);
 
     std::vector<TExternalFunction> functions = {
         {

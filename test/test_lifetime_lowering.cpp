@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/ir/builder.h>
 #include <qumir/ir/lowering/lower_ast.h>
@@ -31,13 +32,13 @@ TIntrusivePtr<TIdentExpr> Ident(std::string name) {
 TIntrusivePtr<TOwnLiteralExpr> OwnedLiteral(std::string value = "value") {
     return MakeIntrusive<TOwnLiteralExpr>(
         TLocation{},
-        MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value)));
+        MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value), NQumir::NTest::TestTypes()));
 }
 
 TIntrusivePtr<TDestroyExpr> Destroy(const TExprPtr& value, const TExprPtr& aux = nullptr) {
     return MakeIntrusive<TDestroyExpr>(
         TLocation{},
-        value,
+        value, NQumir::NTest::TestTypes(),
         aux);
 }
 
@@ -51,7 +52,7 @@ TIntrusivePtr<TFunDecl> Function(
         std::vector<TGenericParam>{},
         std::move(parameters),
         MakeIntrusive<TBlockExpr>(TLocation{}, std::move(statements)),
-        MakeIntrusive<TVoidType>());
+        NQumir::NTest::TestTypes().Make<TVoidType>());
 }
 
 std::string InstructionName(
@@ -82,8 +83,8 @@ std::expected<TLowered, TError> Lower(
     TExprPtr root = MakeIntrusive<TBlockExpr>(
         TLocation{},
         std::vector<TExprPtr>{function});
-    NSemantics::TNameResolver resolver;
-    NRegistry::SystemModule system;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
     auto import = resolver.ImportModule(system.Name());
     if (!import) {
@@ -141,8 +142,8 @@ std::expected<TLowered, TError> LowerNamedFunction(
     TExprPtr root,
     std::string_view functionName)
 {
-    NSemantics::TNameResolver resolver;
-    NRegistry::SystemModule system;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&system);
     auto import = resolver.ImportModule(system.Name());
     if (!import) {
@@ -200,7 +201,7 @@ TIntrusivePtr<TVarStmt> Parameter(std::string name, const TTypePtr& type) {
 } // namespace
 
 TEST(LifetimeLowering, RetainUsesRuntimeAbi) {
-    auto parameter = Parameter("value", MakeIntrusive<TStringType>());
+    auto parameter = Parameter("value", NQumir::NTest::TestTypes().Make<TStringType>());
     auto retain = MakeIntrusive<TRetainExpr>(TLocation{}, Ident("value"));
     ExpectTrace(
         {parameter},
@@ -228,13 +229,13 @@ TEST(LifetimeLowering, MoveAddsNoInstructions) {
 }
 
 TEST(LifetimeLowering, BorrowAddsNoInstructions) {
-    auto parameter = Parameter("value", MakeIntrusive<TStringType>());
+    auto parameter = Parameter("value", NQumir::NTest::TestTypes().Make<TStringType>());
     auto direct = Lower(
         {parameter},
         {Destroy(MakeIntrusive<TRetainExpr>(TLocation{}, Ident("value")))});
     ASSERT_TRUE(direct.has_value()) << direct.error().ToString();
 
-    parameter = Parameter("value", MakeIntrusive<TStringType>());
+    parameter = Parameter("value", NQumir::NTest::TestTypes().Make<TStringType>());
     auto borrowed = Lower(
         {parameter},
         {Destroy(MakeIntrusive<TRetainExpr>(
@@ -245,7 +246,7 @@ TEST(LifetimeLowering, BorrowAddsNoInstructions) {
 }
 
 TEST(LifetimeLowering, DestroyStringUsesRelease) {
-    auto value = Parameter("value", MakeIntrusive<TStringType>());
+    auto value = Parameter("value", NQumir::NTest::TestTypes().Make<TStringType>());
     value->Init = OwnedLiteral();
     ExpectTrace(
         {},
@@ -254,7 +255,7 @@ TEST(LifetimeLowering, DestroyStringUsesRelease) {
 }
 
 TEST(LifetimeLowering, ValidatesLifetimeAstBeforeLowering) {
-    auto parameter = Parameter("value", MakeIntrusive<TStringType>());
+    auto parameter = Parameter("value", NQumir::NTest::TestTypes().Make<TStringType>());
     auto result = Lower({parameter}, {Destroy(Ident("value"))});
     ASSERT_FALSE(result.has_value());
     EXPECT_NE(
@@ -263,13 +264,13 @@ TEST(LifetimeLowering, ValidatesLifetimeAstBeforeLowering) {
 }
 
 TEST(LifetimeLowering, DestroyPlainArrayUsesArrayDestroy) {
-    auto arrayType = MakeIntrusive<TArrayType>(
-        MakeIntrusive<TIntegerType>(),
+    auto arrayType = NQumir::NTest::TestTypes().MakeArray(
+        NQumir::NTest::TestTypes().MakeInteger(),
         1);
     auto items = Parameter("items", arrayType);
     items->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
     });
     auto result = Lower({}, {items, Destroy(Ident("items"))});
     ASSERT_TRUE(result.has_value()) << result.error().ToString();
@@ -278,32 +279,32 @@ TEST(LifetimeLowering, DestroyPlainArrayUsesArrayDestroy) {
 }
 
 TEST(LifetimeLowering, DestroyStringArrayPassesAllocationSize) {
-    auto arrayType = MakeIntrusive<TArrayType>(
-        MakeIntrusive<TStringType>(),
+    auto arrayType = NQumir::NTest::TestTypes().MakeArray(
+        NQumir::NTest::TestTypes().Make<TStringType>(),
         1);
     auto items = Parameter("items", arrayType);
     items->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}, NQumir::NTest::TestTypes()),
     });
     auto result = Lower(
         {},
         {items, Destroy(
             Ident("items"),
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{32}))});
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{32}, NQumir::NTest::TestTypes()))});
     ASSERT_TRUE(result.has_value()) << result.error().ToString();
     EXPECT_NE(result->Trace.find("call:array_create"), std::string::npos);
     EXPECT_NE(result->Trace.find("call:array_str_destroy"), std::string::npos);
 }
 
 TEST(LifetimeLowering, DestroyStringArrayRequiresAllocationSize) {
-    auto arrayType = MakeIntrusive<TArrayType>(
-        MakeIntrusive<TStringType>(),
+    auto arrayType = NQumir::NTest::TestTypes().MakeArray(
+        NQumir::NTest::TestTypes().Make<TStringType>(),
         1);
     auto items = Parameter("items", arrayType);
     items->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
     });
     auto result = Lower({}, {items, Destroy(Ident("items"))});
     ASSERT_FALSE(result.has_value());
@@ -315,11 +316,11 @@ TEST(LifetimeLowering, DestroyStringArrayRequiresAllocationSize) {
 TEST(LifetimeLowering, ReplaceEvaluatesRhsBeforeTargetAndDestroysOldValue) {
     auto parameter = Parameter(
         "target",
-        MakeIntrusive<TReferenceType>(MakeIntrusive<TStringType>()));
+        NQumir::NTest::TestTypes().MakeReference(NQumir::NTest::TestTypes().Make<TStringType>()));
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         Ident("target"),
-        OwnedLiteral("new value"));
+        OwnedLiteral("new value"), NQumir::NTest::TestTypes());
     ExpectTrace(
         {parameter},
         {replace},
@@ -327,7 +328,7 @@ TEST(LifetimeLowering, ReplaceEvaluatesRhsBeforeTargetAndDestroysOldValue) {
 }
 
 TEST(LifetimeLowering, RewrittenSideEffectingIndexIsEvaluatedOnce) {
-    auto pointerType = MakeIntrusive<TPointerType>(MakeIntrusive<TStringType>());
+    auto pointerType = NQumir::NTest::TestTypes().MakePointer(NQumir::NTest::TestTypes().Make<TStringType>());
     auto parameter = Parameter("items", pointerType);
     auto nextIndex = MakeIntrusive<TCallExpr>(
         TLocation{},
@@ -337,7 +338,7 @@ TEST(LifetimeLowering, RewrittenSideEffectingIndexIsEvaluatedOnce) {
         TLocation{},
         "items",
         std::vector<TExprPtr>{nextIndex},
-        MakeIntrusive<TStringLiteralExpr>(TLocation{}, "new value"));
+        MakeIntrusive<TStringLiteralExpr>(TLocation{}, "new value", NQumir::NTest::TestTypes()));
     ExpectTrace(
         {parameter},
         {assignment},
@@ -350,29 +351,29 @@ TEST(LifetimeLowering, StructuredCleanupExitLowersItsActionsBeforeExit) {
             TLocation{},
             ECleanupExitKind::Return,
             nullptr,
-            std::vector<TExprPtr>{Destroy(OwnedLiteral())}),
+            std::vector<TExprPtr>{Destroy(OwnedLiteral())}, NQumir::NTest::TestTypes()),
     }, "arg call:str_from_lit arg call:str_release jmp ret");
 }
 
 TEST(LifetimeLowering, GlobalCleanupBuildsModuleDestructorInLifoOrder) {
-    auto stringType = MakeIntrusive<TStringType>();
+    auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto first = MakeIntrusive<TVarStmt>(TLocation{}, "first", stringType);
-    first->Init = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "first");
+    first->Init = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "first", NQumir::NTest::TestTypes());
     auto plain = MakeIntrusive<TVarStmt>(
         TLocation{},
         "plain",
-        MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1));
+        NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1));
     plain->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
     });
     auto words = MakeIntrusive<TVarStmt>(
         TLocation{},
         "words",
-        MakeIntrusive<TArrayType>(stringType, 1));
+        NQumir::NTest::TestTypes().MakeArray(stringType, 1));
     words->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
     });
     TExprPtr root = MakeIntrusive<TBlockExpr>(
         TLocation{},

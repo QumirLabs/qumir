@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/parser/core/lexer.h>
@@ -22,7 +23,7 @@ TEST(CacheableMangle, OverloadedCacheableResolveByType) {
         "  (fun caller () -> i64 (block"
         "    (return (+ (call h (: 40 i64)) (call h (< (: 0 i64) (: 1 i64))))))))");
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed) << parsed.error().ToString();
 
@@ -48,7 +49,7 @@ TEST(CacheableMangle, CacheableWithoutOverloads) {
         "  (fun g ((var x i64)) -> i64 (attrs cacheable) (block (return (+ x (: 2 i64)))))"
         "  (fun caller () -> i64 (block (return (call g (: 40 i64))))))");
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed) << parsed.error().ToString();
 

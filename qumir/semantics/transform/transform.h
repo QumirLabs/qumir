@@ -27,7 +27,7 @@ struct TPipelineOptions {
     bool RunDefiniteAssignment = true;
 };
 
-std::expected<bool, TError> PreNameResolutionTransform(NAst::TExprPtr& expr);
+std::expected<bool, TError> PreNameResolutionTransform(NAst::TTypeFactory& types, NAst::TExprPtr& expr);
 std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NSemantics::TNameResolver& r);
 std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NSemantics::TNameResolver& r);
 std::expected<bool, TError> CoroutineAnnotationTransform(NAst::TExprPtr& expr, NSemantics::TNameResolver& r);

@@ -70,13 +70,13 @@ std::string ModuleName(const fs::path& path) {
     return path.stem().string();
 }
 
-std::expected<TExprPtr, TError> ParseFile(const fs::path& path, std::vector<TPragma>& pragmas) {
+std::expected<TExprPtr, TError> ParseFile(const fs::path& path, std::vector<TPragma>& pragmas, NAst::TTypeFactory& types) {
     std::ifstream in(path);
     if (!in) {
         return std::unexpected(TError(path.string() + ": не удалось открыть файл"));
     }
     NCore::TTokenStream stream(in);
-    NCore::TParser parser;
+    NCore::TParser parser(types);
     auto parsed = parser.Parse(stream);
     if (!parsed) {
         return std::unexpected(TError(path.string() + ": " + parsed.error().ToString()));
@@ -115,7 +115,9 @@ std::optional<TError> CollectInterface(const fs::path& path, TSourceModule& modu
 
 } // namespace
 
-TSourceModuleLoader::TSourceModuleLoader() {
+TSourceModuleLoader::TSourceModuleLoader(NAst::TTypeFactory& types)
+    : Types_(types)
+{
     if (auto dir = ExecutableDir()) {
         // Built-in module dirs: versioned install tree (../modules), prefix install
         // (../share/qumir/modules) and build tree (../../qumir/modules).
@@ -217,7 +219,7 @@ std::expected<const TSourceModule*, TError> TSourceModuleLoader::Load(const std:
     }
 
     std::vector<TPragma> pragmas;
-    auto parsed = ParseFile(*path, pragmas);
+    auto parsed = ParseFile(*path, pragmas, Types_);
     if (!parsed) {
         Cache[name].State = ESourceModuleState::Failed;
         return std::unexpected(parsed.error());

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/codegen/llvm/llvm_codegen.h>
 #include <qumir/ir/builder.h>
@@ -55,7 +56,7 @@ TEST(CollectCacheableSymbols, ByGenericNameAndByFlag) {
 const NAst::TFunDecl* ParseFun(const std::string& src, const std::string& name) {
     std::istringstream in(src);
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     static NAst::TExprPtr keepAlive;
     auto parsed = parser.Parse(tokens);
     EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());

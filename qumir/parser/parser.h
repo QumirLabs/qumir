@@ -17,6 +17,13 @@ namespace NAst {
 
 class TParser {
 public:
+    explicit TParser(TTypeFactory& types)
+        : Types(types)
+    { }
+
+    // Shared by the whole compilation; all types are created through it.
+    TTypeFactory& Types;
+
     // moduleManager: if non-null, `использовать X` imports X at parse time;
     // type names from imported modules are registered in the stream's TLexerContext.
     // loader: if non-null, `использовать X` where X resolves to an `.oz` source

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/parser/core/lexer.h>
@@ -46,7 +47,7 @@ NCodeGen::TLlvmRunner::TLinkedModule Compile(
 {
     std::istringstream in(source);
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());
     if (!parsed) {

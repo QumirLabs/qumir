@@ -235,12 +235,13 @@ std::expected<TComposeResult, TError> LoadAndCompose(
 }
 
 std::expected<TComposeResult, TError> LoadAndCompose(
+    NAst::TTypeFactory& types,
     const TExprPtr& mainAst,
     const std::vector<TPragma>& corePragmas,
     const std::vector<std::string>& searchPaths,
     const std::vector<std::string>& explicitModules)
 {
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(types);
     for (const auto& dir : searchPaths) {
         loader.AddSearchPath(dir);
     }

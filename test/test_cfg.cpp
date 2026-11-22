@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/parser/parser.h>
 #include <qumir/semantics/transform/transform.h>
@@ -22,12 +23,12 @@ namespace {
 
 // TODO: move to utils
 std::string BuildIR(NAst::TTokenStream& ts, NIR::TModule& module, bool emitDebugInfo = false) {
-    NSemantics::TNameResolver resolver;
-    NRegistry::SystemModule sys;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+    NRegistry::SystemModule sys(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&sys);
     resolver.ImportModule(sys.Name());
 
-    NAst::TParser p;
+    NAst::TParser p(NQumir::NTest::TestTypes());
     auto parsed = p.parse(ts, &resolver);
     if (!parsed) {
         return "Error: " + parsed.error().ToString() + "\n";
@@ -207,13 +208,13 @@ TEST(IRType, NestedStructAlignsLikeItsWidestField) {
 
 TEST(IRType, AstVectorAliasesUseTheSameIRType) {
     TTypeTable types;
-    auto vector = MakeIntrusive<NAst::TVectorType>(
-        MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::I32), 4);
-    auto alias = MakeIntrusive<NAst::TNamedType>("V", vector);
+    auto vector = NQumir::NTest::TestTypes().MakeVector(
+        NQumir::NTest::TestTypes().MakeInteger(NAst::TIntegerType::I32), 4);
+    auto alias = NQumir::NTest::TestTypes().MakeNamed("V", vector);
     const int expected = types.Vec(types.I(EKind::I32), 4);
     EXPECT_EQ(FromAstType(vector, types), expected);
     EXPECT_EQ(FromAstType(alias, types), expected);
-    EXPECT_EQ(FromAstType(MakeIntrusive<NAst::TPointerType>(alias), types), types.Ptr(expected));
+    EXPECT_EQ(FromAstType(NQumir::NTest::TestTypes().MakePointer(alias), types), types.Ptr(expected));
 }
 
 TEST(CfgTest, InstructionDebugInfoIsOptional) {

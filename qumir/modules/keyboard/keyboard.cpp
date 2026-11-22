@@ -58,8 +58,8 @@ namespace NRegistry {
 
 namespace {
 
-NAst::TExprPtr ScanCodeConst(const NAst::TTypePtr& scanCodeType, int64_t value) {
-    auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
+NAst::TExprPtr ScanCodeConst(NAst::TTypeFactory& types, const NAst::TTypePtr& scanCodeType, int64_t value) {
+    auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value, types);
     expr->Type = scanCodeType;
     return expr;
 }
@@ -78,11 +78,11 @@ NAst::TExprPtr MakeBinary(const char* op, const NAst::TExprPtr& left, const NAst
 
 } // namespace
 
-KeyboardModule::KeyboardModule() {
-    auto integerType = MakeIntrusive<NAst::TIntegerType>();
-    auto boolType = MakeIntrusive<NAst::TBoolType>();
-    auto voidType = MakeIntrusive<NAst::TVoidType>();
-    auto scanCodeType = MakeIntrusive<NAst::TNamedType>("сканкод", integerType);
+KeyboardModule::KeyboardModule(NAst::TTypeFactory& types) {
+    auto integerType = types.MakeInteger();
+    auto boolType = types.Make<NAst::TBoolType>();
+    auto voidType = types.Make<NAst::TVoidType>();
+    auto scanCodeType = types.MakeNamed("сканкод", integerType);
 
     ExternalTypes_ = {
         {
@@ -91,9 +91,9 @@ KeyboardModule::KeyboardModule() {
         },
     };
 
-    auto scanCodeConst = [scanCodeType](int64_t value) {
-        return [scanCodeType, value](std::vector<NAst::TExprPtr>) -> NAst::TExprPtr {
-            return ScanCodeConst(scanCodeType, value);
+    auto scanCodeConst = [scanCodeType, &types](int64_t value) {
+        return [scanCodeType, value, &types](std::vector<NAst::TExprPtr>) -> NAst::TExprPtr {
+            return ScanCodeConst(types, scanCodeType, value);
         };
     };
 
@@ -124,7 +124,7 @@ KeyboardModule::KeyboardModule() {
                 return reinterpret_cast<uint64_t>(keyboard_code());
             },
             .ArgTypes = {},
-            .ReturnType = NAst::WrapFutureType(integerType),
+            .ReturnType = types.WrapFuture(integerType),
         },
         {
             .Name = "сброс клав",
@@ -142,7 +142,7 @@ KeyboardModule::KeyboardModule() {
             .ArgTypes = { integerType },
             .ReturnType = scanCodeType,
             .IsOp = true,
-            .Inline = [scanCodeType](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+            .Inline = [scanCodeType, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 return MakeScanCodeCast(args[0], scanCodeType);
             },
         },
@@ -152,7 +152,7 @@ KeyboardModule::KeyboardModule() {
             .ArgTypes = { scanCodeType },
             .ReturnType = integerType,
             .IsOp = true,
-            .Inline = [integerType](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+            .Inline = [integerType, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 return MakeScanCodeCast(args[0], integerType);
             },
         },
@@ -162,7 +162,7 @@ KeyboardModule::KeyboardModule() {
             .ArgTypes = { scanCodeType, scanCodeType },
             .ReturnType = boolType,
             .IsOp = true,
-            .Inline = [integerType, boolType](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+            .Inline = [integerType, boolType, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 return MakeBinary("==",
                     MakeScanCodeCast(args[0], integerType),
                     MakeScanCodeCast(args[1], integerType),
@@ -175,7 +175,7 @@ KeyboardModule::KeyboardModule() {
             .ArgTypes = { scanCodeType, scanCodeType },
             .ReturnType = boolType,
             .IsOp = true,
-            .Inline = [integerType, boolType](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+            .Inline = [integerType, boolType, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 return MakeBinary("!=",
                     MakeScanCodeCast(args[0], integerType),
                     MakeScanCodeCast(args[1], integerType),

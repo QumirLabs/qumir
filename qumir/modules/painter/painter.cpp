@@ -7,18 +7,18 @@ namespace NRegistry {
 
 using namespace NRuntime;
 
-PainterModule::PainterModule() {
-    auto integerType  = MakeIntrusive<NAst::TIntegerType>();
-    auto boolType     = MakeIntrusive<NAst::TBoolType>();
-    auto voidType     = MakeIntrusive<NAst::TVoidType>();
-    auto stringType   = MakeIntrusive<NAst::TStringType>();
-    auto intArrayType = MakeIntrusive<NAst::TArrayType>(integerType, 1);
+PainterModule::PainterModule(NAst::TTypeFactory& types) {
+    auto integerType  = types.MakeInteger();
+    auto boolType     = types.Make<NAst::TBoolType>();
+    auto voidType     = types.Make<NAst::TVoidType>();
+    auto stringType   = types.Make<NAst::TStringType>();
+    auto intArrayType = types.MakeArray(integerType, 1);
 
-    auto colorType = MakeIntrusive<NAst::TNamedType>("цвет", integerType);
+    auto colorType = types.MakeNamed("цвет", integerType);
 
     auto makeOutInt = [&]() -> NAst::TTypePtr {
-        auto t = MakeIntrusive<NAst::TIntegerType>();
-        return MakeIntrusive<NAst::TReferenceType>(t);
+        auto t = types.MakeInteger();
+        return types.MakeReference(t);
     };
 
     ExternalFunctions_ = {
@@ -253,7 +253,7 @@ PainterModule::PainterModule() {
                 return reinterpret_cast<uint64_t>(future);
             },
             .ArgTypes = { integerType, integerType, colorType },
-            .ReturnType = NAst::WrapFutureType(voidType),
+            .ReturnType = types.WrapFuture(voidType),
         },
         {
             .Name = "загрузить лист",

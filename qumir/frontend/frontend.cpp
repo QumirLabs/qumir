@@ -24,7 +24,7 @@ TFrontend::TFrontend(TFrontendOptions options)
 {}
 
 std::expected<NAst::TExprPtr, TError> TFrontend::Parse(std::istream& input) {
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(Types);
     for (const auto& dir : Options_.ModuleSearchPaths) {
         loader.AddSearchPath(dir);
     }
@@ -38,14 +38,14 @@ std::expected<NAst::TExprPtr, TError> TFrontend::Parse(std::istream& input) {
     std::vector<NAst::TPragma> mainPragmas;
     if (Options_.CoreInput) {
         NAst::NCore::TTokenStream ts(input);
-        NAst::NCore::TParser p;
+        NAst::NCore::TParser p(Types);
         parsed = p.Parse(ts);
         if (parsed) {
             mainPragmas = std::move(p.Pragmas);
         }
     } else {
         NAst::TTokenStream ts(input);
-        NAst::TParser p;
+        NAst::TParser p(Types);
         parsed = p.parse(ts, &Resolver, &loader);
         if (parsed) {
             mainPragmas = ts.GetContext()->GetPragmas();

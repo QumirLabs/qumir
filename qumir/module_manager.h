@@ -6,6 +6,7 @@
 
 #include <qumir/parser/pragma.h>
 #include <qumir/parser/type.h>
+#include <qumir/parser/type_factory.h>
 
 namespace NQumir {
 

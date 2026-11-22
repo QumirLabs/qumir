@@ -73,18 +73,18 @@ TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options, std::unique_ptr<NCodeGen::I
         Resolver.ApplyPragmas({NAst::TPragma{"language", {"overloads"}, {}}});
     }
 
-    RegisterModule(std::make_shared<NRegistry::SystemModule>(), /*import=*/false);
+    RegisterModule(std::make_shared<NRegistry::SystemModule>(Types), /*import=*/false);
     // Byte primitives (memcpy/memmove/memcmp) every host needs; always
     // imported, independent of CoreInput/Prelude (qumir/modules/builtins).
-    RegisterModule(std::make_shared<NRegistry::BuiltinsModule>(), /*import=*/true);
+    RegisterModule(std::make_shared<NRegistry::BuiltinsModule>(Types), /*import=*/true);
     // TODO: register other modules
 
-    AvailableModules.push_back(std::make_shared<NRegistry::TurtleModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::RobotModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::DrawerModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::PainterModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::ColorsModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::KeyboardModule>());
+    AvailableModules.push_back(std::make_shared<NRegistry::TurtleModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::RobotModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::DrawerModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::PainterModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::ColorsModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::KeyboardModule>(Types));
 
     for (const auto& mod : AvailableModules) {
         Resolver.RegisterModule(mod.get());
@@ -220,7 +220,7 @@ bool TLLVMRunner::LowerKernelAst(
         }
     }
 
-    NFrontend::TSourceModuleLoader loader;
+    NFrontend::TSourceModuleLoader loader(Types);
     for (const auto& dir : Options.ModuleSearchPaths) {
         loader.AddSearchPath(dir);
     }
@@ -755,7 +755,7 @@ void* TLLVMRunner::CompileKernel(const std::string& source, std::string* error) 
         mainPragmas.push_back(NAst::TPragma{"language", {"overloads"}, {}});
     }
 
-    NFrontend::TSourceModuleLoader loader;
+    NFrontend::TSourceModuleLoader loader(Types);
     for (const auto& dir : Options.ModuleSearchPaths) {
         loader.AddSearchPath(dir);
     }
@@ -771,7 +771,7 @@ void* TLLVMRunner::CompileKernel(const std::string& source, std::string* error) 
     std::istringstream input(source);
 
     NAst::NCore::TTokenStream ts(input);
-    NAst::NCore::TParser p;
+    NAst::NCore::TParser p(Types);
     auto parsed = p.Parse(ts);
     if (!parsed) {
         if (error) {

@@ -15,7 +15,7 @@ class BuiltinsModule : public IModule {
 public:
     static constexpr const char* ModuleName = "Builtins";
 
-    BuiltinsModule();
+    explicit BuiltinsModule(NAst::TTypeFactory& types);
 
     const std::string& Name() const override {
         static const std::string name = ModuleName;

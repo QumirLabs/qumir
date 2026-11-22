@@ -7,7 +7,7 @@ namespace NRegistry {
 
 class TurtleModule : public IModule {
 public:
-    TurtleModule();
+    explicit TurtleModule(NAst::TTypeFactory& types);
 
     const std::string& Name() const override {
         static const std::string name = "Черепаха";

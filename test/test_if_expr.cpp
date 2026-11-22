@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/parser/lexer.h>
 #include <qumir/parser/parser.h>
@@ -39,14 +40,14 @@ TRunResult RunWithInjection(
     std::vector<TExprPtr> injected,
     EBackend backend = EBackend::VM)
 {
-    NSemantics::TNameResolver resolver;
-    auto sysMod = std::make_shared<NRegistry::SystemModule>();
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+    auto sysMod = std::make_shared<NRegistry::SystemModule>(NQumir::NTest::TestTypes());
     resolver.RegisterModule(sysMod.get());
     resolver.ImportModule(sysMod->Name());
 
     std::istringstream in(src);
     TTokenStream ts(in);
-    TParser p;
+    TParser p(NQumir::NTest::TestTypes());
     auto parsed = p.parse(ts, &resolver);
     if (!parsed) return {{}, parsed.error().ToString()};
     auto ast = std::move(parsed.value());
@@ -116,15 +117,15 @@ TRunResult RunWithInjection(
 }
 
 TExprPtr num(int64_t value) {
-    return MakeIntrusive<TNumberExpr>(TLocation{}, value);
+    return MakeIntrusive<TNumberExpr>(TLocation{}, value, NQumir::NTest::TestTypes());
 }
 
 TExprPtr fnum(double value) {
-    return MakeIntrusive<TNumberExpr>(TLocation{}, value);
+    return MakeIntrusive<TNumberExpr>(TLocation{}, value, NQumir::NTest::TestTypes());
 }
 
 TExprPtr str(std::string value) {
-    return MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value));
+    return MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value), NQumir::NTest::TestTypes());
 }
 
 TExprPtr ident(const std::string& name) {

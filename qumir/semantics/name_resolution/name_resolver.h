@@ -134,7 +134,10 @@ private:
 
 class TNameResolver : public IModuleManager {
 public:
-    TNameResolver(const TNameResolverOptions& options = {});
+    explicit TNameResolver(NAst::TTypeFactory& types, const TNameResolverOptions& options = {});
+
+    // Shared by every layer of the compilation; all types are created through it.
+    NAst::TTypeFactory& Types() { return Types_; }
 
     std::optional<TError> Resolve(const NAst::TExprPtr& root);
     void ApplyPragmas(const std::vector<NAst::TPragma>& pragmas) override;
@@ -280,6 +283,7 @@ private:
         const NAst::TExprPtr& newNode,
         TScopePtr scope);
 
+    NAst::TTypeFactory& Types_;
     TNameResolverOptions Options;
     std::vector<TSymbol> Symbols;
     std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> GenericInstantiations;

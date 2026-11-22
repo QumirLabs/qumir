@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -186,14 +187,14 @@ bool updateGoldens = false;
 bool printOutput = false;
 
 struct TModuleSet {
-    NRegistry::SystemModule system;
-    NRegistry::BuiltinsModule builtins;
-    NRegistry::TurtleModule turtle;
-    NRegistry::RobotModule robot;
-    NRegistry::DrawerModule drawer;
-    NRegistry::PainterModule painter;
-    NRegistry::ColorsModule colors;
-    NRegistry::KeyboardModule keyboard;
+    NRegistry::SystemModule system{NQumir::NTest::TestTypes()};
+    NRegistry::BuiltinsModule builtins{NQumir::NTest::TestTypes()};
+    NRegistry::TurtleModule turtle{NQumir::NTest::TestTypes()};
+    NRegistry::RobotModule robot{NQumir::NTest::TestTypes()};
+    NRegistry::DrawerModule drawer{NQumir::NTest::TestTypes()};
+    NRegistry::PainterModule painter{NQumir::NTest::TestTypes()};
+    NRegistry::ColorsModule colors{NQumir::NTest::TestTypes()};
+    NRegistry::KeyboardModule keyboard{NQumir::NTest::TestTypes()};
 };
 
 void RegisterRuntimeModules(NSemantics::TNameResolver& resolver, TModuleSet& mods) {
@@ -263,12 +264,12 @@ std::string NameFromPath(const fs::path& p) {
 
 // TODO: move to utils
 std::string BuildAst(NAst::TTokenStream& ts, const fs::path& moduleDir = {}) {
-    NAst::TParser p;
+    NAst::TParser p(NQumir::NTest::TestTypes());
     TModuleSet mods;
-    NSemantics::TNameResolver nr;
+    NSemantics::TNameResolver nr(NQumir::NTest::TestTypes());
     RegisterRuntimeModules(nr, mods);
 
-    NFrontend::TSourceModuleLoader loader;
+    NFrontend::TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     if (!moduleDir.empty()) {
         loader.AddSearchPath(moduleDir.string());
     }
@@ -301,12 +302,12 @@ std::string BuildAst(NAst::TTokenStream& ts, const fs::path& moduleDir = {}) {
 }
 
 std::string BuildCoreSource(NAst::TTokenStream& ts, const fs::path& moduleDir = {}) {
-    NAst::TParser p;
+    NAst::TParser p(NQumir::NTest::TestTypes());
     TModuleSet mods;
-    NSemantics::TNameResolver nr;
+    NSemantics::TNameResolver nr(NQumir::NTest::TestTypes());
     RegisterRuntimeModules(nr, mods);
 
-    NFrontend::TSourceModuleLoader loader;
+    NFrontend::TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     if (!moduleDir.empty()) {
         loader.AddSearchPath(moduleDir.string());
     }
@@ -341,20 +342,20 @@ std::string BuildCoreSource(NAst::TTokenStream& ts, const fs::path& moduleDir = 
 
 std::string BuildIR(std::istream& input, bool coreInput = false, const fs::path& moduleDir = {}) {
     TModuleSet mods;
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
     RegisterRuntimeModules(resolver, mods);
 
     std::expected<NAst::TExprPtr, TError> parsed;
     if (coreInput) {
         NAst::NCore::TTokenStream ts(input);
-        NAst::NCore::TParser p;
+        NAst::NCore::TParser p(NQumir::NTest::TestTypes());
         parsed = p.Parse(ts);
         if (parsed) {
             std::vector<std::string> modulePaths;
             if (!moduleDir.empty()) {
                 modulePaths.push_back(moduleDir.string());
             }
-            auto composed = NFrontend::LoadAndCompose(*parsed, p.Pragmas, modulePaths);
+            auto composed = NFrontend::LoadAndCompose(NQumir::NTest::TestTypes(), *parsed, p.Pragmas, modulePaths);
             if (!composed) {
                 return composed.error().ToString() + "\n";
             }
@@ -363,8 +364,8 @@ std::string BuildIR(std::istream& input, bool coreInput = false, const fs::path&
         }
     } else {
         NAst::TTokenStream ts(input);
-        NAst::TParser p;
-        NFrontend::TSourceModuleLoader loader;
+        NAst::TParser p(NQumir::NTest::TestTypes());
+        NFrontend::TSourceModuleLoader loader(NQumir::NTest::TestTypes());
         if (!moduleDir.empty()) {
             loader.AddSearchPath(moduleDir.string());
         }

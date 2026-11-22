@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/parser/lexer.h>
 #include <qumir/parser/parser.h>
@@ -33,15 +34,15 @@ TRunResult RunWithInjection(
     size_t insertAt,
     std::vector<TExprPtr> injected)
 {
-    NSemantics::TNameResolver resolver;
-    auto sysMod = std::make_shared<NRegistry::SystemModule>();
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+    auto sysMod = std::make_shared<NRegistry::SystemModule>(NQumir::NTest::TestTypes());
     resolver.RegisterModule(sysMod.get());
     resolver.ImportModule(sysMod->Name());
 
     std::istringstream in(src);
     TTokenStream ts(in);
-    TParser p;
-    NFrontend::TSourceModuleLoader loader;
+    TParser p(NQumir::NTest::TestTypes());
+    NFrontend::TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     auto parsed = p.parse(ts, &resolver, &loader);
     if (!parsed) {
         return {{}, parsed.error().ToString()};
@@ -125,7 +126,7 @@ TEST(FieldAccess, ReadWriteFirstField) {
             loc,
             MakeIntrusive<TIdentExpr>(loc, "c"),
             "re",
-            MakeIntrusive<TNumberExpr>(loc, 3.5)),
+            MakeIntrusive<TNumberExpr>(loc, 3.5, NQumir::NTest::TestTypes())),
         MakeIntrusive<TAssignExpr>(
             loc,
             "x",
@@ -151,7 +152,7 @@ TEST(FieldAccess, ReadWriteSecondField) {
             loc,
             MakeIntrusive<TIdentExpr>(loc, "c"),
             "im",
-            MakeIntrusive<TNumberExpr>(loc, 7.25)),
+            MakeIntrusive<TNumberExpr>(loc, 7.25, NQumir::NTest::TestTypes())),
         MakeIntrusive<TAssignExpr>(
             loc,
             "x",
@@ -177,7 +178,7 @@ TEST(FieldAccess, UnwrittenFieldIsZero) {
             loc,
             MakeIntrusive<TIdentExpr>(loc, "c"),
             "re",
-            MakeIntrusive<TNumberExpr>(loc, 5.0)),
+            MakeIntrusive<TNumberExpr>(loc, 5.0, NQumir::NTest::TestTypes())),
         MakeIntrusive<TAssignExpr>(
             loc,
             "x",

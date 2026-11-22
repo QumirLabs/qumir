@@ -1,4 +1,5 @@
 #include <qumir/codegen/llvm/llvm_initializer.h>
+#include "test_types.h"
 #include <qumir/ir/eval.h>
 #include <qumir/ir/lowering/lower_ast.h>
 #include <qumir/ir/passes/transforms/inline_calls.h>
@@ -33,9 +34,9 @@ struct TProgram {
 void Lower(TProgram& program, const std::string& source, bool optimize, TDebugOptions debug = {}) {
     std::istringstream input(source);
     NAst::NCore::TTokenStream tokens(input);
-    auto parsed = NAst::NCore::TParser{}.Parse(tokens);
+    auto parsed = NAst::NCore::TParser{NQumir::NTest::TestTypes()}.Parse(tokens);
     ASSERT_TRUE(parsed) << parsed.error().ToString();
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
     auto annotated = NTransform::Pipeline(*parsed, resolver, {.RunDefiniteAssignment = false});
     ASSERT_TRUE(annotated) << annotated.error().ToString();
     TAstLowerer lowerer(program.Module, program.Builder, resolver, debug);

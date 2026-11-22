@@ -10,6 +10,7 @@
 
 #include <qumir/location.h>
 #include <qumir/ptr.h>
+#include <qumir/parser/type_factory.h>
 
 #include "type.h"
 #include "operator.h"
@@ -186,20 +187,20 @@ struct TNumberExpr : TExpr {
         double FloatValue;
     };
 
-    explicit TNumberExpr(TLocation loc, bool v)
+    explicit TNumberExpr(TLocation loc, bool v, TTypeFactory& types)
         : TExpr(std::move(loc)), IntValue(v)
     {
-        Type = MakeIntrusive<TBoolType>();
+        Type = types.Make<TBoolType>();
     }
-    explicit TNumberExpr(TLocation loc, int64_t v)
+    explicit TNumberExpr(TLocation loc, int64_t v, TTypeFactory& types)
         : TExpr(std::move(loc)), IntValue(v)
     {
-        Type = MakeIntrusive<TIntegerType>();
+        Type = types.MakeInteger();
     }
-    explicit TNumberExpr(TLocation loc, double v)
+    explicit TNumberExpr(TLocation loc, double v, TTypeFactory& types)
         : TExpr(std::move(loc)), FloatValue(v)
     {
-        Type = MakeIntrusive<TFloatType>();
+        Type = types.MakeFloat();
     }
 
     const std::string_view NodeName() const override {
@@ -254,10 +255,10 @@ struct TStringLiteralExpr : TExpr {
     static constexpr const char* NodeId = "StringLiteral";
 
     std::string Value;
-    explicit TStringLiteralExpr(TLocation loc, std::string v)
+    explicit TStringLiteralExpr(TLocation loc, std::string v, TTypeFactory& types)
         : TExpr(std::move(loc)), Value(std::move(v))
     {
-        Type = MakeIntrusive<TStringType>();
+        Type = types.Make<TStringType>();
     }
 
     const std::string_view NodeName() const override {
@@ -823,11 +824,11 @@ struct TInputExpr : TExpr {
     static constexpr const char* NodeId = "Input";
 
     std::vector<TExprPtr> Args;
-    TInputExpr(TLocation loc, std::vector<TExprPtr>&& a)
+    TInputExpr(TLocation loc, std::vector<TExprPtr>&& a, TTypeFactory& types)
         : TExpr(std::move(loc))
         , Args(std::move(a))
     {
-        Type = MakeIntrusive<TVoidType>();
+        Type = types.Make<TVoidType>();
     }
 
     std::vector<TExprPtr> Children() const override {
@@ -866,11 +867,11 @@ struct TOutputExpr : TExpr {
     static constexpr const char* NodeId = "Output";
 
     std::vector<TOutputArg> Args;
-    TOutputExpr(TLocation loc, std::vector<TOutputArg>&& a)
+    TOutputExpr(TLocation loc, std::vector<TOutputArg>&& a, TTypeFactory& types)
         : TExpr(std::move(loc))
         , Args(std::move(a))
     {
-        Type = MakeIntrusive<TVoidType>();
+        Type = types.Make<TVoidType>();
     }
 
     std::vector<TExprPtr> Children() const override {
@@ -1298,8 +1299,8 @@ struct TDestroyExpr : TExpr {
     TExprPtr Value;
     TExprPtr Aux;
 
-    TDestroyExpr(TLocation loc, const TExprPtr& value, const TExprPtr& aux = nullptr)
-        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
+    TDestroyExpr(TLocation loc, const TExprPtr& value, TTypeFactory& types, const TExprPtr& aux = nullptr)
+        : TExpr(std::move(loc), types.Make<TVoidType>())
         , Value(value)
         , Aux(aux)
     { }
@@ -1329,8 +1330,8 @@ struct TReplaceExpr : TExpr {
     TExprPtr Target;
     TExprPtr Value;
 
-    TReplaceExpr(TLocation loc, const TExprPtr& target, const TExprPtr& value)
-        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
+    TReplaceExpr(TLocation loc, const TExprPtr& target, const TExprPtr& value, TTypeFactory& types)
+        : TExpr(std::move(loc), types.Make<TVoidType>())
         , Target(target)
         , Value(value)
     { }
@@ -1358,8 +1359,9 @@ struct TCleanupExitExpr : TExpr {
         TLocation loc,
         ECleanupExitKind kind,
         const TExprPtr& value,
-        std::vector<TExprPtr>&& cleanups)
-        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
+        std::vector<TExprPtr>&& cleanups,
+        TTypeFactory& types)
+        : TExpr(std::move(loc), types.Make<TVoidType>())
         , Kind(kind)
         , Value(value)
         , Cleanups(std::move(cleanups))
@@ -1397,8 +1399,8 @@ struct TGlobalCleanupExpr : TExpr {
 
     std::vector<TExprPtr> Cleanups;
 
-    TGlobalCleanupExpr(TLocation loc, std::vector<TExprPtr>&& cleanups)
-        : TExpr(std::move(loc), MakeIntrusive<TVoidType>())
+    TGlobalCleanupExpr(TLocation loc, std::vector<TExprPtr>&& cleanups, TTypeFactory& types)
+        : TExpr(std::move(loc), types.Make<TVoidType>())
         , Cleanups(std::move(cleanups))
     { }
 

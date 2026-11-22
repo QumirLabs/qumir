@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/semantics/lifetime/type_traits.h>
 
@@ -37,83 +38,83 @@ void ExpectTraits(
 } // namespace
 
 TEST(LifetimeTraits, ScalarTypesAreTrivial) {
-    ExpectTraits(MakeIntrusive<TIntegerType>(), ELifetimeKind::Trivial, true, false);
-    ExpectTraits(MakeIntrusive<TFloatType>(), ELifetimeKind::Trivial, true, false);
-    ExpectTraits(MakeIntrusive<TBoolType>(), ELifetimeKind::Trivial, true, false);
-    ExpectTraits(MakeIntrusive<TSymbolType>(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(NQumir::NTest::TestTypes().MakeInteger(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(NQumir::NTest::TestTypes().MakeFloat(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(NQumir::NTest::TestTypes().Make<TBoolType>(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(NQumir::NTest::TestTypes().Make<TSymbolType>(), ELifetimeKind::Trivial, true, false);
     ExpectTraits(
-        MakeIntrusive<TPointerType>(MakeIntrusive<TStringType>()),
+        NQumir::NTest::TestTypes().MakePointer(NQumir::NTest::TestTypes().Make<TStringType>()),
         ELifetimeKind::Trivial,
         true,
         false);
 }
 
 TEST(LifetimeTraits, StringIsRefCounted) {
-    ExpectTraits(MakeIntrusive<TStringType>(), ELifetimeKind::RefCounted, true, true);
+    ExpectTraits(NQumir::NTest::TestTypes().Make<TStringType>(), ELifetimeKind::RefCounted, true, true);
 }
 
 TEST(LifetimeTraits, NumericVectorsAreTrivial) {
     const std::vector<TTypePtr> elements = {
-        MakeIntrusive<TIntegerType>(),
-        MakeIntrusive<TFloatType>(),
-        MakeIntrusive<TBoolType>(),
+        NQumir::NTest::TestTypes().MakeInteger(),
+        NQumir::NTest::TestTypes().MakeFloat(),
+        NQumir::NTest::TestTypes().Make<TBoolType>(),
     };
     for (const auto& element : elements) {
-        ExpectTraits(MakeIntrusive<TVectorType>(element, 4), ELifetimeKind::Trivial, true, false);
+        ExpectTraits(NQumir::NTest::TestTypes().MakeVector(element, 4), ELifetimeKind::Trivial, true, false);
     }
 }
 
 TEST(LifetimeTraits, NamedStringUsesUnderlyingType) {
-    auto type = MakeIntrusive<TNamedType>("Text", MakeIntrusive<TStringType>());
+    auto type = NQumir::NTest::TestTypes().MakeNamed("Text", NQumir::NTest::TestTypes().Make<TStringType>());
     ExpectTraits(type, ELifetimeKind::RefCounted, true, true);
 }
 
 TEST(LifetimeTraits, StringReferenceIsBorrowed) {
-    auto type = MakeIntrusive<TReferenceType>(MakeIntrusive<TStringType>());
+    auto type = NQumir::NTest::TestTypes().MakeReference(NQumir::NTest::TestTypes().Make<TStringType>());
     ExpectTraits(type, ELifetimeKind::Trivial, true, false);
 }
 
 TEST(LifetimeTraits, PlainArrayIsUnique) {
-    auto type = MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1);
+    auto type = NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1);
     ExpectTraits(type, ELifetimeKind::Unique, false, true);
 }
 
 TEST(LifetimeTraits, StringArrayIsUnique) {
-    auto type = MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1);
+    auto type = NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1);
     ExpectTraits(type, ELifetimeKind::Unique, false, true);
 }
 
 TEST(LifetimeTraits, TrivialStructIsCopyableAggregate) {
-    auto type = MakeIntrusive<TStructType>(
+    auto type = NQumir::NTest::TestTypes().MakeStruct(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"number", MakeIntrusive<TIntegerType>()},
-            {"flag", MakeIntrusive<TBoolType>()},
+            {"number", NQumir::NTest::TestTypes().MakeInteger()},
+            {"flag", NQumir::NTest::TestTypes().Make<TBoolType>()},
         });
     ExpectTraits(type, ELifetimeKind::Aggregate, true, false);
 }
 
 TEST(LifetimeTraits, StructWithStringNeedsDestroy) {
-    auto type = MakeIntrusive<TStructType>(
+    auto type = NQumir::NTest::TestTypes().MakeStruct(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"value", MakeIntrusive<TStringType>()},
+            {"value", NQumir::NTest::TestTypes().Make<TStringType>()},
         });
     ExpectTraits(type, ELifetimeKind::Aggregate, true, true);
 }
 
 TEST(LifetimeTraits, StructWithArrayIsNotCopyable) {
-    auto type = MakeIntrusive<TStructType>(
+    auto type = NQumir::NTest::TestTypes().MakeStruct(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"items", MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1)},
+            {"items", NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1)},
         });
     ExpectTraits(type, ELifetimeKind::Aggregate, false, true);
 }
 
 TEST(LifetimeTraits, NestedStructPropagatesFieldTraits) {
-    auto inner = MakeIntrusive<TStructType>(
+    auto inner = NQumir::NTest::TestTypes().MakeStruct(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"value", MakeIntrusive<TStringType>()},
+            {"value", NQumir::NTest::TestTypes().Make<TStringType>()},
         });
-    auto outer = MakeIntrusive<TStructType>(
+    auto outer = NQumir::NTest::TestTypes().MakeStruct(
         std::vector<std::pair<std::string, TTypePtr>>{
             {"inner", std::move(inner)},
         });
