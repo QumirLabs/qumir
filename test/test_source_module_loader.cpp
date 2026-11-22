@@ -193,7 +193,7 @@ TEST_F(SourceModuleLoaderTest, ProgramUseLinksBitcodeFromAlreadyParsedAst) {
         .CoreInput = true,
         .ResolveCoreInput = true,
         .OptLevel = 2,
-    });
+    }, nullptr, &NQumir::NTest::TestTypes());
     std::string error;
     auto* entry = reinterpret_cast<int64_t (*)()>(
         runner.CompileKernelAst(std::move(*composed), "entry", &error));
@@ -228,7 +228,7 @@ TEST_F(SourceModuleLoaderTest, ProgramUseLinksBitcodeForWasmObject) {
         .ResolveCoreInput = true,
         .OptLevel = 2,
         .TargetTriple = "wasm64-unknown-unknown",
-    });
+    }, nullptr, &NQumir::NTest::TestTypes());
     std::string error;
     auto object = runner.CompileKernelAstToObject(
         std::move(*composed), {"entry"}, &error);

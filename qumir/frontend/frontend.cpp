@@ -16,8 +16,9 @@
 namespace NQumir {
 namespace NFrontend {
 
-TFrontend::TFrontend(TFrontendOptions options)
+TFrontend::TFrontend(TFrontendOptions options, NAst::TTypeFactory* types)
     : Options_(std::move(options))
+    , Types(types ? *types : OwnedTypes_.emplace())
     , Module{.SourceFilePath = Options_.SourceFilePath}
     , Builder(Module)
     , Lowerer(Module, Builder, Resolver, Options_.DebugOptions)

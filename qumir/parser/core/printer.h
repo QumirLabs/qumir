@@ -38,7 +38,7 @@ using TNodePrinter = std::function<void(TExpr&, TPrinter&, TPrintFrame)>;
 using TPrintExprFactory = std::unordered_map<std::string_view, TNodePrinter>;
 
 // Prints a type unknown to the core printer, found by TypeName(). To stay parseable,
-// emit "<named Name [args]>" (e.g. by printing a TNamedType through the printer).
+// emit "<named Name [args]>" with TPrinter::PrintNamedType.
 using TTypePrinter = std::function<void(const TType&, TPrinter&, int level)>;
 using TPrintTypeFactory = std::unordered_map<std::string_view, TTypePrinter>;
 
@@ -66,6 +66,12 @@ public:
     bool FitsOneLine(const TExprPtr& expr, bool allowTypeWrap, int level);
     void PrintExpr(const TExprPtr& expr, bool allowTypeWrap, int level);
     void PrintType(const TTypePtr& type, int level);
+    // Prints a named type from its parts, so a type printer needs no type object.
+    void PrintNamedType(
+        const std::string& name,
+        const std::vector<TGenericArg>& typeArgs,
+        TTypePtr underlying,
+        int level);
     void Separator(int level);
     void Space();
     void PrintIdentifier(const std::string& value);

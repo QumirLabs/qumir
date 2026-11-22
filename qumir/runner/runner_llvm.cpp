@@ -51,8 +51,11 @@ NFrontend::TFrontendOptions FrontendOptions(const TLLVMRunnerOptions& options) {
 
 } // namespace
 
-TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options, std::unique_ptr<NCodeGen::ICodegenBackend> backend)
-    : TFrontend(FrontendOptions(options))
+TLLVMRunner::TLLVMRunner(
+    TLLVMRunnerOptions options,
+    std::unique_ptr<NCodeGen::ICodegenBackend> backend,
+    NAst::TTypeFactory* types)
+    : TFrontend(FrontendOptions(options), types)
     , Options(std::move(options))
     // Run() loads the object into this process, so the default targets the
     // host whatever TargetTriple says; TargetTriple is for the kernel objects.

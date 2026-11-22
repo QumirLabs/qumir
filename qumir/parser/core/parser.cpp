@@ -588,7 +588,7 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
         if (IsOp(tok, '>')) {
             if (context.TypeParsers) {
                 if (auto it = context.TypeParsers->find(name); it != context.TypeParsers->end()) {
-                    auto custom = it->second(std::move(typeArgs));
+                    auto custom = it->second(context.Types, std::move(typeArgs));
                     if (!custom) {
                         co_return TError(location, custom.error());
                     }
@@ -626,7 +626,7 @@ TTypeTask ParseType(TParserContext& context) {
         if (auto scalar = ScalarTypeByName(context.Types, token.Name)) co_return scalar;
         if (context.TypeParsers) {
             if (auto it = context.TypeParsers->find(token.Name); it != context.TypeParsers->end()) {
-                auto custom = it->second({});
+                auto custom = it->second(context.Types, {});
                 if (!custom) {
                     co_return TError(token.Location, custom.error());
                 }

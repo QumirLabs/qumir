@@ -63,7 +63,11 @@ public:
 
     // The host picks the codegen backend of Run() and of the kernel APIs; null
     // means TLLVMBackend. The cache kernel APIs need TLLVMBackend.
-    TLLVMRunner(TLLVMRunnerOptions options = {}, std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr);
+    // `types` is the host's factory, which must outlive the runner; null: the runner owns one.
+    TLLVMRunner(
+        TLLVMRunnerOptions options = {},
+        std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr,
+        NAst::TTypeFactory* types = nullptr);
 
     void RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import = false);
 

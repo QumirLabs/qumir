@@ -10,6 +10,11 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <type_traits>
+
+// A runner holds references into itself, so it is neither copied nor moved.
+static_assert(!std::is_copy_constructible_v<NQumir::TLLVMRunner>);
+static_assert(!std::is_move_constructible_v<NQumir::TLLVMRunner>);
 
 namespace {
 
@@ -61,7 +66,7 @@ std::string CompileKernelObjectIr(const char* source, int optLevel)
         .ResolveCoreInput = true,
         .AllowOverloads = true,
         .OptLevel = optLevel,
-    });
+    }, nullptr, &NQumir::NTest::TestTypes());
     std::string error;
     testing::internal::CaptureStderr();
     auto object = runner.CompileKernelAstToObject(*parsed, {"kernel"}, &error);
@@ -99,6 +104,29 @@ TEST(KernelAst, LoadsU64FromPointerIndex) {
 
     EXPECT_EQ(wordHash(data.data(), static_cast<int64_t>(data.size())),
         INT64_C(5922767304251906895));
+}
+
+TEST(KernelAst, CompilesOnHostTypeFactory) {
+    // Declared first: the factory outlives the runner, as a host's does.
+    NQumir::NAst::TTypeFactory types;
+    NQumir::TLLVMRunner runner({
+        .NativeCode = true,
+        .CoreInput = true,
+        .ResolveCoreInput = true,
+        .OptLevel = 1,
+    }, nullptr, &types);
+    ASSERT_EQ(&runner.TypeFactory(), &types);
+
+    std::istringstream input(RootsSource);
+    NQumir::NAst::NCore::TTokenStream tokens(input);
+    NQumir::NAst::NCore::TParser parser(types);
+    auto parsed = parser.Parse(tokens);
+    ASSERT_TRUE(parsed) << parsed.error().ToString();
+
+    std::string error;
+    void* entry = runner.CompileKernelAst(*parsed, "kernel", &error);
+    ASSERT_NE(entry, nullptr) << error;
+    EXPECT_EQ(reinterpret_cast<int64_t(*)(int64_t)>(entry)(41), 42);
 }
 
 TEST(KernelAst, UsedFunctionStaysExportedAfterO3) {

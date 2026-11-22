@@ -188,35 +188,8 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
         PrintType(t.Cast()->ReferencedType, level);
         *Out << '>';
     } else if (auto t = TMaybeType<TNamedType>(type)) {
-        if (Options.ShortNamedTypes.contains(t.Cast()->Name)
-            && t.Cast()->TypeArgs.empty()
-            && !t.Cast()->UnderlyingType())
-        {
-            PrintIdentifier(t.Cast()->Name);
-            return;
-        }
-        *Out << "<named ";
-        PrintIdentifier(t.Cast()->Name);
-        if (!t.Cast()->TypeArgs.empty()) {
-            *Out << " [";
-            for (size_t i = 0; i < t.Cast()->TypeArgs.size(); ++i) {
-                if (i != 0) {
-                    Space();
-                }
-                const auto& arg = t.Cast()->TypeArgs[i];
-                if (arg.Kind == TGenericArg::EKind::Type) {
-                    PrintType(arg.Type, level);
-                } else {
-                    *Out << arg.Value;
-                }
-            }
-            *Out << ']';
-        }
-        if (!Options.ShortNamedTypes.contains(t.Cast()->Name) && t.Cast()->UnderlyingType()) {
-            *Out << ' ';
-            PrintType(t.Cast()->UnderlyingType(), level);
-        }
-        *Out << '>';
+        const auto* named = t.Cast();
+        PrintNamedType(named->Name, named->TypeArgs, named->UnderlyingType(), level);
     } else if (auto t = TMaybeType<TStructType>(type)) {
         PrintStructType(*t.Cast(), level);
     } else if (auto it = Options.TypePrinters.find(type->TypeName()); it != Options.TypePrinters.end()) {
@@ -224,6 +197,40 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
     } else {
         throw std::runtime_error("unsupported type for core print: " + std::string(type->TypeName()));
     }
+}
+
+void TPrinter::PrintNamedType(
+    const std::string& name,
+    const std::vector<TGenericArg>& typeArgs,
+    TTypePtr underlying,
+    int level)
+{
+    if (Options.ShortNamedTypes.contains(name) && typeArgs.empty() && !underlying) {
+        PrintIdentifier(name);
+        return;
+    }
+    *Out << "<named ";
+    PrintIdentifier(name);
+    if (!typeArgs.empty()) {
+        *Out << " [";
+        for (size_t i = 0; i < typeArgs.size(); ++i) {
+            if (i != 0) {
+                Space();
+            }
+            const auto& arg = typeArgs[i];
+            if (arg.Kind == TGenericArg::EKind::Type) {
+                PrintType(arg.Type, level);
+            } else {
+                *Out << arg.Value;
+            }
+        }
+        *Out << ']';
+    }
+    if (!Options.ShortNamedTypes.contains(name) && underlying) {
+        *Out << ' ';
+        PrintType(underlying, level);
+    }
+    *Out << '>';
 }
 
 namespace {
