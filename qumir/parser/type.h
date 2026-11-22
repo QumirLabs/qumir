@@ -572,7 +572,7 @@ inline bool IsFutureType(const TTypePtr& type) {
     return static_cast<bool>(TMaybeType<TFutureType>(type));
 }
 
-inline const TTypePtr NullTypePtr;
+inline constexpr TTypePtr NullTypePtr;
 
 // The result type of a future, or NullTypePtr for any other type.
 inline const TTypePtr& FutureResultType(const TTypePtr& type) {

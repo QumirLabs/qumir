@@ -29,6 +29,8 @@ const TTypePtr& ValueType(const TTypePtr& type) {
     }
 }
 
+const TTypePtr& ValueType(TTypePtr&& type) = delete;
+
 bool IsString(const TTypePtr& type) {
     return static_cast<bool>(TMaybeType<TStringType>(ValueType(type)));
 }

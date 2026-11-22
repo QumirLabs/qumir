@@ -57,6 +57,8 @@ const TTypePtr& ValueType(const TTypePtr& type) {
     }
 }
 
+const TTypePtr& ValueType(TTypePtr&& type) = delete;
+
 const TLifetimeTraits* TryTraits(const TTypePtr& type, TLifetimeTraits& storage) {
     if (!type) {
         return nullptr;

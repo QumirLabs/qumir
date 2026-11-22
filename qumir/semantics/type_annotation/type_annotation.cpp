@@ -3115,6 +3115,8 @@ const TTypePtr& SettledBranchType(const TTypePtr& type) {
     return unwrapped;
 }
 
+const TTypePtr& SettledBranchType(TTypePtr&& type) = delete;
+
 TTask AnnotateIfExpr(TIfExpr* ifExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     ifExpr->Cond = co_await DoAnnotate(ifExpr->Cond, context, scopeId);
     if (!ifExpr->Cond->Type) {
