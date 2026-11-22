@@ -107,10 +107,10 @@ private:
         const TLocation& loc,
         int32_t scopeId);
 
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerWhile(std::shared_ptr<NAst::TWhileStmtExpr> loop, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerFor(std::shared_ptr<NAst::TForStmtExpr> loop, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerRepeat(std::shared_ptr<NAst::TRepeatStmtExpr> loop, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerTimes(std::shared_ptr<NAst::TTimesStmtExpr> loop, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerWhile(const NAst::TExprPtrOf<NAst::TWhileStmtExpr>& loop, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerFor(const NAst::TExprPtrOf<NAst::TForStmtExpr>& loop, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerRepeat(const NAst::TExprPtrOf<NAst::TRepeatStmtExpr>& loop, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerTimes(const NAst::TExprPtrOf<NAst::TTimesStmtExpr>& loop, const TBlockScope& scope);
     TExpectedTask<TArrayLayout, TError, TLocation> LowerArrayLayout(NSemantics::TSymbolInfo symbol, const std::vector<std::pair<NAst::TExprPtr, NAst::TExprPtr>>& bounds, TBlockScope scope, const std::string& name, const TLocation& loc);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerIndices(NSemantics::TSymbolInfo symbol, const std::vector<NAst::TExprPtr>& indices, TBlockScope scope, int elemSize = 8);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerLValueAddress(const NAst::TExprPtr& expr, TBlockScope scope);

@@ -74,13 +74,13 @@ TPrintOptions MakeOptions(bool pretty = false) {
 }
 
 TExprPtr MakeIdent(std::string name) {
-    return std::make_shared<TIdentExpr>(TLocation{}, std::move(name));
+    return MakeIntrusive<TIdentExpr>(TLocation{}, std::move(name));
 }
 
 } // namespace
 
 TEST(PrinterCustomNodes, TagCompact) {
-    auto expr = std::make_shared<TTagExpr>("hello", MakeIdent("x"));
+    auto expr = MakeIntrusive<TTagExpr>("hello", MakeIdent("x"));
     EXPECT_EQ(PrintAst(expr, MakeOptions()), "(tag \"hello\" x)");
 }
 
@@ -116,25 +116,25 @@ TEST(PrinterCustomNodes, NodePrinterKeepsItsStateWhilePrintingAChild) {
             TStateGuard::DestroyedWhileChildPrinted = TStateGuard::Destroyed - before;
             p.GetOut() << ')';
         };
-    auto expr = std::make_shared<TTagExpr>("a label longer than the line", MakeIdent("x"));
+    auto expr = MakeIntrusive<TTagExpr>("a label longer than the line", MakeIdent("x"));
     EXPECT_EQ(PrintAst(expr, opts), "(tag \"a label longer than the line\"\n  x)");
     EXPECT_EQ(TStateGuard::DestroyedWhileChildPrinted, 0);
 }
 
 TEST(PrinterNumbers, IntegralFloatKeepsItsLiteralType) {
-    EXPECT_EQ(PrintAst(std::make_shared<TNumberExpr>(TLocation{}, 1.0)), "1.0");
-    EXPECT_EQ(PrintAst(std::make_shared<TNumberExpr>(TLocation{}, -0.0)), "-0.0");
-    EXPECT_EQ(PrintAst(std::make_shared<TNumberExpr>(TLocation{}, 1e20)), "1e+20");
+    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, 1.0)), "1.0");
+    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, -0.0)), "-0.0");
+    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, 1e20)), "1e+20");
 }
 
 TEST(PrinterCustomNodes, PairCompact) {
-    auto expr = std::make_shared<TPairExpr>(MakeIdent("a"), MakeIdent("b"));
+    auto expr = MakeIntrusive<TPairExpr>(MakeIdent("a"), MakeIdent("b"));
     EXPECT_EQ(PrintAst(expr, MakeOptions()), "(pair a b)");
 }
 
 TEST(PrinterCustomNodes, NestedCustomNodes) {
-    auto inner = std::make_shared<TPairExpr>(MakeIdent("x"), MakeIdent("y"));
-    auto outer = std::make_shared<TTagExpr>("wrap", inner);
+    auto inner = MakeIntrusive<TPairExpr>(MakeIdent("x"), MakeIdent("y"));
+    auto outer = MakeIntrusive<TTagExpr>("wrap", inner);
     EXPECT_EQ(PrintAst(outer, MakeOptions()), "(tag \"wrap\" (pair x y))");
 }
 
@@ -143,7 +143,7 @@ TEST(PrinterCustomNodes, UnknownNodeThrows) {
         const std::string_view NodeName() const override { return "Unknown"; }
         void Accept(IVisitor& v) override { v.VisitOtherwise(*this); }
     };
-    auto expr = std::make_shared<TUnknown>();
+    auto expr = MakeIntrusive<TUnknown>();
     TPrintOptions opts;
     EXPECT_THROW(PrintAst(expr, opts), std::runtime_error);
 }
@@ -159,13 +159,13 @@ TParser MakeParser() {
         }
         auto child = co_await h.Expr();
         co_await h.Take(')');
-        co_return std::make_shared<TTagExpr>(tok.Name, std::move(child));
+        co_return MakeIntrusive<TTagExpr>(tok.Name, std::move(child));
     };
     p.NodeParsers["pair"] = [](IParseHandle& h, TLocation loc) -> TAstTask {
         auto left = co_await h.Expr();
         auto right = co_await h.Expr();
         co_await h.Take(')');
-        co_return std::make_shared<TPairExpr>(std::move(left), std::move(right));
+        co_return MakeIntrusive<TPairExpr>(std::move(left), std::move(right));
     };
     return p;
 }
@@ -183,10 +183,10 @@ TExprPtr Parse(const std::string& src) {
 TEST(ParserCustomNodes, TagSimple) {
     auto expr = Parse(R"((tag "hello" x))");
     ASSERT_NE(expr, nullptr);
-    auto* tag = dynamic_cast<TTagExpr*>(expr.get());
+    auto* tag = dynamic_cast<TTagExpr*>(expr.Get());
     ASSERT_NE(tag, nullptr);
     EXPECT_EQ(tag->Label, "hello");
-    auto* child = dynamic_cast<TIdentExpr*>(tag->Child.get());
+    auto* child = dynamic_cast<TIdentExpr*>(tag->Child.Get());
     ASSERT_NE(child, nullptr);
     EXPECT_EQ(child->Name, "x");
 }
@@ -194,33 +194,33 @@ TEST(ParserCustomNodes, TagSimple) {
 TEST(ParserCustomNodes, PairSimple) {
     auto expr = Parse("(pair a b)");
     ASSERT_NE(expr, nullptr);
-    auto* pair = dynamic_cast<TPairExpr*>(expr.get());
+    auto* pair = dynamic_cast<TPairExpr*>(expr.Get());
     ASSERT_NE(pair, nullptr);
-    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Left.get())->Name, "a");
-    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Right.get())->Name, "b");
+    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Left.Get())->Name, "a");
+    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Right.Get())->Name, "b");
 }
 
 TEST(ParserCustomNodes, NestedCustomNodes) {
     auto expr = Parse(R"((tag "wrap" (pair x y)))");
     ASSERT_NE(expr, nullptr);
-    auto* tag = dynamic_cast<TTagExpr*>(expr.get());
+    auto* tag = dynamic_cast<TTagExpr*>(expr.Get());
     ASSERT_NE(tag, nullptr);
     EXPECT_EQ(tag->Label, "wrap");
-    auto* pair = dynamic_cast<TPairExpr*>(tag->Child.get());
+    auto* pair = dynamic_cast<TPairExpr*>(tag->Child.Get());
     ASSERT_NE(pair, nullptr);
 }
 
 TEST(ParserCustomNodes, UnknownFormFallsBackToBinaryOp) {
     auto expr = Parse("(+ a b)");
     ASSERT_NE(expr, nullptr);
-    EXPECT_NE(dynamic_cast<TBinaryExpr*>(expr.get()), nullptr);
+    EXPECT_NE(dynamic_cast<TBinaryExpr*>(expr.Get()), nullptr);
 }
 
 TEST(CoreParser, CanonicalizesXorCompatibilityAlias) {
     auto expr = Parse("(xor a b)");
 
     ASSERT_NE(expr, nullptr);
-    auto binary = dynamic_cast<TBinaryExpr*>(expr.get());
+    auto binary = dynamic_cast<TBinaryExpr*>(expr.Get());
     ASSERT_NE(binary, nullptr);
     EXPECT_EQ(binary->Operator, TOperator("^"));
     EXPECT_EQ(PrintAst(expr, MakeOptions()), "(^ a b)");
@@ -234,10 +234,10 @@ TEST(ParserCustomNodes, UnknownFormErrors) {
 }
 
 TEST(LifetimeNodes, UnaryFormsPrintCompactly) {
-    auto borrowed = std::make_shared<TBorrowExpr>(TLocation{}, MakeIdent("s"));
-    auto retained = std::make_shared<TRetainExpr>(TLocation{}, borrowed);
-    auto ownedLiteral = std::make_shared<TOwnLiteralExpr>(TLocation{}, MakeIdent("literal"));
-    auto moved = std::make_shared<TMoveExpr>(TLocation{}, MakeIdent("owned"));
+    auto borrowed = MakeIntrusive<TBorrowExpr>(TLocation{}, MakeIdent("s"));
+    auto retained = MakeIntrusive<TRetainExpr>(TLocation{}, borrowed);
+    auto ownedLiteral = MakeIntrusive<TOwnLiteralExpr>(TLocation{}, MakeIdent("literal"));
+    auto moved = MakeIntrusive<TMoveExpr>(TLocation{}, MakeIdent("owned"));
 
     EXPECT_EQ(PrintAst(retained, MakeOptions(false)), "(retain (borrow s))");
     EXPECT_EQ(PrintAst(ownedLiteral, MakeOptions(false)), "(own-literal literal)");
@@ -245,16 +245,16 @@ TEST(LifetimeNodes, UnaryFormsPrintCompactly) {
 }
 
 TEST(LifetimeNodes, DestroyAndReplacePrintCompactly) {
-    auto destroy = std::make_shared<TDestroyExpr>(
+    auto destroy = MakeIntrusive<TDestroyExpr>(
         TLocation{},
         MakeIdent("array"),
         MakeIdent("array_size"));
-    auto replace = std::make_shared<TReplaceExpr>(
+    auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         MakeIdent("target"),
-        std::make_shared<TRetainExpr>(
+        MakeIntrusive<TRetainExpr>(
             TLocation{},
-            std::make_shared<TBorrowExpr>(TLocation{}, MakeIdent("source"))));
+            MakeIntrusive<TBorrowExpr>(TLocation{}, MakeIdent("source"))));
 
     EXPECT_EQ(PrintAst(destroy, MakeOptions(false)), "(destroy array array_size)");
     EXPECT_EQ(
@@ -264,23 +264,23 @@ TEST(LifetimeNodes, DestroyAndReplacePrintCompactly) {
 
 TEST(LifetimeNodes, CleanupFormsPreserveStoredOrder) {
     std::vector<TExprPtr> cleanups {
-        std::make_shared<TDestroyExpr>(TLocation{}, MakeIdent("second")),
-        std::make_shared<TDestroyExpr>(TLocation{}, MakeIdent("first")),
+        MakeIntrusive<TDestroyExpr>(TLocation{}, MakeIdent("second")),
+        MakeIntrusive<TDestroyExpr>(TLocation{}, MakeIdent("first")),
     };
-    auto exit = std::make_shared<TCleanupExitExpr>(
+    auto exit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Return,
-        std::make_shared<TRetainExpr>(
+        MakeIntrusive<TRetainExpr>(
             TLocation{},
-            std::make_shared<TBorrowExpr>(TLocation{}, MakeIdent("result"))),
-        cleanups);
-    auto global = std::make_shared<TGlobalCleanupExpr>(TLocation{}, cleanups);
-    auto breakExit = std::make_shared<TCleanupExitExpr>(
+            MakeIntrusive<TBorrowExpr>(TLocation{}, MakeIdent("result"))),
+        auto(cleanups));
+    auto global = MakeIntrusive<TGlobalCleanupExpr>(TLocation{}, auto(cleanups));
+    auto breakExit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Break,
         nullptr,
-        cleanups);
-    auto continueExit = std::make_shared<TCleanupExitExpr>(
+        auto(cleanups));
+    auto continueExit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Continue,
         nullptr,
@@ -301,7 +301,7 @@ TEST(LifetimeNodes, CleanupFormsPreserveStoredOrder) {
 TEST(LifetimeNodes, ReplaceChildrenUseStructuralOrder) {
     auto target = MakeIdent("target");
     auto value = MakeIdent("value");
-    auto replace = std::make_shared<TReplaceExpr>(TLocation{}, target, value);
+    auto replace = MakeIntrusive<TReplaceExpr>(TLocation{}, target, value);
 
     const auto children = replace->Children();
     ASSERT_EQ(children.size(), 2u);
@@ -317,8 +317,8 @@ TEST(LifetimeNodes, ReplaceChildrenUseStructuralOrder) {
 TEST(LifetimeNodes, DestroyChildrenIncludeOptionalAux) {
     auto value = MakeIdent("value");
     auto aux = MakeIdent("aux");
-    auto withoutAux = std::make_shared<TDestroyExpr>(TLocation{}, value);
-    auto withAux = std::make_shared<TDestroyExpr>(TLocation{}, value, aux);
+    auto withoutAux = MakeIntrusive<TDestroyExpr>(TLocation{}, value);
+    auto withAux = MakeIntrusive<TDestroyExpr>(TLocation{}, value, aux);
 
     ASSERT_EQ(withoutAux->Children().size(), 1u);
     ASSERT_EQ(withAux->Children().size(), 2u);
@@ -332,7 +332,7 @@ TEST(LifetimeNodes, CleanupChildrenPutValueBeforeOrderedCleanups) {
     auto value = MakeIdent("value");
     auto cleanup1 = MakeIdent("cleanup1");
     auto cleanup2 = MakeIdent("cleanup2");
-    auto exit = std::make_shared<TCleanupExitExpr>(
+    auto exit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Return,
         value,
@@ -350,7 +350,7 @@ TEST(LifetimeNodes, CleanupChildrenPutValueBeforeOrderedCleanups) {
     *mutableChildren[1] = replacement;
     EXPECT_EQ(exit->Cleanups[0], replacement);
 
-    auto global = std::make_shared<TGlobalCleanupExpr>(
+    auto global = MakeIntrusive<TGlobalCleanupExpr>(
         TLocation{},
         std::vector<TExprPtr>{cleanup2, cleanup1});
     EXPECT_EQ(global->Children(), (std::vector<TExprPtr>{cleanup2, cleanup1}));

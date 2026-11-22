@@ -35,7 +35,7 @@ TExprPtr parseStmtList(const std::string& src) {
     return std::move(res.value());
 }
 
-std::shared_ptr<TFunDecl> findFunction(const TExprPtr& ast, const std::string& name) {
+TIntrusivePtr<TFunDecl> findFunction(const TExprPtr& ast, const std::string& name) {
     auto block = TMaybeNode<TBlockExpr>(ast).Cast();
     if (!block) {
         return nullptr;
@@ -49,7 +49,7 @@ std::shared_ptr<TFunDecl> findFunction(const TExprPtr& ast, const std::string& n
     return nullptr;
 }
 
-std::shared_ptr<TCallExpr> findCall(const TExprPtr& expr, const std::string& name) {
+TIntrusivePtr<TCallExpr> findCall(const TExprPtr& expr, const std::string& name) {
     if (!expr) {
         return nullptr;
     }
@@ -66,7 +66,7 @@ std::shared_ptr<TCallExpr> findCall(const TExprPtr& expr, const std::string& nam
     return nullptr;
 }
 
-std::shared_ptr<TAwaitExpr> findAwaitCall(const TExprPtr& expr, const std::string& name) {
+TIntrusivePtr<TAwaitExpr> findAwaitCall(const TExprPtr& expr, const std::string& name) {
     if (!expr) {
         return nullptr;
     }
@@ -260,7 +260,7 @@ b := 10
     ASSERT_EQ(syms.size(), 3u);
 
     // Check decl bindings exist
-    const auto* root = dynamic_cast<TBlockExpr*>(ast.get());
+    const auto* root = dynamic_cast<TBlockExpr*>(ast.Get());
     ASSERT_NE(root, nullptr);
     ASSERT_EQ(root->Stmts.size(), 5u);
 

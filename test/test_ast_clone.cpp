@@ -17,7 +17,7 @@ void ExpectDisjointChildren(const TExprPtr& original, const TExprPtr& clone) {
     if (!original) {
         return;
     }
-    EXPECT_NE(original.get(), clone.get());
+    EXPECT_NE(original.Get(), clone.Get());
     const auto originalChildren = original->Children();
     const auto cloneChildren = clone->Children();
     ASSERT_EQ(originalChildren.size(), cloneChildren.size());
@@ -31,40 +31,40 @@ void ExpectDisjointChildren(const TExprPtr& original, const TExprPtr& clone) {
 TEST(AstClone, LifetimeAndHiddenChildrenAreDeeplyCloned) {
     TLocation loc{};
     auto ident = [&](std::string name) {
-        return std::make_shared<TIdentExpr>(loc, std::move(name));
+        return MakeIntrusive<TIdentExpr>(loc, std::move(name));
     };
 
-    auto variable = std::make_shared<TVarStmt>(
+    auto variable = MakeIntrusive<TVarStmt>(
         loc, "variable", std::make_shared<TIntegerType>());
     variable->Init = ident("variable_init");
-    auto vars = std::make_shared<TVarsBlockExpr>(
+    auto vars = MakeIntrusive<TVarsBlockExpr>(
         loc, std::vector<TExprPtr>{variable});
 
-    auto parameter = std::make_shared<TVarStmt>(
+    auto parameter = MakeIntrusive<TVarStmt>(
         loc, "parameter", std::make_shared<TIntegerType>());
     parameter->Init = ident("parameter_init");
-    auto function = std::make_shared<TFunDecl>(
+    auto function = MakeIntrusive<TFunDecl>(
         loc,
         "function",
         std::vector<TGenericParam>{},
         std::vector<TParam>{parameter},
-        std::make_shared<TBlockExpr>(
+        MakeIntrusive<TBlockExpr>(
             loc, std::vector<TExprPtr>{ident("function_body")}),
         std::make_shared<TVoidType>());
 
-    auto original = std::make_shared<TBlockExpr>(loc, std::vector<TExprPtr>{
-        std::make_shared<TRetainExpr>(loc, ident("retain")),
-        std::make_shared<TOwnLiteralExpr>(loc, ident("own")),
-        std::make_shared<TMoveExpr>(loc, ident("move")),
-        std::make_shared<TBorrowExpr>(loc, ident("borrow")),
-        std::make_shared<TDestroyExpr>(loc, ident("destroy"), ident("aux")),
-        std::make_shared<TReplaceExpr>(loc, ident("target"), ident("value")),
-        std::make_shared<TCleanupExitExpr>(
+    auto original = MakeIntrusive<TBlockExpr>(loc, std::vector<TExprPtr>{
+        MakeIntrusive<TRetainExpr>(loc, ident("retain")),
+        MakeIntrusive<TOwnLiteralExpr>(loc, ident("own")),
+        MakeIntrusive<TMoveExpr>(loc, ident("move")),
+        MakeIntrusive<TBorrowExpr>(loc, ident("borrow")),
+        MakeIntrusive<TDestroyExpr>(loc, ident("destroy"), ident("aux")),
+        MakeIntrusive<TReplaceExpr>(loc, ident("target"), ident("value")),
+        MakeIntrusive<TCleanupExitExpr>(
             loc,
             ECleanupExitKind::Return,
             ident("return"),
             std::vector<TExprPtr>{ident("cleanup")}),
-        std::make_shared<TGlobalCleanupExpr>(
+        MakeIntrusive<TGlobalCleanupExpr>(
             loc, std::vector<TExprPtr>{ident("global_cleanup")}),
         vars,
         function,

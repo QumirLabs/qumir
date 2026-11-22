@@ -9,6 +9,7 @@
 #include <optional>
 
 #include <qumir/location.h>
+#include <qumir/ptr.h>
 
 #include "type.h"
 #include "operator.h"
@@ -17,7 +18,10 @@ namespace NQumir {
 namespace NAst {
 
 struct TExpr;
-using TExprPtr = std::shared_ptr<TExpr>;
+using TExprPtr = TIntrusivePtr<TExpr>;
+
+template<typename T, typename = std::enable_if_t<std::is_base_of_v<TExpr, T>>>
+using TExprPtrOf = TIntrusivePtr<T>;
 
 // Copies one node while sharing its children, or recursively copies a parsed
 // source tree with fresh scope bookkeeping. Used when a cached source module is
@@ -38,10 +42,10 @@ struct TGlobalCleanupExpr;
 
 template<typename T>
 struct TMaybeNode {
-    TMaybeNode(TExprPtr node);
+    TMaybeNode(const TExprPtr& node);
 
-    std::shared_ptr<T> Cast() {
-        return std::static_pointer_cast<T>(Node);
+    TExprPtrOf<T> Cast() {
+        return StaticPointerCast<T>(Node);
     }
 
     TExprPtr Node;
@@ -50,7 +54,7 @@ struct TMaybeNode {
 
 struct IVisitor;
 
-struct TExpr {
+struct TExpr : TRefCounted<TExpr> {
     TLocation Location;
     TTypePtr Type = nullptr;
     std::optional<std::string> Origin;
@@ -79,7 +83,7 @@ struct TExpr {
 };
 
 template<typename T>
-inline TMaybeNode<T>::TMaybeNode(TExprPtr node)
+inline TMaybeNode<T>::TMaybeNode(const TExprPtr& node)
     : Node(node && std::string_view(T::NodeId) == node->NodeName()
         ? std::move(node)
         : nullptr)
@@ -110,10 +114,10 @@ struct TAssignExpr : TExpr {
 
     std::string Name;
     TExprPtr Value;
-    TAssignExpr(TLocation loc, std::string n, TExprPtr v)
+    TAssignExpr(TLocation loc, std::string n, const TExprPtr& v)
         : TExpr(std::move(loc))
         , Name(std::move(n))
-        , Value(std::move(v))
+        , Value(v)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -141,11 +145,11 @@ struct TArrayAssignExpr : TExpr {
     std::string Name;
     std::vector<TExprPtr> Indices;
     TExprPtr Value;
-    TArrayAssignExpr(TLocation loc, std::string n, std::vector<TExprPtr> idxs, TExprPtr v)
+    TArrayAssignExpr(TLocation loc, std::string n, std::vector<TExprPtr>&& idxs, const TExprPtr& v)
         : TExpr(std::move(loc))
         , Name(std::move(n))
         , Indices(std::move(idxs))
-        , Value(std::move(v))
+        , Value(v)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -217,7 +221,7 @@ struct TVectorExpr : TExpr {
     static constexpr const char* NodeId = "Vector";
 
     std::vector<TExprPtr> Elements;
-    explicit TVectorExpr(TLocation loc, std::vector<TExprPtr> elems)
+    explicit TVectorExpr(TLocation loc, std::vector<TExprPtr>&& elems)
         : TExpr(std::move(loc)), Elements(std::move(elems))
     { }
 
@@ -288,10 +292,10 @@ struct TUnaryExpr : TExpr {
 
     TOperator Operator;
     TExprPtr Operand;
-    TUnaryExpr(TLocation loc, TOperator o, TExprPtr e)
+    TUnaryExpr(TLocation loc, TOperator o, const TExprPtr& e)
         : TExpr(std::move(loc))
         , Operator(o)
-        , Operand(std::move(e))
+        , Operand(e)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -319,11 +323,11 @@ struct TBinaryExpr : TExpr {
     TOperator Operator;
     TExprPtr Left;
     TExprPtr Right;
-    TBinaryExpr(TLocation loc, TOperator o, TExprPtr l, TExprPtr r)
+    TBinaryExpr(TLocation loc, TOperator o, const TExprPtr& l, const TExprPtr& r)
         : TExpr(std::move(loc))
         , Operator(o)
-        , Left(std::move(l))
-        , Right(std::move(r))
+        , Left(l)
+        , Right(r)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -351,7 +355,7 @@ struct TBlockExpr : TExpr {
     std::vector<TExprPtr> Stmts;
     int32_t Scope = -1; // filled in by name resolver, 0 - root scope, -1 - unscoped
 
-    explicit TBlockExpr(TLocation loc, std::vector<TExprPtr> s)
+    explicit TBlockExpr(TLocation loc, std::vector<TExprPtr>&& s)
         : TExpr(std::move(loc))
         , Stmts(std::move(s))
     { }
@@ -387,11 +391,11 @@ struct TIfExpr : TExpr {
     TExprPtr Cond;
     TExprPtr Then;
     TExprPtr Else;
-    TIfExpr(TLocation loc, TExprPtr c, TExprPtr t, TExprPtr e)
+    TIfExpr(TLocation loc, const TExprPtr& c, const TExprPtr& t, const TExprPtr& e)
         : TExpr(std::move(loc))
-        , Cond(std::move(c))
-        , Then(std::move(t))
-        , Else(std::move(e))
+        , Cond(c)
+        , Then(t)
+        , Else(e)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -417,10 +421,10 @@ struct TWhileStmtExpr : TExpr {
     TExprPtr Cond;
     TExprPtr Body;
 
-    TWhileStmtExpr(TLocation loc, TExprPtr cond, TExprPtr body)
+    TWhileStmtExpr(TLocation loc, const TExprPtr& cond, const TExprPtr& body)
         : TExpr(std::move(loc))
-        , Cond(std::move(cond))
-        , Body(std::move(body))
+        , Cond(cond)
+        , Body(body)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -444,10 +448,10 @@ struct TRepeatStmtExpr : TExpr {
     TExprPtr Body;
     TExprPtr Cond;
 
-    TRepeatStmtExpr(TLocation loc, TExprPtr body, TExprPtr cond)
+    TRepeatStmtExpr(TLocation loc, const TExprPtr& body, const TExprPtr& cond)
         : TExpr(std::move(loc))
-        , Body(std::move(body))
-        , Cond(std::move(cond))
+        , Body(body)
+        , Cond(cond)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -474,13 +478,13 @@ struct TForStmtExpr : TExpr {
     TExprPtr Step;
     TExprPtr Body;
 
-    TForStmtExpr(TLocation loc, std::string varName, TExprPtr from, TExprPtr to, TExprPtr step, TExprPtr body)
+    TForStmtExpr(TLocation loc, std::string varName, const TExprPtr& from, const TExprPtr& to, const TExprPtr& step, const TExprPtr& body)
         : TExpr(std::move(loc))
         , VarName(std::move(varName))
-        , From(std::move(from))
-        , To(std::move(to))
-        , Step(std::move(step))
-        , Body(std::move(body))
+        , From(from)
+        , To(to)
+        , Step(step)
+        , Body(body)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -504,10 +508,10 @@ struct TTimesStmtExpr : TExpr {
     TExprPtr Count;
     TExprPtr Body;
 
-    TTimesStmtExpr(TLocation loc, TExprPtr count, TExprPtr body)
+    TTimesStmtExpr(TLocation loc, const TExprPtr& count, const TExprPtr& body)
         : TExpr(std::move(loc))
-        , Count(std::move(count))
-        , Body(std::move(body))
+        , Count(count)
+        , Body(body)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -558,9 +562,9 @@ struct TReturnExpr : TExpr {
 
     TExprPtr Value; // optional; null for `(return)`
 
-    TReturnExpr(TLocation loc, TExprPtr value)
+    TReturnExpr(TLocation loc, const TExprPtr& value)
         : TExpr(std::move(loc))
-        , Value(std::move(value))
+        , Value(value)
     { }
 
     const std::string_view NodeName() const override {
@@ -587,7 +591,7 @@ struct TVarStmt : TExpr {
     std::vector<std::pair<TExprPtr, TExprPtr>> Bounds; // for array types
     TExprPtr Init; // for (var name = expr) form; type inferred from Init
 
-    TVarStmt(TLocation loc, std::string name, NAst::TTypePtr type, std::vector<std::pair<TExprPtr, TExprPtr>> bounds = {})
+    TVarStmt(TLocation loc, std::string name, NAst::TTypePtr type, std::vector<std::pair<TExprPtr, TExprPtr>>&& bounds = {})
         : TExpr(std::move(loc), std::move(type))
         , Name(std::move(name))
         , Bounds(std::move(bounds))
@@ -630,7 +634,7 @@ struct TVarsBlockExpr : TExpr {
 
     std::vector<TExprPtr> Vars; // decl or assignments
 
-    explicit TVarsBlockExpr(TLocation loc, std::vector<TExprPtr> vars)
+    explicit TVarsBlockExpr(TLocation loc, std::vector<TExprPtr>&& vars)
         : TExpr(std::move(loc))
         , Vars(std::move(vars))
     { }
@@ -642,7 +646,7 @@ struct TVarsBlockExpr : TExpr {
     void Accept(IVisitor& visitor) override;
 };
 
-using TParam = std::shared_ptr<TVarStmt>;
+using TParam = TExprPtrOf<TVarStmt>;
 
 struct TGenericParam {
     enum class EKind {
@@ -663,8 +667,8 @@ struct TFunDecl : TExpr {
     std::string MangledName;
     std::vector<TGenericParam> GenericParams;
     std::vector<TParam> Params;
-    std::shared_ptr<TBlockExpr> Body;
-    std::shared_ptr<TExpr> LastAssert = nullptr; // last assert in function body, executed before return
+    TExprPtrOf<TBlockExpr> Body;
+    TExprPtrOf<TExpr> LastAssert = nullptr; // last assert in function body, executed before return
     using TPacked = uint64_t(*)(const uint64_t* args, size_t argCount);
     TPacked Packed = nullptr; // packed thunk for built-in functions
     using TInlineFactory = std::function<TExprPtr(std::vector<TExprPtr>)>;
@@ -690,12 +694,12 @@ struct TFunDecl : TExpr {
     // Set once the resolver finalized the emit symbol (overload/cacheable mangling);
     // guards against re-mangling when the mangled name is re-declared.
     bool Mangled = false;
-    TFunDecl(TLocation loc, std::string name, std::vector<TGenericParam> genericParams, std::vector<TParam> args, std::shared_ptr<TBlockExpr> body, NAst::TTypePtr type)
+    TFunDecl(TLocation loc, const std::string& name, std::vector<TGenericParam>&& genericParams, std::vector<TParam>&& args, const TExprPtrOf<TBlockExpr>& body, const NAst::TTypePtr& type)
         : TExpr(std::move(loc))
         , Name(std::move(name))
         , GenericParams(std::move(genericParams))
         , Params(std::move(args))
-        , Body(std::move(body))
+        , Body(body)
         , RetType(std::move(type))
     { }
 
@@ -756,9 +760,9 @@ struct TCallExpr : TExpr {
 
     TExprPtr Callee; // should evaluate to a function
     std::vector<TExprPtr> Args;
-    TCallExpr(TLocation loc, TExprPtr c, std::vector<TExprPtr> a)
+    TCallExpr(TLocation loc, const TExprPtr& c, std::vector<TExprPtr>&& a)
         : TExpr(std::move(loc))
-        , Callee(std::move(c))
+        , Callee(c)
         , Args(std::move(a))
     { }
 
@@ -793,9 +797,9 @@ struct TAwaitExpr : TExpr {
     static constexpr const char* NodeId = "Await";
 
     TExprPtr Operand;
-    explicit TAwaitExpr(TLocation loc, TExprPtr operand)
+    explicit TAwaitExpr(TLocation loc, const TExprPtr& operand)
         : TExpr(std::move(loc))
-        , Operand(std::move(operand))
+        , Operand(operand)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -818,7 +822,7 @@ struct TInputExpr : TExpr {
     static constexpr const char* NodeId = "Input";
 
     std::vector<TExprPtr> Args;
-    TInputExpr(TLocation loc, std::vector<TExprPtr> a)
+    TInputExpr(TLocation loc, std::vector<TExprPtr>&& a)
         : TExpr(std::move(loc))
         , Args(std::move(a))
     {
@@ -861,7 +865,7 @@ struct TOutputExpr : TExpr {
     static constexpr const char* NodeId = "Output";
 
     std::vector<TOutputArg> Args;
-    TOutputExpr(TLocation loc, std::vector<TOutputArg> a)
+    TOutputExpr(TLocation loc, std::vector<TOutputArg>&& a)
         : TExpr(std::move(loc))
         , Args(std::move(a))
     {
@@ -908,11 +912,11 @@ struct TOutputExpr : TExpr {
 struct TCastExpr : public TExpr {
     static constexpr const char* NodeId = "Cast";
 
-    TExprPtr  Operand;
+    TExprPtr Operand;
 
-    TCastExpr(TLocation loc, TExprPtr operand, TTypePtr target)
+    TCastExpr(TLocation loc, const TExprPtr& operand, const TTypePtr& target)
         : TExpr(std::move(loc))
-        , Operand(std::move(operand))
+        , Operand(operand)
     {
         Type = target;
     }
@@ -943,9 +947,9 @@ struct TBitcastExpr : public TExpr {
 
     TExprPtr Operand;
 
-    TBitcastExpr(TLocation loc, TExprPtr operand, TTypePtr target)
+    TBitcastExpr(TLocation loc, const TExprPtr& operand, TTypePtr target)
         : TExpr(std::move(loc))
-        , Operand(std::move(operand))
+        , Operand(operand)
     {
         Type = std::move(target);
     }
@@ -965,8 +969,8 @@ struct TBitcastExpr : public TExpr {
     void Accept(IVisitor& visitor) override;
 };
 
-inline TExprPtr MakeCast(TExprPtr e, TTypePtr to) {
-    return std::make_shared<TCastExpr>(e->Location, std::move(e), std::move(to));
+inline TExprPtr MakeCast(const TExprPtr& e, const TTypePtr& to) {
+    return MakeIntrusive<TCastExpr>(e->Location, std::move(e), std::move(to));
 }
 
 struct TIndexExpr : public TExpr {
@@ -975,10 +979,10 @@ struct TIndexExpr : public TExpr {
     TExprPtr Collection;
     TExprPtr Index;
 
-    TIndexExpr(TLocation loc, TExprPtr collection, TExprPtr index)
+    TIndexExpr(TLocation loc, const TExprPtr& collection, const TExprPtr& index)
         : TExpr(std::move(loc))
-        , Collection(std::move(collection))
-        , Index(std::move(index))
+        , Collection(collection)
+        , Index(index)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -1002,9 +1006,9 @@ struct TMultiIndexExpr : public TExpr {
     TExprPtr Collection;
     std::vector<TExprPtr> Indices;
 
-    TMultiIndexExpr(TLocation loc, TExprPtr collection, std::vector<TExprPtr> indices)
+    TMultiIndexExpr(TLocation loc, const TExprPtr& collection, std::vector<TExprPtr>&& indices)
         : TExpr(std::move(loc))
-        , Collection(std::move(collection))
+        , Collection(collection)
         , Indices(std::move(indices))
     { }
 
@@ -1042,11 +1046,11 @@ struct TSliceExpr : public TExpr {
     TExprPtr Start;
     TExprPtr End;
 
-    TSliceExpr(TLocation loc, TExprPtr collection, TExprPtr start, TExprPtr end)
+    TSliceExpr(TLocation loc, const TExprPtr& collection, const TExprPtr& start, const TExprPtr& end)
         : TExpr(std::move(loc))
-        , Collection(std::move(collection))
-        , Start(std::move(start))
-        , End(std::move(end))
+        , Collection(collection)
+        , Start(start)
+        , End(end)
     { }
 
     std::vector<TExprPtr> Children() const override {
@@ -1070,7 +1074,7 @@ public:
     std::string ModuleName;
     bool Resolved = false;
 
-    explicit TUseExpr(TLocation loc, std::string moduleName)
+    explicit TUseExpr(TLocation loc, const std::string& moduleName)
         : TExpr(std::move(loc))
         , ModuleName(std::move(moduleName))
     { }
@@ -1091,9 +1095,9 @@ public:
     static constexpr const char* NodeId = "Assert";
     TExprPtr Expr;
 
-    explicit TAssertStmt(TLocation loc, TExprPtr expr)
+    explicit TAssertStmt(TLocation loc, const TExprPtr& expr)
         : TExpr(std::move(loc))
-        , Expr(std::move(expr))
+        , Expr(expr)
     { }
 
     const std::string_view NodeName() const override {
@@ -1142,9 +1146,9 @@ public:
     std::string FieldName;
     int FieldIndex = -1;
 
-    TFieldAccessExpr(TLocation loc, TExprPtr object, std::string fieldName)
+    TFieldAccessExpr(TLocation loc, const TExprPtr& object, const std::string& fieldName)
         : TExpr(std::move(loc))
-        , Object(std::move(object))
+        , Object(object)
         , FieldName(std::move(fieldName))
     { }
 
@@ -1171,7 +1175,7 @@ public:
     std::vector<TExprPtr> Fields;
     std::vector<std::string> FieldNames;
 
-    TStructConstructExpr(TLocation loc, TTypePtr structType, std::vector<TExprPtr> fields, std::vector<std::string> fieldNames = {})
+    TStructConstructExpr(TLocation loc, TTypePtr structType, std::vector<TExprPtr>&& fields, std::vector<std::string>&& fieldNames = {})
         : TExpr(std::move(loc))
         , Fields(std::move(fields))
         , FieldNames(std::move(fieldNames))
@@ -1200,11 +1204,11 @@ public:
     int FieldIndex = -1;
     TExprPtr Value;
 
-    TFieldAssignExpr(TLocation loc, TExprPtr object, std::string fieldName, TExprPtr value)
+    TFieldAssignExpr(TLocation loc, const TExprPtr& object, const std::string& fieldName, const TExprPtr& value)
         : TExpr(std::move(loc))
-        , Object(std::move(object))
+        , Object(object)
         , FieldName(std::move(fieldName))
-        , Value(std::move(value))
+        , Value(value)
     { }
 
     const std::string_view NodeName() const override {
@@ -1228,9 +1232,9 @@ struct TRetainExpr : TExpr {
 
     TExprPtr Value;
 
-    TRetainExpr(TLocation loc, TExprPtr value)
+    TRetainExpr(TLocation loc, const TExprPtr& value)
         : TExpr(std::move(loc), value ? value->Type : nullptr)
-        , Value(std::move(value))
+        , Value(value)
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
@@ -1244,9 +1248,9 @@ struct TOwnLiteralExpr : TExpr {
 
     TExprPtr Value;
 
-    TOwnLiteralExpr(TLocation loc, TExprPtr value)
+    TOwnLiteralExpr(TLocation loc, const TExprPtr& value)
         : TExpr(std::move(loc), value ? value->Type : nullptr)
-        , Value(std::move(value))
+        , Value(value)
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
@@ -1260,9 +1264,9 @@ struct TMoveExpr : TExpr {
 
     TExprPtr Value;
 
-    TMoveExpr(TLocation loc, TExprPtr value)
+    TMoveExpr(TLocation loc, const TExprPtr& value)
         : TExpr(std::move(loc), value ? value->Type : nullptr)
-        , Value(std::move(value))
+        , Value(value)
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
@@ -1276,9 +1280,9 @@ struct TBorrowExpr : TExpr {
 
     TExprPtr Value;
 
-    TBorrowExpr(TLocation loc, TExprPtr value)
+    TBorrowExpr(TLocation loc, const TExprPtr& value)
         : TExpr(std::move(loc), value ? value->Type : nullptr)
-        , Value(std::move(value))
+        , Value(value)
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
@@ -1293,10 +1297,10 @@ struct TDestroyExpr : TExpr {
     TExprPtr Value;
     TExprPtr Aux;
 
-    TDestroyExpr(TLocation loc, TExprPtr value, TExprPtr aux = nullptr)
+    TDestroyExpr(TLocation loc, const TExprPtr& value, const TExprPtr& aux = nullptr)
         : TExpr(std::move(loc), std::make_shared<TVoidType>())
-        , Value(std::move(value))
-        , Aux(std::move(aux))
+        , Value(value)
+        , Aux(aux)
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
@@ -1324,10 +1328,10 @@ struct TReplaceExpr : TExpr {
     TExprPtr Target;
     TExprPtr Value;
 
-    TReplaceExpr(TLocation loc, TExprPtr target, TExprPtr value)
+    TReplaceExpr(TLocation loc, const TExprPtr& target, const TExprPtr& value)
         : TExpr(std::move(loc), std::make_shared<TVoidType>())
-        , Target(std::move(target))
-        , Value(std::move(value))
+        , Target(target)
+        , Value(value)
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
@@ -1352,11 +1356,11 @@ struct TCleanupExitExpr : TExpr {
     TCleanupExitExpr(
         TLocation loc,
         ECleanupExitKind kind,
-        TExprPtr value,
-        std::vector<TExprPtr> cleanups)
+        const TExprPtr& value,
+        std::vector<TExprPtr>&& cleanups)
         : TExpr(std::move(loc), std::make_shared<TVoidType>())
         , Kind(kind)
-        , Value(std::move(value))
+        , Value(value)
         , Cleanups(std::move(cleanups))
     { }
 
@@ -1392,7 +1396,7 @@ struct TGlobalCleanupExpr : TExpr {
 
     std::vector<TExprPtr> Cleanups;
 
-    TGlobalCleanupExpr(TLocation loc, std::vector<TExprPtr> cleanups)
+    TGlobalCleanupExpr(TLocation loc, std::vector<TExprPtr>&& cleanups)
         : TExpr(std::move(loc), std::make_shared<TVoidType>())
         , Cleanups(std::move(cleanups))
     { }

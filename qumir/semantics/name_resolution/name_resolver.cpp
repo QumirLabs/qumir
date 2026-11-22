@@ -934,7 +934,7 @@ TSymbolId TNameResolver::DeclareFunction(const std::string& name, TExprPtr node)
     return res.value();
 }
 
-std::expected<TSymbolId, TError> TNameResolver::ResolveInstantiatedFunDecl(std::shared_ptr<TFunDecl> fdecl, bool publish) {
+std::expected<TSymbolId, TError> TNameResolver::ResolveInstantiatedFunDecl(const TExprPtrOf<TFunDecl>& fdecl, bool publish) {
     auto rootScope = GetOrCreateRootScope();
     std::optional<TSymbolId> publishedSymId;
     if (publish) {
@@ -976,10 +976,10 @@ std::expected<TSymbolId, TError> TNameResolver::ResolveInstantiatedFunDecl(std::
     return publishedSymId.value_or(TSymbolId{-1});
 }
 
-std::vector<std::pair<int, std::shared_ptr<NAst::TFunDecl>>> TNameResolver::GetExternalFunctions() {
+std::vector<std::pair<int, TExprPtrOf<NAst::TFunDecl>>> TNameResolver::GetExternalFunctions() {
     auto scope = GetOrCreateRootScope();
 
-    std::vector<std::pair<int, std::shared_ptr<NAst::TFunDecl>>> result;
+    std::vector<std::pair<int, TExprPtrOf<NAst::TFunDecl>>> result;
     for (auto& symbolId : scope->Symbols) {
         auto& symbol = Symbols[symbolId];
         if (auto maybeFun = TMaybeNode<TFunDecl>(symbol.Node)) {
@@ -1119,11 +1119,11 @@ void TNameResolver::RegisterUnaryOp(const std::string& op, const NAst::TTypePtr&
     ImportedUnaryOps[{op, TypeKey(operand)}] = std::move(target);
 }
 
-std::vector<std::shared_ptr<NAst::TFunDecl>> TNameResolver::LookupGenericOperatorDecls(
+std::vector<TExprPtrOf<NAst::TFunDecl>> TNameResolver::LookupGenericOperatorDecls(
     const std::string& op,
     std::size_t arity) const
 {
-    std::vector<std::shared_ptr<NAst::TFunDecl>> result;
+    std::vector<TExprPtrOf<NAst::TFunDecl>> result;
     for (const auto& decl : GenericOperatorDecls) {
         if (!decl->OperatorName || *decl->OperatorName != op || decl->Params.size() != arity) {
             continue;
@@ -1458,9 +1458,9 @@ std::expected<bool, std::string> TNameResolver::ImportModule(const std::string& 
         auto funType = std::make_shared<NAst::TFunctionType>(fn.ArgTypes, fn.ReturnType);
         std::vector<NAst::TParam> params;
         for (size_t i = 0; i < fn.ArgTypes.size(); ++i) {
-            params.push_back(std::make_shared<NAst::TVarStmt>(TLocation{}, "arg" + std::to_string(i), fn.ArgTypes[i]));
+            params.push_back(MakeIntrusive<NAst::TVarStmt>(TLocation{}, "arg" + std::to_string(i), fn.ArgTypes[i]));
         }
-        auto funDecl = std::make_shared<NAst::TFunDecl>(TLocation{}, fn.Name, std::vector<TGenericParam>{}, params, nullptr, fn.ReturnType);
+        auto funDecl = MakeIntrusive<NAst::TFunDecl>(TLocation{}, fn.Name, std::vector<TGenericParam>{}, std::move(params), nullptr, fn.ReturnType);
         funDecl->MangledName = fn.MangledName;
         funDecl->Type = funType;
         funDecl->Packed = fn.Packed;

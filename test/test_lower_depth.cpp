@@ -44,14 +44,14 @@ void RunOnStack(size_t bytes, TFunc& func) {
 
 // if 1 then (... + 1) else 0, `depth` times around 0: evaluates to `depth`.
 TExprPtr NestedIf(int depth) {
-    TExprPtr expr = std::make_shared<TNumberExpr>(TLocation{}, int64_t{0});
+    TExprPtr expr = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0});
     for (int i = 0; i < depth; ++i) {
-        auto sum = std::make_shared<TBinaryExpr>(TLocation{}, TOperator("+"),
-            std::move(expr), std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}));
-        expr = std::make_shared<TIfExpr>(TLocation{},
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
+        auto sum = MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator("+"),
+            std::move(expr), MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}));
+        expr = MakeIntrusive<TIfExpr>(TLocation{},
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
             std::move(sum),
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{0}));
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}));
     }
     return expr;
 }
@@ -70,12 +70,12 @@ TEST(LowerDepth, DeepExpressionFitsSmallStack) {
     auto parsed = parser.parse(tokens, &resolver);
     ASSERT_TRUE(parsed) << parsed.error().ToString();
     auto ast = std::move(parsed.value());
-    auto* top = dynamic_cast<TBlockExpr*>(ast.get());
+    auto* top = dynamic_cast<TBlockExpr*>(ast.Get());
     ASSERT_NE(top, nullptr);
-    auto* fun = dynamic_cast<TFunDecl*>(top->Stmts.front().get());
+    auto* fun = dynamic_cast<TFunDecl*>(top->Stmts.front().Get());
     ASSERT_NE(fun, nullptr);
     auto& body = fun->Body->Stmts;
-    body.insert(body.begin() + 1, std::make_shared<TAssignExpr>(TLocation{}, "x", NestedIf(Depth)));
+    body.insert(body.begin() + 1, MakeIntrusive<TAssignExpr>(TLocation{}, "x", NestedIf(Depth)));
 
     auto scope = resolver.GetOrCreateRootScope();
     scope->AllowsRedeclare = true;

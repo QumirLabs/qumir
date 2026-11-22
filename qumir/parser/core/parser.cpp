@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "qumir/ptr.h"
 
 #include <qumir/optional.h>
 #include <qumir/parser/operator.h>
@@ -130,13 +131,13 @@ TExprPtr ApplyTypeAnnotation(TExprPtr expr, TTypePtr type) {
     if (auto maybeNum = TMaybeNode<TNumberExpr>(expr)) {
         auto num = maybeNum.Cast();
         if (TMaybeType<TFloatType>(type) && !num->IsFloat()) {
-            expr = std::make_shared<TNumberExpr>(expr->Location, static_cast<double>(num->IntValue));
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, static_cast<double>(num->IntValue));
         } else if (TMaybeType<TIntegerType>(type) && num->IsFloat()) {
-            expr = std::make_shared<TNumberExpr>(expr->Location, static_cast<int64_t>(num->FloatValue));
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, static_cast<int64_t>(num->FloatValue));
         } else if (TMaybeType<TBoolType>(type)) {
-            expr = std::make_shared<TNumberExpr>(expr->Location, num->IsFloat() ? num->FloatValue != 0.0 : num->IntValue != 0);
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, num->IsFloat() ? num->FloatValue != 0.0 : num->IntValue != 0);
         } else if (TMaybeType<TSymbolType>(type)) {
-            expr = std::make_shared<TNumberExpr>(expr->Location, num->IntValue);
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, num->IntValue);
         }
     }
     expr->Type = std::move(type);
@@ -412,7 +413,7 @@ TAstTask ParseList(TParserContext& context, TLocation location) {
         co_return TError(location, "unknown core form: " + head);
     }
     if (args.size() == 1) {
-        co_return std::make_shared<TUnaryExpr>(location, TOperator(head), std::move(args[0]));
+        co_return MakeIntrusive<TUnaryExpr>(location, TOperator(head), std::move(args[0]));
     }
     if (args.size() > 2 && !VariadicOps.count(head)) {
         co_return TError(location, "operator is not variadic: " + head);
@@ -421,7 +422,7 @@ TAstTask ParseList(TParserContext& context, TLocation location) {
         auto op = head == "xor" ? "^" : head;
         auto result = std::move(args[0]);
         for (size_t i = 1; i < args.size(); ++i) {
-            result = std::make_shared<TBinaryExpr>(
+            result = MakeIntrusive<TBinaryExpr>(
                 location,
                 TOperator(op),
                 std::move(result),
@@ -438,26 +439,26 @@ TAstTask ParseExpr(TParserContext& context) {
         co_return TExprPtr{};
     }
     if (token.Type == TToken::Integer) {
-        co_return std::make_shared<TNumberExpr>(token.Location, token.Value.i64);
+        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64);
     }
     if (token.Type == TToken::Float) {
-        co_return std::make_shared<TNumberExpr>(token.Location, token.Value.f64);
+        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.f64);
     }
     if (token.Type == TToken::Boolean) {
-        co_return std::make_shared<TNumberExpr>(token.Location, token.Value.i64 != 0);
+        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64 != 0);
     }
     if (token.Type == TToken::Char) {
-        auto expr = std::make_shared<TNumberExpr>(token.Location, token.Value.i64);
-        expr->Type = std::make_shared<TSymbolType>();
+        auto expr = MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64);
+        expr->Type = std::shared_ptr<TSymbolType>();
         co_return expr;
     }
     if (token.Type == TToken::String) {
-        co_return std::make_shared<TStringLiteralExpr>(token.Location, token.Name);
+        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, token.Name);
     }
     if (token.Type == TToken::Identifier) {
-        if (token.Name == "break") co_return std::make_shared<TBreakStmt>(token.Location);
-        if (token.Name == "continue") co_return std::make_shared<TContinueStmt>(token.Location);
-        co_return std::make_shared<TIdentExpr>(token.Location, token.Name);
+        if (token.Name == "break") co_return MakeIntrusive<TBreakStmt>(token.Location);
+        if (token.Name == "continue") co_return MakeIntrusive<TContinueStmt>(token.Location);
+        co_return MakeIntrusive<TIdentExpr>(token.Location, token.Name);
     }
     if (IsOp(token, '(')) {
         co_return co_await ParseList(context, token.Location);
@@ -659,22 +660,22 @@ TListHandlerMap MakeDefaultHandlers() {
             auto expr = co_await ParseExpr(ctx);
             auto type = co_await ParseType(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TBitcastExpr>(loc, std::move(expr), std::move(type));
+            co_return MakeIntrusive<TBitcastExpr>(loc, std::move(expr), std::move(type));
         }},
         {"retain", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TRetainExpr>(loc, std::move(value));
+            co_return MakeIntrusive<TRetainExpr>(loc, std::move(value));
         }},
         {"borrow", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TBorrowExpr>(loc, std::move(value));
+            co_return MakeIntrusive<TBorrowExpr>(loc, std::move(value));
         }},
         {"move", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TMoveExpr>(loc, std::move(value));
+            co_return MakeIntrusive<TMoveExpr>(loc, std::move(value));
         }},
         {"own", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto dash = co_await ParseName(ctx);
@@ -687,7 +688,7 @@ TListHandlerMap MakeDefaultHandlers() {
             }
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TOwnLiteralExpr>(loc, std::move(value));
+            co_return MakeIntrusive<TOwnLiteralExpr>(loc, std::move(value));
         }},
         {"destroy", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto value = co_await ParseExpr(ctx);
@@ -698,7 +699,7 @@ TListHandlerMap MakeDefaultHandlers() {
                 aux = co_await ParseExpr(ctx);
                 co_await Expect(ctx, ')');
             }
-            co_return std::make_shared<TDestroyExpr>(
+            co_return MakeIntrusive<TDestroyExpr>(
                 loc,
                 std::move(value),
                 std::move(aux));
@@ -707,7 +708,7 @@ TListHandlerMap MakeDefaultHandlers() {
             auto target = co_await ParseExpr(ctx);
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TReplaceExpr>(
+            co_return MakeIntrusive<TReplaceExpr>(
                 loc,
                 std::move(target),
                 std::move(value));
@@ -719,7 +720,7 @@ TListHandlerMap MakeDefaultHandlers() {
             }
             auto suffix = co_await ParseName(ctx);
             if (suffix == "global") {
-                co_return std::make_shared<TGlobalCleanupExpr>(
+                co_return MakeIntrusive<TGlobalCleanupExpr>(
                     loc,
                     co_await ParseExprsUntil(ctx, ')'));
             }
@@ -748,7 +749,7 @@ TListHandlerMap MakeDefaultHandlers() {
             } else {
                 co_return TError(loc, "unknown cleanup exit kind: " + kindName);
             }
-            co_return std::make_shared<TCleanupExitExpr>(
+            co_return MakeIntrusive<TCleanupExitExpr>(
                 loc,
                 kind,
                 std::move(value),
@@ -762,12 +763,12 @@ TListHandlerMap MakeDefaultHandlers() {
                 auto indices = co_await ParseIndexVector(ctx);
                 auto value = co_await ParseExpr(ctx);
                 co_await Expect(ctx, ')');
-                co_return std::make_shared<TArrayAssignExpr>(loc, std::move(name), std::move(indices), std::move(value));
+                co_return MakeIntrusive<TArrayAssignExpr>(loc, std::move(name), std::move(indices), std::move(value));
             }
             ctx.Stream.Unget(token);
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TAssignExpr>(loc, std::move(name), std::move(value));
+            co_return MakeIntrusive<TAssignExpr>(loc, std::move(name), std::move(value));
         }},
         {"block", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             ++ctx.BlockDepth;
@@ -794,13 +795,13 @@ TListHandlerMap MakeDefaultHandlers() {
                 co_return TError((*badTypeDecl)->Location, "объявление типа допускается только в начале первого блока, после прагм и use");
             }
             exprs.erase(std::remove_if(exprs.begin(), exprs.end(), [](const TExprPtr& e) { return !e; }), exprs.end());
-            co_return std::make_shared<TBlockExpr>(loc, std::move(exprs));
+            co_return MakeIntrusive<TBlockExpr>(loc, std::move(exprs));
         }},
         {"vars", [](TParserContext& ctx, TLocation loc) -> TAstTask {
-            co_return std::make_shared<TVarsBlockExpr>(loc, co_await ParseExprsUntil(ctx, ')'));
+            co_return MakeIntrusive<TVarsBlockExpr>(loc, co_await ParseExprsUntil(ctx, ')'));
         }},
         {"input", [](TParserContext& ctx, TLocation loc) -> TAstTask {
-            co_return std::make_shared<TInputExpr>(loc, co_await ParseExprsUntil(ctx, ')'));
+            co_return MakeIntrusive<TInputExpr>(loc, co_await ParseExprsUntil(ctx, ')'));
         }},
         {"cond", [](TParserContext&, TLocation loc) -> TAstTask {
             co_return TError(loc, "форма (cond ...) устарела, используйте (if ...)");
@@ -815,19 +816,19 @@ TListHandlerMap MakeDefaultHandlers() {
                 elseBranch = co_await ParseExpr(ctx);
                 co_await Expect(ctx, ')');
             }
-            co_return std::make_shared<TIfExpr>(loc, std::move(cond), std::move(thenBranch), std::move(elseBranch));
+            co_return MakeIntrusive<TIfExpr>(loc, std::move(cond), std::move(thenBranch), std::move(elseBranch));
         }},
         {"while", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto cond = co_await ParseExpr(ctx);
             auto body = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TWhileStmtExpr>(loc, std::move(cond), std::move(body));
+            co_return MakeIntrusive<TWhileStmtExpr>(loc, std::move(cond), std::move(body));
         }},
         {"repeat", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto body = co_await ParseExpr(ctx);
             auto cond = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TRepeatStmtExpr>(loc, std::move(body), std::move(cond));
+            co_return MakeIntrusive<TRepeatStmtExpr>(loc, std::move(body), std::move(cond));
         }},
         {"for", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto name = co_await ParseName(ctx);
@@ -836,23 +837,23 @@ TListHandlerMap MakeDefaultHandlers() {
             auto step = co_await ParseExpr(ctx);
             auto body = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TForStmtExpr>(loc, std::move(name), std::move(from), std::move(to), std::move(step), std::move(body));
+            co_return MakeIntrusive<TForStmtExpr>(loc, std::move(name), std::move(from), std::move(to), std::move(step), std::move(body));
         }},
         {"times", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto count = co_await ParseExpr(ctx);
             auto body = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TTimesStmtExpr>(loc, std::move(count), std::move(body));
+            co_return MakeIntrusive<TTimesStmtExpr>(loc, std::move(count), std::move(body));
         }},
         {"return", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto token = ctx.Stream.Next();
             if (IsOp(token, ')')) {
-                co_return std::make_shared<TReturnExpr>(loc, nullptr);
+                co_return MakeIntrusive<TReturnExpr>(loc, nullptr);
             }
             ctx.Stream.Unget(token);
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TReturnExpr>(loc, std::move(value));
+            co_return MakeIntrusive<TReturnExpr>(loc, std::move(value));
         }},
         {"var", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto name = co_await ParseName(ctx);
@@ -861,7 +862,7 @@ TListHandlerMap MakeDefaultHandlers() {
                 // (var name = expr) - type inferred from init expression
                 auto init = co_await ParseExpr(ctx);
                 co_await Expect(ctx, ')');
-                auto var = std::make_shared<TVarStmt>(loc, std::move(name), nullptr);
+                auto var = MakeIntrusive<TVarStmt>(loc, std::move(name), nullptr);
                 var->Init = std::move(init);
                 co_return var;
             }
@@ -869,7 +870,7 @@ TListHandlerMap MakeDefaultHandlers() {
             auto type = co_await ParseType(ctx);
             auto bounds = co_await ParseBounds(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TVarStmt>(loc, std::move(name), std::move(type), std::move(bounds));
+            co_return MakeIntrusive<TVarStmt>(loc, std::move(name), std::move(type), std::move(bounds));
         }},
         {"fun", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             // (fun Name [optional generic params] ((var a) (var b)) -> return type (block body))
@@ -966,7 +967,7 @@ TListHandlerMap MakeDefaultHandlers() {
             if (!body) {
                 co_return TError(bodyExpr ? bodyExpr->Location : loc, "function body must be block");
             }
-            auto funDecl = std::make_shared<TFunDecl>(loc, std::move(name), std::move(genericParams), std::move(params), std::move(body), std::move(returnType));
+            auto funDecl = MakeIntrusive<TFunDecl>(loc, std::move(name), std::move(genericParams), std::move(params), std::move(body), std::move(returnType));
             funDecl->LastAssert = std::move(attrs.After);
             funDecl->OperatorName = std::move(operatorName);
             funDecl->LiteralSuffix = std::move(literalSuffix);
@@ -986,22 +987,22 @@ TListHandlerMap MakeDefaultHandlers() {
         {"call", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto callee = co_await ParseExpr(ctx);
             auto args = co_await ParseExprsUntil(ctx, ')');
-            co_return std::make_shared<TCallExpr>(loc, std::move(callee), std::move(args));
+            co_return MakeIntrusive<TCallExpr>(loc, std::move(callee), std::move(args));
         }},
         {"await", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto operand = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TAwaitExpr>(loc, std::move(operand));
+            co_return MakeIntrusive<TAwaitExpr>(loc, std::move(operand));
         }},
         {"output", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto args = co_await ParseOutputArgs(ctx);
-            co_return std::make_shared<TOutputExpr>(loc, std::move(args));
+            co_return MakeIntrusive<TOutputExpr>(loc, std::move(args));
         }},
         {"cast", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto operand = co_await ParseExpr(ctx);
             auto type = co_await ParseType(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TCastExpr>(loc, std::move(operand), std::move(type));
+            co_return MakeIntrusive<TCastExpr>(loc, std::move(operand), std::move(type));
         }},
         {"index", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto collection = co_await ParseExpr(ctx);
@@ -1010,12 +1011,12 @@ TListHandlerMap MakeDefaultHandlers() {
                 ctx.Stream.Unget(token);
                 auto indices = co_await ParseIndexVector(ctx);
                 co_await Expect(ctx, ')');
-                co_return std::make_shared<TMultiIndexExpr>(loc, std::move(collection), std::move(indices));
+                co_return MakeIntrusive<TMultiIndexExpr>(loc, std::move(collection), std::move(indices));
             }
             ctx.Stream.Unget(token);
             auto index = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TIndexExpr>(loc, std::move(collection), std::move(index));
+            co_return MakeIntrusive<TIndexExpr>(loc, std::move(collection), std::move(index));
         }},
         {"slice", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto collection = co_await ParseExpr(ctx);
@@ -1024,12 +1025,12 @@ TListHandlerMap MakeDefaultHandlers() {
                 co_return TError(loc, "slice expects one or two bounds");
             }
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TSliceExpr>(loc, std::move(collection), std::move(bounds[0]), bounds.size() == 2 ? std::move(bounds[1]) : nullptr);
+            co_return MakeIntrusive<TSliceExpr>(loc, std::move(collection), std::move(bounds[0]), bounds.size() == 2 ? std::move(bounds[1]) : nullptr);
         }},
         {"use", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto moduleName = co_await ParseNameLike(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TUseExpr>(loc, std::move(moduleName));
+            co_return MakeIntrusive<TUseExpr>(loc, std::move(moduleName));
         }},
         {"pragma", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             if (ctx.BlockDepth != 1) {
@@ -1056,18 +1057,18 @@ TListHandlerMap MakeDefaultHandlers() {
             auto underlying = co_await ParseType(ctx);
             co_await Expect(ctx, ')');
             auto namedType = std::make_shared<TNamedType>(std::move(name), std::move(underlying));
-            co_return std::make_shared<TTypeDeclStmt>(loc, std::move(namedType), std::move(genericParams));
+            co_return MakeIntrusive<TTypeDeclStmt>(loc, std::move(namedType), std::move(genericParams));
         }},
         {"assert", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto expr = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TAssertStmt>(loc, std::move(expr));
+            co_return MakeIntrusive<TAssertStmt>(loc, std::move(expr));
         }},
         {"field", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto object = co_await ParseExpr(ctx);
             auto fieldName = co_await ParseName(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TFieldAccessExpr>(loc, std::move(object), std::move(fieldName));
+            co_return MakeIntrusive<TFieldAccessExpr>(loc, std::move(object), std::move(fieldName));
         }},
         {"struct", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             co_await Expect(ctx, '(');
@@ -1085,7 +1086,7 @@ TListHandlerMap MakeDefaultHandlers() {
                 co_await Expect(ctx, ')');
             }
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TStructConstructExpr>(
+            co_return MakeIntrusive<TStructConstructExpr>(
                 loc,
                 std::make_shared<TStructType>(std::move(fieldTypes)),
                 std::move(fields),
@@ -1096,11 +1097,11 @@ TListHandlerMap MakeDefaultHandlers() {
             auto fieldName = co_await ParseName(ctx);
             auto value = co_await ParseExpr(ctx);
             co_await Expect(ctx, ')');
-            co_return std::make_shared<TFieldAssignExpr>(loc, std::move(object), std::move(fieldName), std::move(value));
+            co_return MakeIntrusive<TFieldAssignExpr>(loc, std::move(object), std::move(fieldName), std::move(value));
         }},
         {"vec", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto elements = co_await ParseExprsUntil(ctx, ')');
-            co_return std::make_shared<TVectorExpr>(loc, std::move(elements));
+            co_return MakeIntrusive<TVectorExpr>(loc, std::move(elements));
         }},
     };
 }

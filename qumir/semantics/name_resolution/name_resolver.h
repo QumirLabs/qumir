@@ -152,21 +152,21 @@ public:
 
     TSymbolId DeclareFunction(const std::string& name, NAst::TExprPtr node);
     NAst::TExprPtr GetSymbolNode(TSymbolId id) const;
-    std::vector<std::pair<int, std::shared_ptr<NAst::TFunDecl>>> GetExternalFunctions();
+    std::vector<std::pair<int, NAst::TExprPtrOf<NAst::TFunDecl>>> GetExternalFunctions();
 
     // A clone needs fresh scopes: the generic declaration's symbols refer to
     // its original AST nodes.
     std::expected<TSymbolId, TError> ResolveInstantiatedFunDecl(
-        std::shared_ptr<NAst::TFunDecl> fdecl,
+        const NAst::TExprPtrOf<NAst::TFunDecl>& fdecl,
         bool publish = true);
 
     // Includes instantiations triggered while resolving earlier clones.
-    const std::vector<std::shared_ptr<NAst::TFunDecl>>& GetGenericInstantiations() const {
+    const std::vector<NAst::TExprPtrOf<NAst::TFunDecl>>& GetGenericInstantiations() const {
         return GenericInstantiations;
     }
 
     // Annotation runs again, so drain clones before they are appended twice.
-    std::vector<std::shared_ptr<NAst::TFunDecl>> TakeGenericInstantiations() {
+    std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> TakeGenericInstantiations() {
         return std::exchange(GenericInstantiations, {});
     }
 
@@ -228,7 +228,7 @@ public:
     std::optional<TRegisteredOp> GetUnaryOp(const std::string& op,
         const NAst::TTypePtr& operand) const;
     void RegisterUnaryOp(const std::string& op, const NAst::TTypePtr& operand, TRegisteredOp target);
-    std::vector<std::shared_ptr<NAst::TFunDecl>> LookupGenericOperatorDecls(
+    std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> LookupGenericOperatorDecls(
         const std::string& op,
         std::size_t arity) const;
 
@@ -282,7 +282,7 @@ private:
 
     TNameResolverOptions Options;
     std::vector<TSymbol> Symbols;
-    std::vector<std::shared_ptr<NAst::TFunDecl>> GenericInstantiations;
+    std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> GenericInstantiations;
 
     std::vector<TScopePtr> Scopes;
 
@@ -292,8 +292,8 @@ private:
     std::unordered_map<std::string, std::string> ImportedModuleSymbols; // symbol/type name -> source module
     std::unordered_map<std::string, NAst::TTypePtr> ImportedTypes; // type name -> resolved type
     std::unordered_map<std::string, TRegisteredTypeDecl> RegisteredTypes;
-    std::vector<std::shared_ptr<NAst::TFunDecl>> ImportedOperators; // operator overloads (IsOp=true), may have duplicates
-    std::vector<std::shared_ptr<NAst::TFunDecl>> GenericOperatorDecls;
+    std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> ImportedOperators; // operator overloads (IsOp=true), may have duplicates
+    std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> GenericOperatorDecls;
 
     // cast operator map: {TypeKey(from), TypeKey(to)} -> synthetic name registered via DeclareFunction
     std::map<std::pair<std::string,std::string>, std::string> ImportedCasts;

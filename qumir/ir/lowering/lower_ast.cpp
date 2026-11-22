@@ -64,7 +64,7 @@ struct TInstrEmitter {
 template <class T>
 const T* AsKind(const NAst::TExprPtr& expr)
 {
-    return expr->NodeName() == T::NodeId ? static_cast<const T*>(expr.get()) : nullptr;
+    return expr->NodeName() == T::NodeId ? static_cast<const T*>(expr.Get()) : nullptr;
 }
 
 NAst::TTypePtr PhysicalCallResultType(NAst::TTypePtr type)
@@ -277,7 +277,7 @@ TExpectedTask<TAstLowerer::TArrayLayout, TError, TLocation> TAstLowerer::LowerAr
     co_return layout;
 }
 
-TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerWhile(std::shared_ptr<NAst::TWhileStmtExpr> loop, const TBlockScope& scope)
+TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerWhile(const NAst::TExprPtrOf<NAst::TWhileStmtExpr>& loop, const TBlockScope& scope)
 {
     TInstrEmitter emitter{Builder, InstDebugInfo(loop->Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
     auto entryId = Builder.CurrentBlockIdx();
@@ -313,7 +313,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     co_return TValueWithBlock{ std::nullopt, Builder.CurrentBlockLabel() };
 }
 
-TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerRepeat(std::shared_ptr<NAst::TRepeatStmtExpr> loop, const TBlockScope& scope)
+TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerRepeat(const NAst::TExprPtrOf<NAst::TRepeatStmtExpr>& loop, const TBlockScope& scope)
 {
     TInstrEmitter emitter{Builder, InstDebugInfo(loop->Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
     auto entryId = Builder.CurrentBlockIdx();
@@ -349,7 +349,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     co_return TValueWithBlock{ std::nullopt, Builder.CurrentBlockLabel() };
 }
 
-TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerFor(std::shared_ptr<NAst::TForStmtExpr> loop, const TBlockScope& scope)
+TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerFor(const NAst::TExprPtrOf<NAst::TForStmtExpr>& loop, const TBlockScope& scope)
 {
     TInstrEmitter emitter{Builder, InstDebugInfo(loop->Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
     const auto i64 = Module.Types.I(EKind::I64);
@@ -453,7 +453,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     co_return TValueWithBlock{ std::nullopt, Builder.CurrentBlockLabel() };
 }
 
-TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerTimes(std::shared_ptr<NAst::TTimesStmtExpr> loop, const TBlockScope& scope)
+TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerTimes(const NAst::TExprPtrOf<NAst::TTimesStmtExpr>& loop, const TBlockScope& scope)
 {
     TInstrEmitter emitter{Builder, InstDebugInfo(loop->Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
     const auto i64 = Module.Types.I(EKind::I64);
@@ -910,16 +910,16 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         return LowerIf(*ife, scope);
     }
     if (AsKind<NAst::TWhileStmtExpr>(expr)) {
-        return LowerWhile(std::static_pointer_cast<NAst::TWhileStmtExpr>(expr), scope);
+        return LowerWhile(StaticPointerCast<NAst::TWhileStmtExpr>(expr), scope);
     }
     if (AsKind<NAst::TRepeatStmtExpr>(expr)) {
-        return LowerRepeat(std::static_pointer_cast<NAst::TRepeatStmtExpr>(expr), scope);
+        return LowerRepeat(StaticPointerCast<NAst::TRepeatStmtExpr>(expr), scope);
     }
     if (AsKind<NAst::TForStmtExpr>(expr)) {
-        return LowerFor(std::static_pointer_cast<NAst::TForStmtExpr>(expr), scope);
+        return LowerFor(StaticPointerCast<NAst::TForStmtExpr>(expr), scope);
     }
     if (AsKind<NAst::TTimesStmtExpr>(expr)) {
-        return LowerTimes(std::static_pointer_cast<NAst::TTimesStmtExpr>(expr), scope);
+        return LowerTimes(StaticPointerCast<NAst::TTimesStmtExpr>(expr), scope);
     }
     if (const auto* asg = AsKind<NAst::TArrayAssignExpr>(expr)) {
         return LowerArrayAssign(*asg, scope);
@@ -1772,7 +1772,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
             LocalDebugInfo(var.Name, var.Location, sidOpt->DeclScopeId, var.Type), true);
     }
     if (var.Init) {
-        auto assign = std::make_shared<NAst::TAssignExpr>(var.Location, var.Name, var.Init);
+        auto assign = MakeIntrusive<NAst::TAssignExpr>(var.Location, var.Name, var.Init);
         assign->Type = std::make_shared<NAst::TVoidType>();
         auto assignRes = co_await Lower(assign, scope);
         Builder.SetCurrentBlock(assignRes.ProducingLabel);
@@ -2309,8 +2309,8 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(
         }
     };
 
-    std::function<void(const std::shared_ptr<NAst::TBlockExpr>&, NSemantics::TScopeId)> collectTopLevelRoots =
-        [&](const std::shared_ptr<NAst::TBlockExpr>& block, NSemantics::TScopeId currentScope)
+    std::function<void(const NAst::TExprPtrOf<NAst::TBlockExpr>&, NSemantics::TScopeId)> collectTopLevelRoots =
+        [&](const NAst::TExprPtrOf<NAst::TBlockExpr>& block, NSemantics::TScopeId currentScope)
     {
         for (const auto& stmt : block->Stmts) {
             Module.HasSourceModules |= stmt && stmt->Origin.has_value();
@@ -2352,7 +2352,7 @@ std::expected<std::monostate, TError> TAstLowerer::LowerTop(
         }
     };
 
-    std::function<std::expected<std::monostate, TError>(const std::shared_ptr<NAst::TBlockExpr>&, const TBlockScope&)> lowerTopBlock = [&](const std::shared_ptr<NAst::TBlockExpr>& block, const TBlockScope& scope) -> std::expected<std::monostate, TError>
+    std::function<std::expected<std::monostate, TError>(const NAst::TExprPtrOf<NAst::TBlockExpr>&, const TBlockScope&)> lowerTopBlock = [&](const NAst::TExprPtrOf<NAst::TBlockExpr>& block, const TBlockScope& scope) -> std::expected<std::monostate, TError>
     {
         for (auto& s : block->Stmts) {
             if (auto maybeFun = NAst::TMaybeNode<NAst::TFunDecl>(s)) {

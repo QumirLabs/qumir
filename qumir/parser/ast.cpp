@@ -7,133 +7,133 @@ namespace NAst {
 
 TExprPtr ShallowCloneNode(const TExprPtr& node) {
     if (auto n = TMaybeNode<TIdentExpr>(node)) {
-        return std::make_shared<TIdentExpr>(*n.Cast());
+        return MakeIntrusive<TIdentExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TAssignExpr>(node)) {
-        return std::make_shared<TAssignExpr>(*n.Cast());
+        return MakeIntrusive<TAssignExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TArrayAssignExpr>(node)) {
-        return std::make_shared<TArrayAssignExpr>(*n.Cast());
+        return MakeIntrusive<TArrayAssignExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TNumberExpr>(node)) {
-        return std::make_shared<TNumberExpr>(*n.Cast());
+        return MakeIntrusive<TNumberExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TStringLiteralExpr>(node)) {
-        return std::make_shared<TStringLiteralExpr>(*n.Cast());
+        return MakeIntrusive<TStringLiteralExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TUnaryExpr>(node)) {
-        return std::make_shared<TUnaryExpr>(*n.Cast());
+        return MakeIntrusive<TUnaryExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TBinaryExpr>(node)) {
-        return std::make_shared<TBinaryExpr>(*n.Cast());
+        return MakeIntrusive<TBinaryExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TBlockExpr>(node)) {
-        return std::make_shared<TBlockExpr>(*n.Cast());
+        return MakeIntrusive<TBlockExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TIfExpr>(node)) {
-        return std::make_shared<TIfExpr>(*n.Cast());
+        return MakeIntrusive<TIfExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TWhileStmtExpr>(node)) {
-        return std::make_shared<TWhileStmtExpr>(*n.Cast());
+        return MakeIntrusive<TWhileStmtExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TRepeatStmtExpr>(node)) {
-        return std::make_shared<TRepeatStmtExpr>(*n.Cast());
+        return MakeIntrusive<TRepeatStmtExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TForStmtExpr>(node)) {
-        return std::make_shared<TForStmtExpr>(*n.Cast());
+        return MakeIntrusive<TForStmtExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TTimesStmtExpr>(node)) {
-        return std::make_shared<TTimesStmtExpr>(*n.Cast());
+        return MakeIntrusive<TTimesStmtExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TBreakStmt>(node)) {
-        return std::make_shared<TBreakStmt>(*n.Cast());
+        return MakeIntrusive<TBreakStmt>(*n.Cast());
     }
     if (auto n = TMaybeNode<TContinueStmt>(node)) {
-        return std::make_shared<TContinueStmt>(*n.Cast());
+        return MakeIntrusive<TContinueStmt>(*n.Cast());
     }
     if (auto n = TMaybeNode<TReturnExpr>(node)) {
-        return std::make_shared<TReturnExpr>(*n.Cast());
+        return MakeIntrusive<TReturnExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TVarStmt>(node)) {
-        return std::make_shared<TVarStmt>(*n.Cast());
+        return MakeIntrusive<TVarStmt>(*n.Cast());
     }
     if (auto n = TMaybeNode<TVarsBlockExpr>(node)) {
-        return std::make_shared<TVarsBlockExpr>(*n.Cast());
+        return MakeIntrusive<TVarsBlockExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TFunDecl>(node)) {
-        return std::make_shared<TFunDecl>(*n.Cast());
+        return MakeIntrusive<TFunDecl>(*n.Cast());
     }
     if (auto n = TMaybeNode<TCallExpr>(node)) {
-        return std::make_shared<TCallExpr>(*n.Cast());
+        return MakeIntrusive<TCallExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TAwaitExpr>(node)) {
-        return std::make_shared<TAwaitExpr>(*n.Cast());
+        return MakeIntrusive<TAwaitExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TInputExpr>(node)) {
-        return std::make_shared<TInputExpr>(*n.Cast());
+        return MakeIntrusive<TInputExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TOutputExpr>(node)) {
-        return std::make_shared<TOutputExpr>(*n.Cast());
+        return MakeIntrusive<TOutputExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TCastExpr>(node)) {
-        return std::make_shared<TCastExpr>(*n.Cast());
+        return MakeIntrusive<TCastExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TBitcastExpr>(node)) {
-        return std::make_shared<TBitcastExpr>(*n.Cast());
+        return MakeIntrusive<TBitcastExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TIndexExpr>(node)) {
-        return std::make_shared<TIndexExpr>(*n.Cast());
+        return MakeIntrusive<TIndexExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TMultiIndexExpr>(node)) {
-        return std::make_shared<TMultiIndexExpr>(*n.Cast());
+        return MakeIntrusive<TMultiIndexExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TSliceExpr>(node)) {
-        return std::make_shared<TSliceExpr>(*n.Cast());
+        return MakeIntrusive<TSliceExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TUseExpr>(node)) {
-        return std::make_shared<TUseExpr>(*n.Cast());
+        return MakeIntrusive<TUseExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TAssertStmt>(node)) {
-        return std::make_shared<TAssertStmt>(*n.Cast());
+        return MakeIntrusive<TAssertStmt>(*n.Cast());
     }
     if (auto n = TMaybeNode<TTypeDeclStmt>(node)) {
-        return std::make_shared<TTypeDeclStmt>(*n.Cast());
+        return MakeIntrusive<TTypeDeclStmt>(*n.Cast());
     }
     if (auto n = TMaybeNode<TFieldAccessExpr>(node)) {
-        return std::make_shared<TFieldAccessExpr>(*n.Cast());
+        return MakeIntrusive<TFieldAccessExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TStructConstructExpr>(node)) {
-        return std::make_shared<TStructConstructExpr>(*n.Cast());
+        return MakeIntrusive<TStructConstructExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TFieldAssignExpr>(node)) {
-        return std::make_shared<TFieldAssignExpr>(*n.Cast());
+        return MakeIntrusive<TFieldAssignExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TRetainExpr>(node)) {
-        return std::make_shared<TRetainExpr>(*n.Cast());
+        return MakeIntrusive<TRetainExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TOwnLiteralExpr>(node)) {
-        return std::make_shared<TOwnLiteralExpr>(*n.Cast());
+        return MakeIntrusive<TOwnLiteralExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TMoveExpr>(node)) {
-        return std::make_shared<TMoveExpr>(*n.Cast());
+        return MakeIntrusive<TMoveExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TBorrowExpr>(node)) {
-        return std::make_shared<TBorrowExpr>(*n.Cast());
+        return MakeIntrusive<TBorrowExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TDestroyExpr>(node)) {
-        return std::make_shared<TDestroyExpr>(*n.Cast());
+        return MakeIntrusive<TDestroyExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TReplaceExpr>(node)) {
-        return std::make_shared<TReplaceExpr>(*n.Cast());
+        return MakeIntrusive<TReplaceExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TCleanupExitExpr>(node)) {
-        return std::make_shared<TCleanupExitExpr>(*n.Cast());
+        return MakeIntrusive<TCleanupExitExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TGlobalCleanupExpr>(node)) {
-        return std::make_shared<TGlobalCleanupExpr>(*n.Cast());
+        return MakeIntrusive<TGlobalCleanupExpr>(*n.Cast());
     }
     if (auto n = TMaybeNode<TVectorExpr>(node)) {
-        return std::make_shared<TVectorExpr>(*n.Cast());
+        return MakeIntrusive<TVectorExpr>(*n.Cast());
     }
     return node;
 }
@@ -153,7 +153,7 @@ TExprPtr DeepCloneExpr(const TExprPtr& node) {
     } else if (auto function = TMaybeNode<TFunDecl>(clone)) {
         function.Cast()->Scope = -1;
         for (auto& param : function.Cast()->Params) {
-            param = std::static_pointer_cast<TVarStmt>(DeepCloneExpr(param));
+            param = StaticPointerCast<TVarStmt>(DeepCloneExpr(param));
         }
     } else if (auto vars = TMaybeNode<TVarsBlockExpr>(clone)) {
         for (auto& var : vars.Cast()->Vars) {

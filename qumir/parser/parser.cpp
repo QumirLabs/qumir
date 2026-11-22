@@ -38,39 +38,39 @@ struct TParserContext {
 };
 
 inline TExprPtr list(TLocation loc, std::vector<TExprPtr> elements) {
-    return std::make_shared<TBlockExpr>(std::move(loc), std::move(elements));
+    return MakeIntrusive<TBlockExpr>(std::move(loc), std::move(elements));
 }
 
 inline TExprPtr unary(TLocation loc, TOperator op, TExprPtr operand) {
-    return std::make_shared<TUnaryExpr>(std::move(loc), op, std::move(operand));
+    return MakeIntrusive<TUnaryExpr>(std::move(loc), op, std::move(operand));
 }
 
 inline TExprPtr binary(TLocation loc, TOperator op, TExprPtr left, TExprPtr right) {
-    return std::make_shared<TBinaryExpr>(std::move(loc), op, std::move(left), std::move(right));
+    return MakeIntrusive<TBinaryExpr>(std::move(loc), op, std::move(left), std::move(right));
 }
 
 inline TExprPtr num(TLocation loc, int64_t v) {
-    return std::make_shared<TNumberExpr>(std::move(loc), v);
+    return MakeIntrusive<TNumberExpr>(std::move(loc), v);
 }
 
 inline TExprPtr num(TLocation loc, double v) {
-    return std::make_shared<TNumberExpr>(std::move(loc), v);
+    return MakeIntrusive<TNumberExpr>(std::move(loc), v);
 }
 
 inline TExprPtr num(TLocation loc, bool v) {
-    return std::make_shared<TCastExpr>(loc,
-        std::make_shared<TNumberExpr>(loc, v),
+    return MakeIntrusive<TCastExpr>(loc,
+        MakeIntrusive<TNumberExpr>(loc, v),
         std::make_shared<TBoolType>());
 }
 
 inline TExprPtr sym(TLocation loc, int64_t v) {
-    return std::make_shared<TCastExpr>(loc,
-        std::make_shared<TNumberExpr>(loc, v),
+    return MakeIntrusive<TCastExpr>(loc,
+        MakeIntrusive<TNumberExpr>(loc, v),
         std::make_shared<TSymbolType>());
 }
 
 inline TExprPtr ident(TLocation loc, std::string n) {
-    return std::make_shared<TIdentExpr>(loc, std::move(n));
+    return MakeIntrusive<TIdentExpr>(loc, std::move(n));
 }
 
 inline bool isEof(const TToken& tok) {
@@ -271,7 +271,7 @@ TypeKw  ::= 'цел' | 'вещ' | 'лог' | 'лит' | 'таб'
 Name    ::= NamePart (' ' NamePart)*
 NamePart::= Identifier | Keyword
 */
-TExpectedTask<std::shared_ptr<TVarStmt>, TError, TLocation> var_decl(TParserContext& context, TTypePtr scalarType, bool isArray, bool isPointer, bool isReference) {
+TExpectedTask<TExprPtrOf<TVarStmt>, TError, TLocation> var_decl(TParserContext& context, TTypePtr scalarType, bool isArray, bool isPointer, bool isReference) {
     auto& stream = context.Stream;
     auto nameTok = stream.Next();
     if (nameTok.Type != TToken::Identifier) {
@@ -331,7 +331,7 @@ TExpectedTask<std::shared_ptr<TVarStmt>, TError, TLocation> var_decl(TParserCont
         varType = std::make_shared<TReferenceType>(varType);
     }
 
-    auto var = std::make_shared<TVarStmt>(nameTok.Location, name, varType, bounds);
+    auto var = MakeIntrusive<TVarStmt>(nameTok.Location, name, varType, std::move(bounds));
     co_return var;
 }
 
@@ -452,7 +452,7 @@ TExpectedTask<std::vector<TExprPtr>, TError, TLocation> var_decl_list(TParserCon
                 auto initExpr = co_await expr(context);
                 // insert assignment to variable
                 auto name = decl->Name;
-                auto assignStmt = std::make_shared<TAssignExpr>(t.Location,
+                auto assignStmt = MakeIntrusive<TAssignExpr>(t.Location,
                     name,
                     initExpr);
                 decls.push_back(assignStmt);
@@ -513,7 +513,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     auto* mm = context.ModuleManager;
     auto next = stream.Next();
     TTypePtr returnType = std::make_shared<TVoidType>();
-    std::vector<std::shared_ptr<TVarStmt>> args;
+    std::vector<TExprPtrOf<TVarStmt>> args;
     std::string name = "<main>";
 
     auto isNameKeyword = [](const TToken& token) {
@@ -580,8 +580,8 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     // 1. optional дано EKeyword::AssertBefore
     // 2. optional надо EKeyword::AssertAfter
     // 3. required нач EKeyword::Begin
-    std::shared_ptr<TAssertStmt> assertBefore = nullptr;
-    std::shared_ptr<TAssertStmt> assertAfter = nullptr;
+    TExprPtrOf<TAssertStmt> assertBefore = nullptr;
+    TExprPtrOf<TAssertStmt> assertAfter = nullptr;
     // Blank and comment-only lines are Eol tokens: skip any number of them.
     while (isOp(next, EOperator::Eol)) {
         next = stream.Next();
@@ -592,7 +592,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         stream.Unget(next);
         // Nothing or only a comment after the keyword: empty condition, nothing to assert.
         if (!isOp(next, EOperator::Eol) && !isEof(next)) {
-            assertBefore = std::make_shared<TAssertStmt>(keywordLocation, co_await expr(context));
+            assertBefore = MakeIntrusive<TAssertStmt>(keywordLocation, co_await expr(context));
         }
         next = stream.Next();
     }
@@ -605,7 +605,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         stream.Unget(next);
         // Nothing or only a comment after the keyword: empty condition, nothing to assert.
         if (!isOp(next, EOperator::Eol) && !isEof(next)) {
-            assertAfter = std::make_shared<TAssertStmt>(keywordLocation, co_await expr(context));
+            assertAfter = MakeIntrusive<TAssertStmt>(keywordLocation, co_await expr(context));
         }
         next = stream.Next();
     }
@@ -623,7 +623,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     }
 
     if (!TMaybeType<TVoidType>(returnType)) {
-        bodyStmts.push_back(std::make_shared<TVarStmt>(next.Location, "знач", returnType));
+        bodyStmts.push_back(MakeIntrusive<TVarStmt>(next.Location, "знач", returnType));
     }
 
     auto savedLoopDepth = context.LoopDepth;
@@ -648,14 +648,14 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         // body has an explicit return, populating retLocal even when control
         // falls off the end of the body.
         if (TMaybeType<TVoidType>(returnType)) {
-            block->Stmts.push_back(std::make_shared<TReturnExpr>(next.Location, nullptr));
+            block->Stmts.push_back(MakeIntrusive<TReturnExpr>(next.Location, nullptr));
         } else {
-            block->Stmts.push_back(std::make_shared<TReturnExpr>(next.Location, ident(next.Location, "знач")));
+            block->Stmts.push_back(MakeIntrusive<TReturnExpr>(next.Location, ident(next.Location, "знач")));
         }
 
-        auto funDecl = std::make_shared<TFunDecl>(location,
+        auto funDecl = MakeIntrusive<TFunDecl>(location,
             name, std::vector<TGenericParam>{}, std::move(args),
-            std::move(maybeBlock.Cast()),
+            MakeIntrusive<TBlockExpr>(location, std::move(maybeBlock.Cast()->Stmts)),
             returnType);
 
         funDecl->LastAssert = assertAfter;
@@ -717,7 +717,7 @@ TAstTask for_loop(TParserContext& context, TLocation location) {
         co_return unclosedBlock(endTok, "'кц'", location);
     }
 
-    co_return std::make_shared<TForStmtExpr>(
+    co_return MakeIntrusive<TForStmtExpr>(
         location,
         varTok.Name,
         fromExpr,
@@ -746,7 +746,7 @@ TAstTask for_times(TParserContext& context, TExprPtr countExpr, TLocation locati
         co_return unclosedBlock(endTok, "'кц'", location);
     }
 
-    co_return std::make_shared<TTimesStmtExpr>(location, std::move(countExpr), body);
+    co_return MakeIntrusive<TTimesStmtExpr>(location, std::move(countExpr), body);
 }
 
 /*
@@ -769,7 +769,7 @@ TAstTask while_loop(TParserContext& context, TLocation location) {
         co_return unclosedBlock(endTok, "'кц'", location);
     }
 
-    co_return std::make_shared<TWhileStmtExpr>(location, cond, body);
+    co_return MakeIntrusive<TWhileStmtExpr>(location, cond, body);
 }
 
 /*
@@ -817,7 +817,7 @@ TAstTask repeat_until_loop(TParserContext& context, TLocation location) {
         condExpr = unary(location, TOperator("!"), condExpr);
     }
 
-    co_return std::make_shared<TRepeatStmtExpr>(location, body, condExpr);
+    co_return MakeIntrusive<TRepeatStmtExpr>(location, body, condExpr);
 }
 
 /*
@@ -877,10 +877,10 @@ TAstTask switch_expr(TParserContext& context, TLocation location) {
     }
 
     // need to build if-then-else chain from cases
-    std::shared_ptr<TIfExpr> rootIf = nullptr;
-    std::shared_ptr<TIfExpr> lastIf = nullptr;
+    TExprPtrOf<TIfExpr> rootIf = nullptr;
+    TExprPtrOf<TIfExpr> lastIf = nullptr;
     for (auto& c : cases) {
-        auto newIf = std::make_shared<TIfExpr>(location, std::move(c.first), std::move(c.second), nullptr);
+        auto newIf = MakeIntrusive<TIfExpr>(location, std::move(c.first), std::move(c.second), nullptr);
         if (!rootIf) {
             rootIf = newIf;
             lastIf = newIf;
@@ -923,7 +923,7 @@ TAstTask if_expr(TParserContext& context, TLocation location) {
     auto elseTok = stream.Next();
     if (isKeyword(elseTok, EKeyword::EndIf)) {
         // if without else
-        co_return std::make_shared<TIfExpr>(location, cond, thenBranch, nullptr);
+        co_return MakeIntrusive<TIfExpr>(location, cond, thenBranch, nullptr);
     }
 
     if (!isKeyword(elseTok, EKeyword::Else)) {
@@ -937,7 +937,7 @@ TAstTask if_expr(TParserContext& context, TLocation location) {
         co_return unclosedBlock(endTok, "'все'", location);
     }
 
-    co_return std::make_shared<TIfExpr>(location, cond, thenBranch, elseBranch);
+    co_return MakeIntrusive<TIfExpr>(location, cond, thenBranch, elseBranch);
 }
 
 // Parse optional argument list after '(' then ')' or after '[' then ']'
@@ -1066,8 +1066,8 @@ TAstTask factor(TParserContext& context) {
             const auto& suffixes = context.LexerContext->GetLiteralSuffixes();
             auto it = suffixes.find(peek.Name);
             if (it != suffixes.end()) {
-                auto callee = std::make_shared<TIdentExpr>(peek.Location, it->second);
-                return std::make_shared<TCallExpr>(peek.Location, std::move(callee), std::vector<TExprPtr>{lit});
+                auto callee = MakeIntrusive<TIdentExpr>(peek.Location, it->second);
+                return MakeIntrusive<TCallExpr>(peek.Location, std::move(callee), std::vector<TExprPtr>{lit});
             }
         }
         stream.Unget(peek);
@@ -1081,9 +1081,9 @@ TAstTask factor(TParserContext& context) {
     } else if (token.Type == TToken::Char) {
         co_return sym(token.Location, token.Value.i64);
     } else if (token.Type == TToken::Keyword && static_cast<EKeyword>(token.Value.i64) == EKeyword::NewLine) {
-        co_return std::make_shared<TStringLiteralExpr>(token.Location, "\n");
+        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, "\n");
     } else if (token.Type == TToken::String) {
-        co_return std::make_shared<TStringLiteralExpr>(token.Location, token.Name);
+        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, token.Name);
     } else if (token.Type == TToken::Identifier) {
         co_return ident(token.Location, token.Name);
     } else if (token.Type == TToken::Keyword && static_cast<EKeyword>(token.Value.i64) == EKeyword::Return) {
@@ -1122,7 +1122,7 @@ TAstTask call_expr(TParserContext& context) {
                 co_return TError(tok.Location, "ожидалось имя функции перед '('");
             }
             auto args = co_await parse_arg_list_opt(context);
-            base = std::make_shared<TCallExpr>(tok.Location, std::move(base), std::move(args));
+            base = MakeIntrusive<TCallExpr>(tok.Location, std::move(base), std::move(args));
             continue;
         }
         if (isOp(tok, EOperator::LSqBr)) {
@@ -1138,7 +1138,7 @@ TAstTask call_expr(TParserContext& context) {
                 if (!isOp(rsbTok, EOperator::RSqBr)) {
                     co_return TError(rsbTok.Location, "ожидается ']' после среза массива");
                 }
-                base = std::make_shared<TSliceExpr>(tok.Location, std::move(base), std::move(indexExpr), std::move(endIndexExpr));
+                base = MakeIntrusive<TSliceExpr>(tok.Location, std::move(base), std::move(indexExpr), std::move(endIndexExpr));
                 continue;
             } else if ((EOperator)rbrOrColonTok.Value.i64 == EOperator::Comma) {
                 // multi-dimensional array index
@@ -1148,7 +1148,7 @@ TAstTask call_expr(TParserContext& context) {
                 allIndices.insert(allIndices.end(),
                     std::make_move_iterator(restArgs.begin()),
                     std::make_move_iterator(restArgs.end()));
-                base = std::make_shared<TMultiIndexExpr>(tok.Location, std::move(base), std::move(allIndices));
+                base = MakeIntrusive<TMultiIndexExpr>(tok.Location, std::move(base), std::move(allIndices));
                 continue;
             } else if ((EOperator)rbrOrColonTok.Value.i64 == EOperator::RSqBr) {
                 // single index
@@ -1156,7 +1156,7 @@ TAstTask call_expr(TParserContext& context) {
             } else {
                 co_return TError(rbrOrColonTok.Location, "ожидается ']' или ':' после индекса массива");
             }
-            base = std::make_shared<TIndexExpr>(tok.Location, std::move(base), std::move(indexExpr));
+            base = MakeIntrusive<TIndexExpr>(tok.Location, std::move(base), std::move(indexExpr));
             continue;
         }
         stream.Unget(tok);
@@ -1685,7 +1685,7 @@ TAstTask stmt(TParserContext& context) {
     if (first.Type == TToken::Keyword && IsTypeKeyword(static_cast<EKeyword>(first.Value.i64))) {
         stream.Unget(first);
         auto decls = co_await var_decl_list(context, false);
-        co_return std::make_shared<TVarsBlockExpr>(first.Location, decls);
+        co_return MakeIntrusive<TVarsBlockExpr>(first.Location, std::move(decls));
     } else if (isKeyword(first, EKeyword::Alg)) {
         co_return co_await fun_decl(context, first.Location);
     } else if (isKeyword(first, EKeyword::If)) {
@@ -1698,7 +1698,7 @@ TAstTask stmt(TParserContext& context) {
             co_return TError(next.Location, "ожидался ':=' после 'знач'");
         }
         auto value = co_await expr(context);
-        co_return std::make_shared<TAssignExpr>(first.Location, "знач", value);
+        co_return MakeIntrusive<TAssignExpr>(first.Location, "знач", value);
     } else if (isKeyword(first, EKeyword::LoopStart)) {
         auto next = stream.Next();
         if (isKeyword(next, EKeyword::For)) {
@@ -1721,23 +1721,23 @@ TAstTask stmt(TParserContext& context) {
         co_return co_await switch_expr(context, first.Location);
     } else if (isKeyword(first, EKeyword::Input)) {
         auto args = co_await parse_io_arg_list_opt<TExprPtr>(context);
-        co_return std::make_shared<TInputExpr>(first.Location, std::move(args));
+        co_return MakeIntrusive<TInputExpr>(first.Location, std::move(args));
     } else if (isKeyword(first, EKeyword::Output)) {
         auto args = co_await parse_io_arg_list_opt<TOutputArg>(context);
-        co_return std::make_shared<TOutputExpr>(first.Location, std::move(args));
+        co_return MakeIntrusive<TOutputExpr>(first.Location, std::move(args));
     } else if (isKeyword(first, EKeyword::Break)) {
         if (context.LoopDepth > 0) {
-            co_return std::make_shared<TBreakStmt>(first.Location);
+            co_return MakeIntrusive<TBreakStmt>(first.Location);
         } else if (context.CurrentFunctionReturnsVoid) {
             // 'выход' outside any loop: early return from the enclosing алг.
-            co_return std::make_shared<TReturnExpr>(first.Location, nullptr);
+            co_return MakeIntrusive<TReturnExpr>(first.Location, nullptr);
         } else {
-            co_return std::make_shared<TReturnExpr>(first.Location, ident(first.Location, "знач"));
+            co_return MakeIntrusive<TReturnExpr>(first.Location, ident(first.Location, "знач"));
         }
     } else if (isKeyword(first, EKeyword::Continue)) {
-        co_return std::make_shared<TContinueStmt>(first.Location);
+        co_return MakeIntrusive<TContinueStmt>(first.Location);
     } else if (isKeyword(first, EKeyword::Assert)) {
-        co_return std::make_shared<TAssertStmt>(first.Location, co_await expr(context));
+        co_return MakeIntrusive<TAssertStmt>(first.Location, co_await expr(context));
     } else if (first.Type == TToken::Identifier) {
         auto next = stream.Next();
         if (isOp(next, EOperator::LSqBr)) {
@@ -1754,7 +1754,7 @@ TAstTask stmt(TParserContext& context) {
                 co_return unexpectedTokenAfterExpr(stream);
             }
             stream.Unget(next);
-            co_return std::make_shared<TArrayAssignExpr>(first.Location, first.Name, std::move(exprs), rhs);
+            co_return MakeIntrusive<TArrayAssignExpr>(first.Location, first.Name, std::move(exprs), rhs);
         } else if (isOp(next, EOperator::Assign)) {
             // Assignment statement
             auto rhs = co_await expr(context);
@@ -1763,7 +1763,7 @@ TAstTask stmt(TParserContext& context) {
                 co_return unexpectedTokenAfterExpr(stream);
             }
             stream.Unget(next);
-            co_return std::make_shared<TAssignExpr>(first.Location, first.Name, rhs);
+            co_return MakeIntrusive<TAssignExpr>(first.Location, first.Name, rhs);
         } else {
             // Important: restore tokens in reverse order of reading
             // so that the identifier comes before '(' again.
@@ -1830,7 +1830,7 @@ TAstTask stmt(TParserContext& context) {
                 }
             }
         }
-        co_return std::make_shared<TUseExpr>(first.Location, moduleName);
+        co_return MakeIntrusive<TUseExpr>(first.Location, moduleName);
     } else {
         co_return unexpected(stream);
     }

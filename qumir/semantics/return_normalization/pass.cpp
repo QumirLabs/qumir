@@ -21,14 +21,14 @@ bool IsVoidReturn(const TFunDecl& function) {
 }
 
 // Replaces one function's fallthrough with an explicit return.
-bool NormalizeFunction(const std::shared_ptr<TFunDecl>& function) {
+bool NormalizeFunction(const TExprPtrOf<TFunDecl>& function) {
     if (!function->Body || function->IsExternal() || AlwaysReturns(function->Body)) {
         return false;
     }
 
     auto& statements = function->Body->Stmts;
     if (IsVoidReturn(*function)) {
-        statements.push_back(std::make_shared<TReturnExpr>(
+        statements.push_back(MakeIntrusive<TReturnExpr>(
             function->Body->Location,
             nullptr));
         return true;
@@ -41,7 +41,7 @@ bool NormalizeFunction(const std::shared_ptr<TFunDecl>& function) {
         return false;
     }
     auto value = std::move(statements.back());
-    statements.back() = std::make_shared<TReturnExpr>(
+    statements.back() = MakeIntrusive<TReturnExpr>(
         value->Location,
         std::move(value));
     return true;

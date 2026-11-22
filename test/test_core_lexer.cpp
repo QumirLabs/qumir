@@ -519,7 +519,7 @@ const std::vector<std::string>& TrickyIdentifiers() {
 TEST(CoreIdentifierQuotingTest, PlainNamesStayBare) {
     for (const auto* name : {"foo", "my_var", "$x", "x1", "+", "-", "->", "a:b", "<main>"}) {
         SCOPED_TRACE(name);
-        auto var = std::make_shared<NQumir::NAst::TVarStmt>(
+        auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
             NQumir::TLocation{}, name, std::make_shared<NQumir::NAst::TBoolType>());
         EXPECT_EQ(PrintAst(var, TPrintOptions{.Pretty = false}), std::string("(var ") + name + " bool)");
     }
@@ -573,7 +573,7 @@ TEST(CoreIdentifierQuotingTest, StructFieldNamesRoundTrip) {
 TEST(CoreIdentifierQuotingTest, VariableNamesRoundTrip) {
     for (const auto& name : TrickyIdentifiers()) {
         SCOPED_TRACE(name);
-        auto var = std::make_shared<NQumir::NAst::TVarStmt>(
+        auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
             NQumir::TLocation{}, name, std::make_shared<NQumir::NAst::TBoolType>());
         const auto text = PrintAst(var, TPrintOptions{.Pretty = false});
 
@@ -611,7 +611,7 @@ TEST(CoreIdentifierQuotingTest, EscapesInBars) {
 }
 
 TEST(CoreIdentifierQuotingTest, EmptyNameIsRejected) {
-    auto var = std::make_shared<NQumir::NAst::TVarStmt>(
+    auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
         NQumir::TLocation{}, "", std::make_shared<NQumir::NAst::TBoolType>());
     EXPECT_THROW(PrintAst(var, TPrintOptions{.Pretty = false}), std::invalid_argument);
 }

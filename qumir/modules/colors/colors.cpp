@@ -22,27 +22,27 @@ ColorsModule::ColorsModule() {
 
     auto colorConst = [colorType](int64_t value) {
         return [colorType, value](std::vector<NAst::TExprPtr>) -> NAst::TExprPtr {
-            auto expr = std::make_shared<NAst::TNumberExpr>(TLocation{}, value);
+            auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
             expr->Type = colorType;
             return expr;
         };
     };
 
     auto intLiteral = [integerType](TLocation loc, int64_t value) -> NAst::TExprPtr {
-        auto expr = std::make_shared<NAst::TNumberExpr>(std::move(loc), value);
+        auto expr = MakeIntrusive<NAst::TNumberExpr>(std::move(loc), value);
         expr->Type = integerType;
         return expr;
     };
 
     auto floatLiteral = [floatType](TLocation loc, double value) -> NAst::TExprPtr {
-        auto expr = std::make_shared<NAst::TNumberExpr>(std::move(loc), value);
+        auto expr = MakeIntrusive<NAst::TNumberExpr>(std::move(loc), value);
         expr->Type = floatType;
         return expr;
     };
 
     auto binary = [](const char* op, NAst::TExprPtr left, NAst::TExprPtr right, NAst::TTypePtr type) -> NAst::TExprPtr {
         auto loc = left->Location;
-        auto expr = std::make_shared<NAst::TBinaryExpr>(std::move(loc), NAst::TOperator(op),
+        auto expr = MakeIntrusive<NAst::TBinaryExpr>(std::move(loc), NAst::TOperator(op),
             std::move(left), std::move(right));
         expr->Type = std::move(type);
         return expr;
@@ -50,19 +50,19 @@ ColorsModule::ColorsModule() {
 
     auto cast = [](NAst::TExprPtr value, NAst::TTypePtr type) -> NAst::TExprPtr {
         auto loc = value->Location;
-        auto expr = std::make_shared<NAst::TCastExpr>(std::move(loc), std::move(value), std::move(type));
+        auto expr = MakeIntrusive<NAst::TCastExpr>(std::move(loc), std::move(value), std::move(type));
         return expr;
     };
 
     auto ident = [](TLocation loc, const std::string& name, NAst::TTypePtr type) -> NAst::TExprPtr {
-        auto expr = std::make_shared<NAst::TIdentExpr>(std::move(loc), name);
+        auto expr = MakeIntrusive<NAst::TIdentExpr>(std::move(loc), name);
         expr->Type = std::move(type);
         return expr;
     };
 
     auto ifExpr = [](NAst::TExprPtr cond, NAst::TExprPtr thenExpr, NAst::TExprPtr elseExpr, NAst::TTypePtr type) -> NAst::TExprPtr {
         auto loc = cond->Location;
-        auto expr = std::make_shared<NAst::TIfExpr>(std::move(loc), std::move(cond), std::move(thenExpr), std::move(elseExpr));
+        auto expr = MakeIntrusive<NAst::TIfExpr>(std::move(loc), std::move(cond), std::move(thenExpr), std::move(elseExpr));
         expr->Type = std::move(type);
         return expr;
     };
@@ -88,7 +88,7 @@ ColorsModule::ColorsModule() {
                 integerType),
             mask(std::move(b)),
             integerType);
-        auto expr = std::make_shared<NAst::TCastExpr>(packed->Location, std::move(packed), colorType);
+        auto expr = MakeIntrusive<NAst::TCastExpr>(packed->Location, std::move(packed), colorType);
         expr->Type = colorType;
         return expr;
     };
@@ -98,9 +98,9 @@ ColorsModule::ColorsModule() {
             auto loc = args[0]->Location;
             auto hundred = [&](TLocation l) { return intLiteral(l, 100); };
             auto roundedComponent = [&](const std::string& channelName) -> NAst::TExprPtr {
-                auto channel = std::make_shared<NAst::TIdentExpr>(loc, channelName);
+                auto channel = MakeIntrusive<NAst::TIdentExpr>(loc, channelName);
                 channel->Type = integerType;
-                auto k = std::make_shared<NAst::TIdentExpr>(loc, "$$k");
+                auto k = MakeIntrusive<NAst::TIdentExpr>(loc, "$$k");
                 k->Type = integerType;
                 auto value = binary("*",
                     binary("*",
@@ -112,13 +112,13 @@ ColorsModule::ColorsModule() {
                 return cast(
                     binary("+",
                         binary("/", std::move(value), intLiteral(loc, 10000), std::make_shared<NAst::TFloatType>()),
-                        std::make_shared<NAst::TNumberExpr>(loc, 0.5),
+                        MakeIntrusive<NAst::TNumberExpr>(loc, 0.5),
                         std::make_shared<NAst::TFloatType>()),
                     integerType);
             };
 
             auto alpha = withAlpha
-                ? std::make_shared<NAst::TIdentExpr>(loc, "$$a")
+                ? MakeIntrusive<NAst::TIdentExpr>(loc, "$$a")
                 : intLiteral(loc, 255);
             alpha->Type = integerType;
             auto body = colorPack(
@@ -128,7 +128,7 @@ ColorsModule::ColorsModule() {
                 std::move(alpha));
             std::vector<NAst::TExprPtr> stmts;
             auto addVar = [&](const std::string& name, NAst::TExprPtr value) {
-                auto var = std::make_shared<NAst::TVarStmt>(loc, name, nullptr);
+                auto var = MakeIntrusive<NAst::TVarStmt>(loc, name, nullptr);
                 var->Init = std::move(value);
                 stmts.push_back(std::move(var));
             };
@@ -141,7 +141,7 @@ ColorsModule::ColorsModule() {
             }
             auto bodyType = body->Type;
             stmts.push_back(std::move(body));
-            auto block = std::make_shared<NAst::TBlockExpr>(loc, std::move(stmts));
+            auto block = MakeIntrusive<NAst::TBlockExpr>(loc, std::move(stmts));
             block->Type = bodyType;
             return block;
         };
@@ -161,12 +161,12 @@ ColorsModule::ColorsModule() {
                 auto bodyType = body->Type;
                 std::vector<NAst::TExprPtr> stmts;
                 for (auto& [name, value] : vars) {
-                    auto var = std::make_shared<NAst::TVarStmt>(loc, std::move(name), nullptr);
+                    auto var = MakeIntrusive<NAst::TVarStmt>(loc, std::move(name), nullptr);
                     var->Init = std::move(value);
                     stmts.push_back(std::move(var));
                 }
                 stmts.push_back(std::move(body));
-                auto block = std::make_shared<NAst::TBlockExpr>(loc, std::move(stmts));
+                auto block = MakeIntrusive<NAst::TBlockExpr>(loc, std::move(stmts));
                 block->Type = bodyType;
                 return block;
             };
@@ -255,12 +255,12 @@ ColorsModule::ColorsModule() {
                 auto bodyType = body->Type;
                 std::vector<NAst::TExprPtr> stmts;
                 for (auto& [name, value] : vars) {
-                    auto var = std::make_shared<NAst::TVarStmt>(loc, std::move(name), nullptr);
+                    auto var = MakeIntrusive<NAst::TVarStmt>(loc, std::move(name), nullptr);
                     var->Init = std::move(value);
                     stmts.push_back(std::move(var));
                 }
                 stmts.push_back(std::move(body));
-                auto block = std::make_shared<NAst::TBlockExpr>(loc, std::move(stmts));
+                auto block = MakeIntrusive<NAst::TBlockExpr>(loc, std::move(stmts));
                 block->Type = bodyType;
                 return block;
             };
@@ -333,13 +333,13 @@ ColorsModule::ColorsModule() {
         auto assignTarget = [&](const NAst::TExprPtr& target, NAst::TExprPtr value) -> NAst::TExprPtr {
             if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(target)) {
                 auto id = maybeIdent.Cast();
-                return std::make_shared<NAst::TAssignExpr>(target->Location, id->Name, std::move(value));
+                return MakeIntrusive<NAst::TAssignExpr>(target->Location, id->Name, std::move(value));
             }
             if (auto maybeIndex = NAst::TMaybeNode<NAst::TIndexExpr>(target)) {
                 auto index = maybeIndex.Cast();
                 auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection);
                 if (maybeCollection) {
-                    return std::make_shared<NAst::TArrayAssignExpr>(
+                    return MakeIntrusive<NAst::TArrayAssignExpr>(
                         target->Location,
                         maybeCollection.Cast()->Name,
                         std::vector<NAst::TExprPtr>{index->Index},
@@ -350,29 +350,29 @@ ColorsModule::ColorsModule() {
                 auto index = maybeMultiIndex.Cast();
                 auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection);
                 if (maybeCollection) {
-                    return std::make_shared<NAst::TArrayAssignExpr>(
+                    return MakeIntrusive<NAst::TArrayAssignExpr>(
                         target->Location,
                         maybeCollection.Cast()->Name,
-                        index->Indices,
+                        auto(index->Indices),
                         std::move(value));
                 }
             }
 
-            return std::make_shared<NAst::TCallExpr>(
+            return MakeIntrusive<NAst::TCallExpr>(
                 target->Location,
-                std::make_shared<NAst::TIdentExpr>(target->Location, "__unsupported_inline_color_decompose_target"),
+                MakeIntrusive<NAst::TIdentExpr>(target->Location, "__unsupported_inline_color_decompose_target"),
                 std::vector<NAst::TExprPtr>{});
         };
 
-        auto block = std::make_shared<NAst::TBlockExpr>(args[0]->Location, std::vector<NAst::TExprPtr>{});
+        auto block = MakeIntrusive<NAst::TBlockExpr>(args[0]->Location, std::vector<NAst::TExprPtr>{});
         block->Type = voidType;
 
-        auto colorVar = std::make_shared<NAst::TVarStmt>(args[0]->Location, colorName, integerType);
+        auto colorVar = MakeIntrusive<NAst::TVarStmt>(args[0]->Location, colorName, integerType);
         colorVar->Type = integerType;
         block->Stmts.push_back(colorVar);
-        auto colorValue = std::make_shared<NAst::TCastExpr>(args[0]->Location, args[0], integerType);
+        auto colorValue = MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], integerType);
         colorValue->Type = integerType;
-        block->Stmts.push_back(std::make_shared<NAst::TAssignExpr>(args[0]->Location, colorName, colorValue));
+        block->Stmts.push_back(MakeIntrusive<NAst::TAssignExpr>(args[0]->Location, colorName, colorValue));
         block->Stmts.push_back(assignTarget(args[1], component(16)));
         block->Stmts.push_back(assignTarget(args[2], component(8)));
         block->Stmts.push_back(assignTarget(args[3], component(0)));
@@ -391,19 +391,19 @@ ColorsModule::ColorsModule() {
                 auto idf = [&](const char* local) { return ident(loc, name(local), floatType); };
                 auto f = [&](double value) { return floatLiteral(loc, value); };
                 auto assignLocal = [&](const char* local, NAst::TExprPtr value) -> NAst::TExprPtr {
-                    return std::make_shared<NAst::TAssignExpr>(loc, name(local), std::move(value));
+                    return MakeIntrusive<NAst::TAssignExpr>(loc, name(local), std::move(value));
                 };
                 auto roundToInt = [&](NAst::TExprPtr value) -> NAst::TExprPtr {
                     return cast(binary("+", std::move(value), f(0.5), floatType), integerType);
                 };
                 auto assignTarget = [&](const NAst::TExprPtr& target, NAst::TExprPtr value) -> NAst::TExprPtr {
                     if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(target)) {
-                        return std::make_shared<NAst::TAssignExpr>(target->Location, maybeIdent.Cast()->Name, std::move(value));
+                        return MakeIntrusive<NAst::TAssignExpr>(target->Location, maybeIdent.Cast()->Name, std::move(value));
                     }
                     if (auto maybeIndex = NAst::TMaybeNode<NAst::TIndexExpr>(target)) {
                         auto index = maybeIndex.Cast();
                         if (auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection)) {
-                            return std::make_shared<NAst::TArrayAssignExpr>(
+                            return MakeIntrusive<NAst::TArrayAssignExpr>(
                                 target->Location,
                                 maybeCollection.Cast()->Name,
                                 std::vector<NAst::TExprPtr>{index->Index},
@@ -413,24 +413,24 @@ ColorsModule::ColorsModule() {
                     if (auto maybeMultiIndex = NAst::TMaybeNode<NAst::TMultiIndexExpr>(target)) {
                         auto index = maybeMultiIndex.Cast();
                         if (auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection)) {
-                            return std::make_shared<NAst::TArrayAssignExpr>(
+                            return MakeIntrusive<NAst::TArrayAssignExpr>(
                                 target->Location,
                                 maybeCollection.Cast()->Name,
-                                index->Indices,
+                                auto(index->Indices),
                                 std::move(value));
                         }
                     }
 
-                    return std::make_shared<NAst::TCallExpr>(
+                    return MakeIntrusive<NAst::TCallExpr>(
                         target->Location,
-                        std::make_shared<NAst::TIdentExpr>(target->Location, "__unsupported_inline_color_decompose_target"),
+                        MakeIntrusive<NAst::TIdentExpr>(target->Location, "__unsupported_inline_color_decompose_target"),
                         std::vector<NAst::TExprPtr>{});
                 };
 
-                auto block = std::make_shared<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
+                auto block = MakeIntrusive<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
                 block->Type = voidType;
                 auto declare = [&](const char* local, NAst::TTypePtr type) {
-                    auto var = std::make_shared<NAst::TVarStmt>(loc, name(local), std::move(type));
+                    auto var = MakeIntrusive<NAst::TVarStmt>(loc, name(local), std::move(type));
                     block->Stmts.push_back(var);
                 };
                 for (const char* local : {"$color", "$r", "$g", "$b"}) {
@@ -472,7 +472,7 @@ ColorsModule::ColorsModule() {
 
     auto decomposeCmyk = makeColorDecomposeBlock("cmyk",
         [integerType, floatType, boolType, voidType, intLiteral, binary]
-        (TLocation loc, const std::shared_ptr<NAst::TBlockExpr>& block,
+        (TLocation loc, const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
          const auto& idi, const auto& idf, const auto& f, const auto& assignLocal,
          const auto& assignTarget, const auto& roundToInt, const std::vector<NAst::TExprPtr>& args) {
             block->Stmts.push_back(assignLocal("$kf", binary("-", f(1.0), idf("$mx"), floatType)));
@@ -482,19 +482,19 @@ ColorsModule::ColorsModule() {
                         binary("-", f(1.0), idf("$kf"), floatType), floatType),
                     f(100.0), floatType));
             };
-            auto black = std::make_shared<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
+            auto black = MakeIntrusive<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
             black->Type = voidType;
             black->Stmts.push_back(assignTarget(args[1], intLiteral(loc, 0)));
             black->Stmts.push_back(assignTarget(args[2], intLiteral(loc, 0)));
             black->Stmts.push_back(assignTarget(args[3], intLiteral(loc, 0)));
             black->Stmts.push_back(assignTarget(args[4], intLiteral(loc, 100)));
-            auto chroma = std::make_shared<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
+            auto chroma = MakeIntrusive<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
             chroma->Type = voidType;
             chroma->Stmts.push_back(assignTarget(args[1], percent(idf("$rf"))));
             chroma->Stmts.push_back(assignTarget(args[2], percent(idf("$gf"))));
             chroma->Stmts.push_back(assignTarget(args[3], percent(idf("$bf"))));
             chroma->Stmts.push_back(assignTarget(args[4], roundToInt(binary("*", idf("$kf"), f(100.0), floatType))));
-            auto stmt = std::make_shared<NAst::TIfExpr>(
+            auto stmt = MakeIntrusive<NAst::TIfExpr>(
                 loc,
                 binary(">=", idf("$kf"), f(1.0), boolType),
                 std::move(black),
@@ -505,13 +505,13 @@ ColorsModule::ColorsModule() {
 
     auto decomposeHsl = makeColorDecomposeBlock("hsl",
         [integerType, floatType, boolType, voidType, binary, ifExpr]
-        (TLocation loc, const std::shared_ptr<NAst::TBlockExpr>& block,
+        (TLocation loc, const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
          const auto& idi, const auto& idf, const auto& f, const auto& assignLocal,
          const auto& assignTarget, const auto& roundToInt, const std::vector<NAst::TExprPtr>& args) {
             block->Stmts.push_back(assignLocal("$lf", binary("/", binary("+", idf("$mx"), idf("$mn"), floatType), f(2.0), floatType)));
             block->Stmts.push_back(assignLocal("$sf", f(0.0)));
             block->Stmts.push_back(assignLocal("$hf", f(0.0)));
-            auto chroma = std::make_shared<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
+            auto chroma = MakeIntrusive<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
             chroma->Type = voidType;
             chroma->Stmts.push_back(assignLocal("$d", binary("-", idf("$mx"), idf("$mn"), floatType)));
             chroma->Stmts.push_back(assignLocal("$sf", ifExpr(
@@ -530,9 +530,9 @@ ColorsModule::ColorsModule() {
                     floatType),
                 floatType)));
             chroma->Stmts.push_back(assignLocal("$hf", binary("/", idf("$hf"), f(6.0), floatType)));
-            auto noop = std::make_shared<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
+            auto noop = MakeIntrusive<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
             noop->Type = voidType;
-            auto stmt = std::make_shared<NAst::TIfExpr>(
+            auto stmt = MakeIntrusive<NAst::TIfExpr>(
                 loc,
                 binary("!=", idf("$mx"), idf("$mn"), boolType),
                 std::move(chroma),
@@ -546,7 +546,7 @@ ColorsModule::ColorsModule() {
 
     auto decomposeHsv = makeColorDecomposeBlock("hsv",
         [integerType, floatType, boolType, voidType, binary, ifExpr]
-        (TLocation loc, const std::shared_ptr<NAst::TBlockExpr>& block,
+        (TLocation loc, const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
          const auto& idi, const auto& idf, const auto& f, const auto& assignLocal,
          const auto& assignTarget, const auto& roundToInt, const std::vector<NAst::TExprPtr>& args) {
             block->Stmts.push_back(assignLocal("$d", binary("-", idf("$mx"), idf("$mn"), floatType)));
@@ -556,7 +556,7 @@ ColorsModule::ColorsModule() {
                 binary("/", idf("$d"), idf("$mx"), floatType),
                 floatType)));
             block->Stmts.push_back(assignLocal("$hf", f(0.0)));
-            auto chroma = std::make_shared<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
+            auto chroma = MakeIntrusive<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
             chroma->Type = voidType;
             chroma->Stmts.push_back(assignLocal("$hf", ifExpr(
                 binary("==", idf("$mx"), idf("$rf"), boolType),
@@ -569,9 +569,9 @@ ColorsModule::ColorsModule() {
                     floatType),
                 floatType)));
             chroma->Stmts.push_back(assignLocal("$hf", binary("/", idf("$hf"), f(6.0), floatType)));
-            auto noop = std::make_shared<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
+            auto noop = MakeIntrusive<NAst::TBlockExpr>(loc, std::vector<NAst::TExprPtr>{});
             noop->Type = voidType;
-            auto stmt = std::make_shared<NAst::TIfExpr>(
+            auto stmt = MakeIntrusive<NAst::TIfExpr>(
                 loc,
                 binary("!=", idf("$d"), f(0.0), boolType),
                 std::move(chroma),
@@ -707,7 +707,7 @@ ColorsModule::ColorsModule() {
             .ReturnType = colorType,
             .Inline = [colorPack](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 return colorPack(args[0], args[1], args[2],
-                    std::make_shared<NAst::TNumberExpr>(args[0]->Location, int64_t{255}));
+                    MakeIntrusive<NAst::TNumberExpr>(args[0]->Location, int64_t{255}));
             },
         },
         {

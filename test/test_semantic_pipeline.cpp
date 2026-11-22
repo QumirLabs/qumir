@@ -54,15 +54,15 @@ private:
     std::vector<std::string> ModuleDependencies;
 };
 
-std::shared_ptr<TBlockExpr> MakeRoot(std::vector<TExprPtr> statements) {
-    return std::make_shared<TBlockExpr>(TLocation{}, std::move(statements));
+TIntrusivePtr<TBlockExpr> MakeRoot(std::vector<TExprPtr> statements) {
+    return MakeIntrusive<TBlockExpr>(TLocation{}, std::move(statements));
 }
 
-std::shared_ptr<TFunDecl> MakeVoidFunction(
+TIntrusivePtr<TFunDecl> MakeVoidFunction(
     std::string name,
-    const std::shared_ptr<TBlockExpr>& body)
+    const TIntrusivePtr<TBlockExpr>& body)
 {
-    return std::make_shared<TFunDecl>(
+    return MakeIntrusive<TFunDecl>(
         TLocation{},
         std::move(name),
         std::vector<TGenericParam>{},
@@ -89,7 +89,7 @@ TExprPtr ParseCore(const std::string& source) {
     return std::move(*parsed);
 }
 
-std::shared_ptr<TFieldAccessExpr> FindFieldAccess(const TExprPtr& expr, const std::string& fieldName) {
+TIntrusivePtr<TFieldAccessExpr> FindFieldAccess(const TExprPtr& expr, const std::string& fieldName) {
     if (!expr) {
         return nullptr;
     }
@@ -104,7 +104,7 @@ std::shared_ptr<TFieldAccessExpr> FindFieldAccess(const TExprPtr& expr, const st
     return nullptr;
 }
 
-std::shared_ptr<TCallExpr> FindCallWithCalleePrefix(const TExprPtr& expr, const std::string& prefix) {
+TIntrusivePtr<TCallExpr> FindCallWithCalleePrefix(const TExprPtr& expr, const std::string& prefix) {
     if (!expr) {
         return nullptr;
     }
@@ -132,7 +132,7 @@ TEST(SyntheticNameGenerator, AvoidsSourceAndImportedNamesPerPass) {
     auto importResult = resolver.ImportModule(module.Name());
     ASSERT_TRUE(importResult.has_value()) << importResult.error();
 
-    auto sourceVar = std::make_shared<TVarStmt>(
+    auto sourceVar = MakeIntrusive<TVarStmt>(
         TLocation{},
         "__lifetime_2",
         std::make_shared<TIntegerType>());
@@ -228,9 +228,9 @@ TEST(SourceTransformExtensions, PropagateErrorsAndStopLaterPasses) {
 
 TEST(PostNameResolutionTransform, WrapsOnlyBareZeroArgumentFunctionIdentifiers) {
     auto callee = MakeVoidFunction("foo", MakeRoot({}));
-    auto bareIdent = std::make_shared<TIdentExpr>(TLocation{}, "foo");
-    auto explicitIdent = std::make_shared<TIdentExpr>(TLocation{}, "foo");
-    auto explicitCall = std::make_shared<TCallExpr>(
+    auto bareIdent = MakeIntrusive<TIdentExpr>(TLocation{}, "foo");
+    auto explicitIdent = MakeIntrusive<TIdentExpr>(TLocation{}, "foo");
+    auto explicitCall = MakeIntrusive<TCallExpr>(
         TLocation{}, explicitIdent, std::vector<TExprPtr>{});
     auto callerBody = MakeRoot({bareIdent, explicitCall});
     auto caller = MakeVoidFunction("caller", callerBody);
@@ -370,12 +370,12 @@ TEST(KumirPipeline, ExpandsPowerWithoutReusingCoreOperator) {
     TNameResolver resolver;
     resolver.RegisterModule(&system);
     ASSERT_TRUE(resolver.ImportModule(system.Name()).has_value());
-    auto right = std::make_shared<TNumberExpr>(TLocation{}, int64_t{3});
+    auto right = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3});
     right->Type = std::make_shared<TIntegerType>();
-    TExprPtr ast = std::make_shared<TBinaryExpr>(
+    TExprPtr ast = MakeIntrusive<TBinaryExpr>(
         TLocation{},
         TOperator("**"),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
         std::move(right));
 
     auto result = NSemantics::NKumir::PowerTransform(ast, resolver);
@@ -395,11 +395,11 @@ TEST(KumirPipeline, ExpandsFloatPowerToPow) {
     TNameResolver resolver;
     resolver.RegisterModule(&system);
     ASSERT_TRUE(resolver.ImportModule(system.Name()).has_value());
-    TExprPtr ast = std::make_shared<TBinaryExpr>(
+    TExprPtr ast = MakeIntrusive<TBinaryExpr>(
         TLocation{},
         TOperator("**"),
-        std::make_shared<TNumberExpr>(TLocation{}, 2.0),
-        std::make_shared<TNumberExpr>(TLocation{}, 0.5));
+        MakeIntrusive<TNumberExpr>(TLocation{}, 2.0),
+        MakeIntrusive<TNumberExpr>(TLocation{}, 0.5));
 
     auto result = NTransform::RunSourceTransformFixpoint(
         ast,
@@ -415,9 +415,9 @@ TEST(KumirPipeline, ExpandsFloatPowerToPow) {
 }
 
 TEST(ReturnNormalization, MakesFallthroughReturnsExplicit) {
-    auto implicitValue = std::make_shared<TNumberExpr>(TLocation{}, int64_t{42});
+    auto implicitValue = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{42});
     auto valueBody = MakeRoot({implicitValue});
-    auto valueFunction = std::make_shared<TFunDecl>(
+    auto valueFunction = MakeIntrusive<TFunDecl>(
         TLocation{},
         "value",
         std::vector<TGenericParam>{},
@@ -437,45 +437,45 @@ TEST(ReturnNormalization, MakesFallthroughReturnsExplicit) {
 }
 
 TEST(ReturnNormalization, PreservesDirectAndFullyTerminatingBranchReturns) {
-    auto directReturn = std::make_shared<TReturnExpr>(
+    auto directReturn = MakeIntrusive<TReturnExpr>(
         TLocation{},
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}));
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}));
     auto directBody = MakeRoot({directReturn});
-    auto directFunction = std::make_shared<TFunDecl>(
+    auto directFunction = MakeIntrusive<TFunDecl>(
         TLocation{},
         "direct",
         std::vector<TGenericParam>{},
         std::vector<TParam>{},
         directBody,
         std::make_shared<TIntegerType>());
-    auto assertCondition = std::make_shared<TNumberExpr>(TLocation{}, int64_t{1});
+    auto assertCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
     assertCondition->Type = std::make_shared<TBoolType>();
-    directFunction->LastAssert = std::make_shared<TAssertStmt>(
+    directFunction->LastAssert = MakeIntrusive<TAssertStmt>(
         TLocation{},
         assertCondition);
 
-    auto condition = std::make_shared<TNumberExpr>(TLocation{}, int64_t{1});
+    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
     condition->Type = std::make_shared<TBoolType>();
-    auto elseIfCondition = std::make_shared<TNumberExpr>(TLocation{}, int64_t{0});
+    auto elseIfCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0});
     elseIfCondition->Type = std::make_shared<TBoolType>();
-    auto elseIf = std::make_shared<TIfExpr>(
+    auto elseIf = MakeIntrusive<TIfExpr>(
         TLocation{},
         elseIfCondition,
-        MakeRoot({std::make_shared<TReturnExpr>(
+        MakeRoot({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{3}))}),
-        MakeRoot({std::make_shared<TReturnExpr>(
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}))}),
+        MakeRoot({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{4}))}));
-    auto branch = std::make_shared<TIfExpr>(
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}))}));
+    auto branch = MakeIntrusive<TIfExpr>(
         TLocation{},
         condition,
-        MakeRoot({std::make_shared<TReturnExpr>(
+        MakeRoot({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}))}),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}))}),
         elseIf);
     auto branchBody = MakeRoot({MakeRoot({MakeRoot({branch})})});
-    auto branchFunction = std::make_shared<TFunDecl>(
+    auto branchFunction = MakeIntrusive<TFunDecl>(
         TLocation{},
         "branch",
         std::vector<TGenericParam>{},
@@ -511,15 +511,15 @@ TEST(FinalSemanticPipeline, ResolvesAndAnnotatesInsertedNestedBlock) {
 
     TSyntheticNameGenerator names(resolver, root);
     const auto syntheticName = names.Next();
-    auto syntheticVar = std::make_shared<TVarStmt>(
+    auto syntheticVar = MakeIntrusive<TVarStmt>(
         TLocation{},
         syntheticName,
         std::make_shared<TIntegerType>());
-    syntheticVar->Init = std::make_shared<TNumberExpr>(TLocation{}, int64_t{7});
-    auto syntheticUse = std::make_shared<TIdentExpr>(TLocation{}, syntheticName);
+    syntheticVar->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{7});
+    auto syntheticUse = MakeIntrusive<TIdentExpr>(TLocation{}, syntheticName);
     auto nested = MakeRoot({syntheticVar, syntheticUse});
     body->Stmts.push_back(nested);
-    body->Stmts.push_back(std::make_shared<TReturnExpr>(TLocation{}, nullptr));
+    body->Stmts.push_back(MakeIntrusive<TReturnExpr>(TLocation{}, nullptr));
 
     ASSERT_EQ(nested->Scope, -1);
     auto nameResult = NTransform::FinalNameResolution(root, resolver);
@@ -718,10 +718,10 @@ TEST(ParametricTypes, RetypesIntegerLiteralToExistingFloatGenericBinding) {
 }
 
 TEST(FinalSemanticPipeline, DoesNotRerunSourceTransforms) {
-    auto condition = std::make_shared<TNumberExpr>(TLocation{}, true);
-    auto assertNode = std::make_shared<TAssertStmt>(TLocation{}, condition);
+    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, true);
+    auto assertNode = MakeIntrusive<TAssertStmt>(TLocation{}, condition);
     assertNode->Type = std::make_shared<TVoidType>();
-    auto body = MakeRoot({assertNode, std::make_shared<TReturnExpr>(TLocation{}, nullptr)});
+    auto body = MakeRoot({assertNode, MakeIntrusive<TReturnExpr>(TLocation{}, nullptr)});
     TExprPtr root = MakeRoot({MakeVoidFunction("main", body)});
     TNameResolver resolver;
 

@@ -21,25 +21,25 @@ namespace {
     }
 
     NAst::TExprPtr number(NAst::TTypePtr type, int64_t value) {
-        auto expr = std::make_shared<NAst::TNumberExpr>(TLocation{}, value);
+        auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
         expr->Type = std::move(type);
         return expr;
     }
 
     NAst::TExprPtr unary(const char* op, NAst::TExprPtr operand, NAst::TTypePtr type) {
-        auto expr = std::make_shared<NAst::TUnaryExpr>(TLocation{}, NAst::TOperator(op), std::move(operand));
+        auto expr = MakeIntrusive<NAst::TUnaryExpr>(TLocation{}, NAst::TOperator(op), std::move(operand));
         expr->Type = std::move(type);
         return expr;
     }
 
     NAst::TExprPtr binary(const char* op, NAst::TExprPtr left, NAst::TExprPtr right, NAst::TTypePtr type) {
-        auto expr = std::make_shared<NAst::TBinaryExpr>(TLocation{}, NAst::TOperator(op), std::move(left), std::move(right));
+        auto expr = MakeIntrusive<NAst::TBinaryExpr>(TLocation{}, NAst::TOperator(op), std::move(left), std::move(right));
         expr->Type = std::move(type);
         return expr;
     }
 
     NAst::TExprPtr ifExpr(NAst::TExprPtr cond, NAst::TExprPtr thenExpr, NAst::TExprPtr elseExpr, NAst::TTypePtr type) {
-        auto expr = std::make_shared<NAst::TIfExpr>(TLocation{}, std::move(cond), std::move(thenExpr), std::move(elseExpr));
+        auto expr = MakeIntrusive<NAst::TIfExpr>(TLocation{}, std::move(cond), std::move(thenExpr), std::move(elseExpr));
         expr->Type = std::move(type);
         return expr;
     }
@@ -61,19 +61,19 @@ SystemModule::SystemModule() {
     };
 
     auto ident = [](const std::string& name) {
-        return std::make_shared<NAst::TIdentExpr>(TLocation{}, name);
+        return MakeIntrusive<NAst::TIdentExpr>(TLocation{}, name);
     };
 
     auto letBlock = [](std::vector<std::pair<std::string, NAst::TExprPtr>> vars, NAst::TExprPtr body) -> NAst::TExprPtr {
         auto bodyType = body->Type;
         std::vector<NAst::TExprPtr> stmts;
         for (auto& [name, value] : vars) {
-            auto var = std::make_shared<NAst::TVarStmt>(TLocation{}, std::move(name), nullptr);
+            auto var = MakeIntrusive<NAst::TVarStmt>(TLocation{}, std::move(name), nullptr);
             var->Init = std::move(value);
             stmts.push_back(std::move(var));
         }
         stmts.push_back(std::move(body));
-        auto block = std::make_shared<NAst::TBlockExpr>(TLocation{}, std::move(stmts));
+        auto block = MakeIntrusive<NAst::TBlockExpr>(TLocation{}, std::move(stmts));
         block->Type = bodyType;
         return block;
     };
@@ -784,7 +784,7 @@ SystemModule::SystemModule() {
             .ArgTypes = {  },
             .ReturnType = floatType,
             .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return std::make_shared<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<double>::max());
+                return MakeIntrusive<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<double>::max());
             },
         },
         {
@@ -792,7 +792,7 @@ SystemModule::SystemModule() {
             .ArgTypes = {  },
             .ReturnType = integerType,
             .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return std::make_shared<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<int64_t>::max());
+                return MakeIntrusive<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<int64_t>::max());
             },
         },
         {
@@ -800,7 +800,7 @@ SystemModule::SystemModule() {
             .ArgTypes = { symbolType },
             .ReturnType = integerType,
             .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return std::make_shared<NAst::TCastExpr>(args[0]->Location, args[0], std::make_shared<NAst::TIntegerType>());
+                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], std::make_shared<NAst::TIntegerType>());
             }
         },
         {
@@ -808,7 +808,7 @@ SystemModule::SystemModule() {
             .ArgTypes = { integerType },
             .ReturnType = symbolType,
             .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return std::make_shared<NAst::TCastExpr>(args[0]->Location, args[0], std::make_shared<NAst::TSymbolType>());
+                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], std::make_shared<NAst::TSymbolType>());
             }
         },
 

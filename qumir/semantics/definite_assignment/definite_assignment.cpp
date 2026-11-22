@@ -188,7 +188,7 @@ TDefiniteAssignmentChecker::CheckExpr(
 }
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignmentChecker::CheckCall(
-    const std::shared_ptr<NAst::TCallExpr>& call,
+    const NAst::TExprPtrOf<NAst::TCallExpr>& call,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -258,7 +258,7 @@ std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignm
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckBlock(
-    const std::shared_ptr<TBlockExpr>& block,
+    const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
     TScopeId /*scopeId*/,
     const TAssignedSet& inAssigned)
 {
@@ -282,7 +282,7 @@ TDefiniteAssignmentChecker::CheckBlock(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckIfExpr(
-    const std::shared_ptr<TIfExpr>& ifExpr,
+    const NAst::TExprPtrOf<NAst::TIfExpr>& ifExpr,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -311,7 +311,7 @@ TDefiniteAssignmentChecker::CheckIfExpr(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckWhile(
-    const std::shared_ptr<TWhileStmtExpr>& loop,
+    const NAst::TExprPtrOf<NAst::TWhileStmtExpr>& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -328,7 +328,7 @@ TDefiniteAssignmentChecker::CheckWhile(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckRepeat(
-    const std::shared_ptr<TRepeatStmtExpr>& loop,
+    const NAst::TExprPtrOf<NAst::TRepeatStmtExpr>& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -345,7 +345,7 @@ TDefiniteAssignmentChecker::CheckRepeat(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckFor(
-    const std::shared_ptr<TForStmtExpr>& loop,
+    const NAst::TExprPtrOf<NAst::TForStmtExpr>& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -376,7 +376,7 @@ TDefiniteAssignmentChecker::CheckFor(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckTimes(
-    const std::shared_ptr<TTimesStmtExpr>& loop,
+    const NAst::TExprPtrOf<NAst::TTimesStmtExpr>& loop,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -393,7 +393,7 @@ TDefiniteAssignmentChecker::CheckTimes(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckAssign(
-    const std::shared_ptr<TAssignExpr>& assign,
+    const NAst::TExprPtrOf<NAst::TAssignExpr>& assign,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -415,7 +415,7 @@ TDefiniteAssignmentChecker::CheckAssign(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckVar(
-    const std::shared_ptr<TVarStmt>& var,
+    const NAst::TExprPtrOf<NAst::TVarStmt>& var,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -442,7 +442,7 @@ TDefiniteAssignmentChecker::CheckVar(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckIdent(
-    const std::shared_ptr<TIdentExpr>& ident,
+    const NAst::TExprPtrOf<NAst::TIdentExpr>& ident,
     TScopeId scopeId,
     const TAssignedSet& inAssigned)
 {
@@ -469,7 +469,7 @@ TDefiniteAssignmentChecker::CheckIdent(
 
 std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError>
 TDefiniteAssignmentChecker::CheckFunDecl(
-    const std::shared_ptr<TFunDecl>& funDecl,
+    const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl,
     TScopeId /*scopeId*/,
     const TAssignedSet& inAssigned)
 {
