@@ -407,20 +407,6 @@ struct TNamedType : TType {
     std::string Name;
     std::vector<TGenericArg> TypeArgs;
 
-protected:
-    // Protected: host type kinds (e.g. a decimal) derive from a named type.
-    explicit TNamedType(
-        const std::string& name,
-        const TTypePtr& underlying,
-        std::vector<TGenericArg>&& typeArgs = {},
-        std::optional<std::string> reference = std::nullopt)
-        : Name(name)
-        , TypeArgs(std::move(typeArgs))
-        , UnderlyingType_(underlying)
-        , Reference_(std::move(reference))
-    {}
-
-public:
     // A named type is declared by name and completed later (name resolution, imports), so
     // these two are the only parts of a type that are set after creation. Only the type
     // factory writes them (TTypeFactory::MakeNamed completes an existing type once); the
@@ -456,6 +442,19 @@ public:
 
 private:
     friend class TTypeFactory;
+
+    // A host type is a named type with arguments (e.g. "<named DECIMAL [15 2]>"), not a
+    // subclass, so it is interned like every other named type.
+    explicit TNamedType(
+        const std::string& name,
+        const TTypePtr& underlying,
+        std::vector<TGenericArg>&& typeArgs = {},
+        std::optional<std::string> reference = std::nullopt)
+        : Name(name)
+        , TypeArgs(std::move(typeArgs))
+        , UnderlyingType_(underlying)
+        , Reference_(std::move(reference))
+    {}
 
     void SetUnderlyingType(const TTypePtr& type) { UnderlyingType_ = type; }
     void SetReference(std::optional<std::string> reference) { Reference_ = std::move(reference); }
