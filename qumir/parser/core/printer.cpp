@@ -105,43 +105,6 @@ bool TPrinter::IsNonDefaultNumberLiteral(const TExprPtr& expr) const {
     return integerType && integerType.Cast()->Kind != TIntegerType::I64;
 }
 
-bool TPrinter::HasPrintableTypeAttrs(const TTypePtr& type) const {
-    return type && (!type->Readable || !type->Mutable);
-}
-
-void TPrinter::PrintTypeAttrs(const TTypePtr& type) {
-    if (!HasPrintableTypeAttrs(type)) {
-        return;
-    }
-    *Out << " (";
-    bool hasPrevious = false;
-    auto printAttribute = [&](std::string_view attribute) {
-        if (hasPrevious) {
-            *Out << ' ';
-        }
-        *Out << attribute;
-        hasPrevious = true;
-    };
-    if (type->Readable && !type->Mutable) {
-        printAttribute("readonly");
-    } else if (!type->Readable && type->Mutable) {
-        printAttribute("writeonly");
-    } else if (!type->Readable && !type->Mutable) {
-        throw std::runtime_error("type cannot be both unreadable and immutable");
-    }
-    *Out << ')';
-}
-
-void TPrinter::PrintScalarType(std::string_view name, const TTypePtr& type) {
-    if (HasPrintableTypeAttrs(type)) {
-        *Out << '<' << name;
-        PrintTypeAttrs(type);
-        *Out << '>';
-    } else {
-        *Out << name;
-    }
-}
-
 void TPrinter::PrintGenericParams(const std::vector<TGenericParam>& params, int level) {
     if (params.empty()) {
         return;
@@ -184,17 +147,17 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
     if (!type) {
         *Out << "nil";
     } else if (auto t = TMaybeType<TIntegerType>(type)) {
-        PrintScalarType(t.Cast()->ToString(), type);
+        *Out << t.Cast()->ToString();
     } else if (auto t = TMaybeType<TFloatType>(type)) {
-        PrintScalarType(t.Cast()->ToString(), type);
+        *Out << t.Cast()->ToString();
     } else if (TMaybeType<TBoolType>(type)) {
-        PrintScalarType("bool", type);
+        *Out << "bool";
     } else if (TMaybeType<TStringType>(type)) {
-        PrintScalarType("string", type);
+        *Out << "string";
     } else if (TMaybeType<TSymbolType>(type)) {
-        PrintScalarType("char", type);
+        *Out << "char";
     } else if (TMaybeType<TVoidType>(type)) {
-        PrintScalarType("void", type);
+        *Out << "void";
     } else if (auto t = TMaybeType<TVectorType>(type)) {
         *Out << "<vec ";
         PrintType(t.Cast()->ElementType, level);
@@ -211,7 +174,6 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
     } else if (auto t = TMaybeType<TFutureType>(type)) {
         *Out << "<future ";
         PrintType(t.Cast()->ResultType, level);
-        PrintTypeAttrs(type);
         *Out << '>';
     } else if (auto t = TMaybeType<TArrayType>(type)) {
         *Out << "<array ";
@@ -220,18 +182,15 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
     } else if (auto t = TMaybeType<TPointerType>(type)) {
         *Out << "<ptr ";
         PrintType(t.Cast()->PointeeType, level);
-        PrintTypeAttrs(type);
         *Out << '>';
     } else if (auto t = TMaybeType<TReferenceType>(type)) {
         *Out << "<ref ";
         PrintType(t.Cast()->ReferencedType, level);
-        PrintTypeAttrs(type);
         *Out << '>';
     } else if (auto t = TMaybeType<TNamedType>(type)) {
         if (Options.ShortNamedTypes.contains(t.Cast()->Name)
             && t.Cast()->TypeArgs.empty()
-            && !t.Cast()->UnderlyingType
-            && !HasPrintableTypeAttrs(type))
+            && !t.Cast()->UnderlyingType)
         {
             PrintIdentifier(t.Cast()->Name);
             return;
@@ -257,7 +216,6 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
             *Out << ' ';
             PrintType(t.Cast()->UnderlyingType, level);
         }
-        PrintTypeAttrs(type);
         *Out << '>';
     } else if (auto t = TMaybeType<TStructType>(type)) {
         PrintStructType(t.Cast(), level);
@@ -473,6 +431,16 @@ void TPrinter::PrintVar(TVarStmt& node, int level) {
             Space();
             PrintExpr(to, true, level + 1);
             *Out << ']';
+        }
+        // Access mode of the variable; the default (readable and mutable) is not printed.
+        if (node.Access.Readable && !node.Access.Mutable) {
+            Space();
+            *Out << "(attrs readonly)";
+        } else if (!node.Access.Readable && node.Access.Mutable) {
+            Space();
+            *Out << "(attrs writeonly)";
+        } else if (!node.Access.Readable && !node.Access.Mutable) {
+            throw std::runtime_error("variable cannot be both unreadable and immutable");
         }
     }
     *Out << ')';

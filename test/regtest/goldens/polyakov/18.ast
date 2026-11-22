@@ -13,8 +13,8 @@
         (call output_string (borrow s)))
       (cleanup-exit (return) (destroy s))))
   (fun replaceAll ((var s <ref string>)
-      (var wOld <string (readonly)>)
-      (var wNew <string (readonly)>))
+      (var wOld string (attrs readonly))
+      (var wNew string (attrs readonly)))
     (block
       (var res = (bitcast 0 string))
       (var p i64)

@@ -5,8 +5,8 @@
       (var знач i64)
       (= знач (+ (await (call value 3 4)) (await (call value 5 6))))
       (cleanup-exit (return знач))))
-  (fun value ((var a <i64 (readonly)>)
-      (var b <i64 (readonly)>)) -> <future i64>
+  (fun value ((var a i64 (attrs readonly))
+      (var b i64 (attrs readonly))) -> <future i64>
     (block
       (var знач i64)
       (await (call вверх))

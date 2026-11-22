@@ -14,7 +14,7 @@
       (= k (+ 1 (call g i)))
       (= i 10)
       (cleanup-exit (return))))
-  (fun g ((var i <i64 (readonly)>)) -> i64
+  (fun g ((var i i64 (attrs readonly))) -> i64
     (block
       (var знач i64)
       (= знач i)

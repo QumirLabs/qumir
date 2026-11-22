@@ -16,9 +16,9 @@
       (block
         (call output_string (borrow s)))
       (cleanup-exit (return) (destroy s))))
-  (fun replaceBad ((var s0 <string (readonly)>)
-      (var sOld <string (readonly)>)
-      (var sNew <string (readonly)>)) -> string
+  (fun replaceBad ((var s0 string (attrs readonly))
+      (var sOld string (attrs readonly))
+      (var sNew string (attrs readonly))) -> string
     (block
       (var знач = (bitcast 0 string))
       (var s = (bitcast 0 string))

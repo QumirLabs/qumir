@@ -7,7 +7,7 @@
       (call ф i)
       (= знач (+ i 5))
       (cleanup-exit (return знач))))
-  (fun ф ((var i <ref <i64 (writeonly)>>))
+  (fun ф ((var i <ref i64> (attrs writeonly)))
     (block
       (= i 10)
       (cleanup-exit (return)))))

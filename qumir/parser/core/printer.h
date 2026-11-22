@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <functional>
 #include <iosfwd>
 #include <memory>
@@ -79,9 +81,6 @@ private:
     void PrintCompact(const TExprPtr& expr, bool allowTypeWrap, int level);
     bool ShouldWrapType(const TExprPtr& expr) const;
     bool IsNonDefaultNumberLiteral(const TExprPtr& expr) const;
-    bool HasPrintableTypeAttrs(const TTypePtr& type) const;
-    void PrintTypeAttrs(const TTypePtr& type);
-    void PrintScalarType(std::string_view name, const TTypePtr& type);
     void PrintFunctionType(const TConcreteTypePtr<TFunctionType>& type, int level);
     void PrintStructType(const TConcreteTypePtr<TStructType>& type, int level);
     void PrintGenericParams(const std::vector<TGenericParam>& params, int level);

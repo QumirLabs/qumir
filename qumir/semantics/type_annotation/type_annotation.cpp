@@ -1410,6 +1410,21 @@ TTask AnnotateBlock(const TExprPtrOf<TBlockExpr>& block, NSemantics::TNameResolv
     co_return block;
 }
 
+// Access mode (readable/mutable) of the variable or parameter declared by `declaration`.
+TAccess AccessOf(const TExprPtr& declaration) {
+    if (auto var = TMaybeNode<TVarStmt>(declaration)) {
+        return var.Cast()->Access;
+    }
+    return {};
+}
+
+TAccess IdentAccess(const TExprPtrOf<TIdentExpr>& ident, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+    if (auto symbolId = context.Lookup(ident->Name, scopeId)) {
+        return AccessOf(context.GetSymbolNode(NSemantics::TSymbolId{symbolId->Id}));
+    }
+    return {};
+}
+
 TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     assign->Value = co_await DoAnnotate(assign->Value, context, scopeId);
     if (!assign->Value->Type) {
@@ -1425,7 +1440,7 @@ TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameRes
     }
     auto symbolType = UnwrapReferenceType(sym->Type);
 
-    if (!symbolType->Mutable) {
+    if (!AccessOf(sym).Mutable) {
         co_return TError(assign->Location, "Нельзя присвоить аргументу функции '" + assign->Name + "'. Присваивать можно только переменным, а для аргументов функции — только если они объявлены как 'рез' или 'арг рез'.");
     }
 
@@ -1600,16 +1615,13 @@ TTask AnnotateIdent(const TExprPtrOf<TIdentExpr>& ident, NSemantics::TNameResolv
         co_return ident;
     }
     auto unwrappedType = UnwrapReferenceType(ident->Type);
-    if (!unwrappedType->Readable) {
-        co_return TError(ident->Location, "Нельзя читать из `рез' аргумента '" + ident->Name + "'.\n"
-            "`рез' аргумент предназначен только для записи. Если нужно читать значение, объявите его как `арг рез'.");
-    }
-    if (auto maybeArray = TMaybeType<TArrayType>(unwrappedType)) {
-        auto arrayType = maybeArray.Cast();
-        if (!arrayType->ElementType->Readable) {
+    if (!AccessOf(sym).Readable) {
+        if (TMaybeType<TArrayType>(unwrappedType)) {
             co_return TError(ident->Location, "Нельзя читать элементы массива `рез' аргумента '" + ident->Name + "'.\n"
                 "Массив `рез' аргумента предназначен только для записи. Если нужно читать элементы, объявите аргумент как `арг рез'.");
         }
+        co_return TError(ident->Location, "Нельзя читать из `рез' аргумента '" + ident->Name + "'.\n"
+            "`рез' аргумент предназначен только для записи. Если нужно читать значение, объявите его как `арг рез'.");
     }
 
     co_return ident;
@@ -3069,9 +3081,8 @@ TTask AnnotateCall(const TExprPtrOf<TCallExpr>& call, NSemantics::TNameResolver&
             if (maybeRef) {
                 auto paramRefT = maybeRef.Cast();
                 if (maybeIdent) {
-                    auto identType = UnwrapReferenceType(maybeIdent.Cast()->Type);
                     // ident must be writable
-                    if (maybeIdent && !identType->Mutable) {
+                    if (!IdentAccess(maybeIdent.Cast(), context, scopeId).Mutable) {
                         co_return TError(arg->Location,
                             "Аргумент #" + std::to_string(i+1) + ": нельзя передать этот идентификатор в ссылочный (рез/арг рез) параметр, так как он не является изменяемым (immutable).\n"
                             "\nПричина: вы передаёте, например, аргумент функции, объявленный как обычный, в параметр, объявленный как 'рез' или 'арг рез'.\n"

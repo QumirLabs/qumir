@@ -13,8 +13,8 @@
       (call qSort 1 5)
       (for i 1 N 1 (block (block (call output_int64 (index A i) 0) (call output_symbol (cast 32 char)))))
       (cleanup-exit (return))))
-  (fun qSort ((var nStart <i64 (readonly)>)
-      (var nEnd <i64 (readonly)>))
+  (fun qSort ((var nStart i64 (attrs readonly))
+      (var nEnd i64 (attrs readonly)))
     (block
       (var L i64)
       (var R i64)

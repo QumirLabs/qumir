@@ -7,7 +7,7 @@
       (call g x)
       (= знач (* x 2.0))
       (cleanup-exit (return знач))))
-  (fun g ((var x <ref <f64 (writeonly)>>))
+  (fun g ((var x <ref f64> (attrs writeonly)))
     (block
       (= x 3.25)
       (cleanup-exit (return)))))

@@ -19,18 +19,18 @@
         (call output_double (call Im (: b <named компл>)) 0 -1)
         (call output_string "\n"))
       (cleanup-exit (return))))
-  (fun real_part ((var z <named компл (readonly)>)) -> f64
+  (fun real_part ((var z <named компл> (attrs readonly))) -> f64
     (block
       (var знач f64)
-      (= знач (call Re (: z <named компл (readonly)>)))
+      (= знач (call Re (: z <named компл>)))
       (cleanup-exit (return знач))))
-  (fun imag_part ((var z <named компл (readonly)>)) -> f64
+  (fun imag_part ((var z <named компл> (attrs readonly))) -> f64
     (block
       (var знач f64)
-      (= знач (call Im (: z <named компл (readonly)>)))
+      (= знач (call Im (: z <named компл>)))
       (cleanup-exit (return знач))))
-  (fun make_complex ((var re <f64 (readonly)>)
-      (var im <f64 (readonly)>)) -> <named компл>
+  (fun make_complex ((var re f64 (attrs readonly))
+      (var im f64 (attrs readonly))) -> <named компл>
     (block
       (var знач <named компл>)
       (= знач
@@ -41,15 +41,14 @@
               <named компл>))
           <named компл>))
       (cleanup-exit (return (: знач <named компл>)))))
-  (fun add_twice ((var a <named компл (readonly)>)
-      (var b <named компл (readonly)>)) -> <named компл>
+  (fun add_twice ((var a <named компл> (attrs readonly))
+      (var b <named компл> (attrs readonly))) -> <named компл>
     (block
       (var знач <named компл>)
       (= знач
         (: (call
             complex_add
-            (: (call complex_add (: a <named компл (readonly)>) (: b <named компл (readonly)>))
-              <named компл>)
-            (: b <named компл (readonly)>))
+            (: (call complex_add (: a <named компл>) (: b <named компл>)) <named компл>)
+            (: b <named компл>))
           <named компл>))
       (cleanup-exit (return (: знач <named компл>))))))

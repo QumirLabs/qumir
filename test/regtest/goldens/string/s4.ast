@@ -9,7 +9,7 @@
       (block
         (var __lifetime_0 = (retain (borrow знач)))
         (cleanup-exit (return (move __lifetime_0)) (destroy s) (destroy знач)))))
-  (fun ф ((var k <i64 (readonly)>)) -> string
+  (fun ф ((var k i64 (attrs readonly))) -> string
     (block
       (var знач = (bitcast 0 string))
       (var стр = (bitcast 0 string))

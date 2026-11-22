@@ -304,15 +304,15 @@ TEST(KumirParser, ParameterAccessModesAreExplicit) {
     auto function = TMaybeNode<TFunDecl>(root->Stmts.front()).Cast();
     ASSERT_NE(function, nullptr);
     ASSERT_EQ(function->Params.size(), 3u);
-    auto inputType = UnwrapReferenceType(function->Params[0]->Type);
-    auto outputType = UnwrapReferenceType(function->Params[1]->Type);
-    auto inputOutputType = UnwrapReferenceType(function->Params[2]->Type);
-    EXPECT_TRUE(inputType->Readable);
-    EXPECT_FALSE(inputType->Mutable);
-    EXPECT_FALSE(outputType->Readable);
-    EXPECT_TRUE(outputType->Mutable);
-    EXPECT_TRUE(inputOutputType->Readable);
-    EXPECT_TRUE(inputOutputType->Mutable);
+    const auto& inputAccess = function->Params[0]->Access;
+    const auto& outputAccess = function->Params[1]->Access;
+    const auto& inOutAccess = function->Params[2]->Access;
+    EXPECT_TRUE(inputAccess.Readable);
+    EXPECT_FALSE(inputAccess.Mutable);
+    EXPECT_FALSE(outputAccess.Readable);
+    EXPECT_TRUE(outputAccess.Mutable);
+    EXPECT_TRUE(inOutAccess.Readable);
+    EXPECT_TRUE(inOutAccess.Mutable);
 }
 
 TEST(ModuleAliases, ResolveImportAndListThroughAlias) {

@@ -568,11 +568,14 @@ The function reads or assigns the referent using ordinary expressions.
 This prints `11 31`. Passing a computed value such as `(+ count 1)` is not
 equivalent to passing `count`: there is no caller-owned variable to update.
 
-Access modifiers describe whether a type can be read or written. The spellings
-include `<i64 (readonly)>`, `<ref string (writeonly)>`, and
-`<named Point (readonly)>`. The mutually exclusive modifiers are `readonly`,
-`writeonly`, and `mutable`; the default is readable and mutable. An output-only
-reference still needs to be assigned before its contents are read.
+Access modifiers describe whether a variable or parameter can be read or
+written. They belong to the declaration, not to its type, and are written in an
+`(attrs ...)` list at the end of the `var`: `(var n i64 (attrs readonly))`,
+`(var s <ref string> (attrs writeonly))`, and
+`(var v <array f64 1> [0 9] (attrs readonly))`. The mutually exclusive modifiers
+are `readonly`, `writeonly`, and `mutable`; the default is readable and mutable,
+so nothing is printed for it. An output-only reference still needs to be
+assigned before its contents are read.
 
 ### Pointers
 

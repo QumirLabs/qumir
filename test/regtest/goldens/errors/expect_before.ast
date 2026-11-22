@@ -3,7 +3,7 @@
     (block
       (call ф 10)
       (cleanup-exit (return))))
-  (fun ф ((var й <i64 (readonly)>))
+  (fun ф ((var й i64 (attrs readonly)))
     (block
       (call __ensure (< й 10) "(< й 10) @ Line: 7, Byte: 4, Column: 4")
       (block

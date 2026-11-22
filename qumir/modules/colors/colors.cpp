@@ -585,8 +585,6 @@ ColorsModule::ColorsModule() {
 
     auto makeOutInt = [&]() -> NAst::TTypePtr {
         auto t = MakeIntrusive<NAst::TIntegerType>();
-        t->Mutable  = true;
-        t->Readable = false;
         return MakeIntrusive<NAst::TReferenceType>(t);
     };
 

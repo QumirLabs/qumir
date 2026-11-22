@@ -8,7 +8,7 @@
       (for i 1 1000 1 (block (= ф (call факториал 13))))
       (= знач ф)
       (cleanup-exit (return знач))))
-  (fun факториал ((var число <i64 (readonly)>)) -> i64
+  (fun факториал ((var число i64 (attrs readonly))) -> i64
     (block
       (var знач i64)
       (var i i64)

@@ -590,6 +590,7 @@ struct TVarStmt : TExpr {
     std::string Name;
     std::vector<std::pair<TExprPtr, TExprPtr>> Bounds; // for array types
     TExprPtr Init; // for (var name = expr) form; type inferred from Init
+    TAccess Access; // readable/mutable; parameters: арг = {true,false}, рез = {false,true}, арг рез = {true,true}
 
     TVarStmt(TLocation loc, std::string name, NAst::TTypePtr type, std::vector<std::pair<TExprPtr, TExprPtr>>&& bounds = {})
         : TExpr(std::move(loc), std::move(type))
