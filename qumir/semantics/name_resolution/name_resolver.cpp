@@ -108,7 +108,9 @@ TTypePtr CloneTypeWithGenericBindings(
             src->Name,
             CloneTypeWithGenericBindings(types, src->UnderlyingType, genericTypeParams, bindings, genericValueParams, valueBindings),
             CloneGenericArgsWithBindings(types, src->TypeArgs, genericTypeParams, bindings, genericValueParams, valueBindings));
-        result->Reference = src->Reference;
+        if (src->Reference) {
+            result->Reference = src->Reference;
+        }
         return std::move(result);
     }
     if (auto t = TMaybeType<TStructType>(type)) {
@@ -347,73 +349,78 @@ TNameResolver::TTask TNameResolver::ResolveTopFuncDecl(NAst::TExprPtr node, TSco
 }
 
 std::optional<TError> TNameResolver::ResolveTypeRef(TTypePtr& type, const TLocation& loc, TScopePtr typeScope) {
-    auto resolveTypeRef = [&](auto& self, NAst::TTypePtr& type, const TLocation& loc, TScopePtr typeScope) -> std::optional<TError> {
-        if (!type) return {};
+    // Resolves named types inside `type` and returns the resolved type. Types are shared
+    // (interned), so nothing is rewritten in place: a composite type whose component
+    // changed is rebuilt through the factory; an unchanged one is returned as is.
+    using TResolved = std::expected<NAst::TTypePtr, TError>;
+    auto resolveTypeRef = [&](auto& self, const NAst::TTypePtr& type, const TLocation& loc, TScopePtr typeScope) -> TResolved {
+        if (!type) return type;
         if (auto maybeNamed = TMaybeType<TNamedType>(type)) {
             auto named = maybeNamed.Cast();
             if (IsGenericTypeParam(named->Name, typeScope)) {
                 if (!named->TypeArgs.empty()) {
-                    return TError(loc, "Generic type parameter '" + named->Name + "' does not accept parameters");
+                    return std::unexpected(TError(loc, "Generic type parameter '" + named->Name + "' does not accept parameters"));
                 }
-                return {};
+                return type;
             }
             if (IsGenericValueParam(named->Name, typeScope)) {
-                return TError(loc, "Generic value parameter '" + named->Name + "' cannot be used as a type");
+                return std::unexpected(TError(loc, "Generic value parameter '" + named->Name + "' cannot be used as a type"));
             }
             auto it = RegisteredTypes.find(named->Name);
             if (it == RegisteredTypes.end()) {
-                return TError(loc, "Неизвестный тип: " + named->Name);
+                return std::unexpected(TError(loc, "Неизвестный тип: " + named->Name));
             }
             const auto& typeDecl = it->second;
             if (auto n = TMaybeType<TNamedType>(typeDecl.UnderlyingType); n && n.Cast()->Name == named->Name) {
                 throw std::runtime_error("resolveTypeRef: RegisteredTypes['" + named->Name
                     + "'] is a TNamedType with the same name — double wrap would result");
             }
+            NAst::TTypePtr underlying;
+            std::vector<TGenericArg> resolvedArgs;
             if (typeDecl.GenericParams.empty()) {
                 if (!named->TypeArgs.empty()) {
-                    return TError(loc, "Тип '" + named->Name + "' не принимает параметры");
+                    return std::unexpected(TError(loc, "Тип '" + named->Name + "' не принимает параметры"));
                 }
-                named->UnderlyingType = typeDecl.UnderlyingType;
+                underlying = typeDecl.UnderlyingType;
             } else {
                 if (named->TypeArgs.size() != typeDecl.GenericParams.size()) {
-                    return TError(loc, "Неверное число параметров типа '" + named->Name + "': ожидается "
+                    return std::unexpected(TError(loc, "Неверное число параметров типа '" + named->Name + "': ожидается "
                         + std::to_string(typeDecl.GenericParams.size()) + ", получено "
-                        + std::to_string(named->TypeArgs.size()));
+                        + std::to_string(named->TypeArgs.size())));
                 }
                 std::unordered_set<std::string> genericTypeParams;
                 std::unordered_set<std::string> genericValueParams;
                 std::map<std::string, TTypePtr> bindings;
                 std::map<std::string, std::string> valueBindings;
-                std::vector<TGenericArg> resolvedArgs;
                 resolvedArgs.reserve(named->TypeArgs.size());
                 for (size_t i = 0; i < typeDecl.GenericParams.size(); ++i) {
                     const auto& param = typeDecl.GenericParams[i];
-                    auto arg = named->TypeArgs[i];
+                    const auto& arg = named->TypeArgs[i];
                     if (param.Kind == TGenericParam::EKind::Type) {
                         if (arg.Kind != TGenericArg::EKind::Type) {
-                            return TError(loc, "Generic type parameter '" + param.Name + "' expects a type argument");
+                            return std::unexpected(TError(loc, "Generic type parameter '" + param.Name + "' expects a type argument"));
                         }
-                        if (auto err = self(self, arg.Type, loc, typeScope)) {
-                            return err;
+                        auto argType = self(self, arg.Type, loc, typeScope);
+                        if (!argType) {
+                            return argType;
                         }
                         genericTypeParams.insert(param.Name);
-                        bindings[param.Name] = arg.Type;
-                        resolvedArgs.push_back(std::move(arg));
+                        bindings[param.Name] = *argType;
+                        resolvedArgs.push_back(TGenericArg::TypeArg(*argType));
                     } else {
                         if (!IsSupportedValueParamType(param.ValueType)) {
-                            return TError(loc, "Only integer generic value parameters are supported: " + param.Name);
+                            return std::unexpected(TError(loc, "Only integer generic value parameters are supported: " + param.Name));
                         }
                         auto value = ValueArgFromTypeArg(arg, typeScope);
                         if (!value) {
-                            return TError(loc, "Generic value parameter '" + param.Name + "' expects an integer value argument");
+                            return std::unexpected(TError(loc, "Generic value parameter '" + param.Name + "' expects an integer value argument"));
                         }
                         genericValueParams.insert(param.Name);
                         valueBindings[param.Name] = *value;
                         resolvedArgs.push_back(TGenericArg::ValueArg(std::move(*value)));
                     }
                 }
-                named->TypeArgs = std::move(resolvedArgs);
-                named->UnderlyingType = CloneTypeWithGenericBindings(
+                underlying = CloneTypeWithGenericBindings(
                     Types(),
                     typeDecl.UnderlyingType,
                     genericTypeParams,
@@ -421,44 +428,98 @@ std::optional<TError> TNameResolver::ResolveTypeRef(TTypePtr& type, const TLocat
                     genericValueParams,
                     valueBindings);
             }
+            // Interned by (name, resolved arguments): resolving the same name twice gives the
+            // same object, completed with its underlying type.
+            auto result = Types().MakeNamed(named->Name, underlying, std::move(resolvedArgs));
             auto modIt = ImportedModuleSymbols.find(named->Name);
             if (modIt != ImportedModuleSymbols.end()) {
-                named->Reference = modIt->second; // marks type as imported from this module
+                result->Reference = modIt->second; // marks type as imported from this module
             }
-            return self(self, named->UnderlyingType, loc, typeScope);
-        } else if (auto maybeRef = TMaybeType<TReferenceType>(type)) {
-            return self(self, maybeRef.Cast()->ReferencedType, loc, typeScope);
-        } else if (auto maybePtr = TMaybeType<TPointerType>(type)) {
-            return self(self, maybePtr.Cast()->PointeeType, loc, typeScope);
-        } else if (auto maybeArray = TMaybeType<TArrayType>(type)) {
-            return self(self, maybeArray.Cast()->ElementType, loc, typeScope);
-        } else if (auto vector = TMaybeType<TVectorType>(type)) {
-            if (!vector.Cast()->SizeParam.empty() && !IsGenericValueParam(vector.Cast()->SizeParam, typeScope)) {
-                return TError(loc, "Vector size '" + vector.Cast()->SizeParam + "' must be a generic value parameter");
-            }
-            return self(self, vector.Cast()->ElementType, loc, typeScope);
-        } else if (auto maybeFun = TMaybeType<TFunctionType>(type)) {
-            auto fun = maybeFun.Cast();
-            if (auto err = self(self, fun->ReturnType, loc, typeScope)) {
+            if (auto err = self(self, result->UnderlyingType, loc, typeScope); !err) {
                 return err;
             }
-            for (auto& param : fun->ParamTypes) {
-                if (auto err = self(self, param, loc, typeScope)) {
-                    return err;
-                }
+            return NAst::TTypePtr(result);
+        } else if (auto maybeRef = TMaybeType<TReferenceType>(type)) {
+            auto referenced = self(self, maybeRef.Cast()->ReferencedType, loc, typeScope);
+            if (!referenced || *referenced == maybeRef.Cast()->ReferencedType) {
+                return referenced ? TResolved(type) : referenced;
             }
+            return NAst::TTypePtr(Types().MakeReference(*referenced));
+        } else if (auto maybePtr = TMaybeType<TPointerType>(type)) {
+            auto pointee = self(self, maybePtr.Cast()->PointeeType, loc, typeScope);
+            if (!pointee || *pointee == maybePtr.Cast()->PointeeType) {
+                return pointee ? TResolved(type) : pointee;
+            }
+            return NAst::TTypePtr(Types().MakePointer(*pointee));
+        } else if (auto maybeArray = TMaybeType<TArrayType>(type)) {
+            auto element = self(self, maybeArray.Cast()->ElementType, loc, typeScope);
+            if (!element || *element == maybeArray.Cast()->ElementType) {
+                return element ? TResolved(type) : element;
+            }
+            return NAst::TTypePtr(Types().MakeArray(*element, maybeArray.Cast()->Arity));
+        } else if (auto vector = TMaybeType<TVectorType>(type)) {
+            if (!vector.Cast()->SizeParam.empty() && !IsGenericValueParam(vector.Cast()->SizeParam, typeScope)) {
+                return std::unexpected(TError(loc, "Vector size '" + vector.Cast()->SizeParam + "' must be a generic value parameter"));
+            }
+            auto element = self(self, vector.Cast()->ElementType, loc, typeScope);
+            if (!element) {
+                return element;
+            }
+            // Vectors are not interned (the size is bound after creation): updated in place.
+            vector.Cast()->ElementType = *element;
+            return type;
+        } else if (auto maybeFun = TMaybeType<TFunctionType>(type)) {
+            auto fun = maybeFun.Cast();
+            auto returnType = self(self, fun->ReturnType, loc, typeScope);
+            if (!returnType) {
+                return returnType;
+            }
+            bool changed = *returnType != fun->ReturnType;
+            std::vector<NAst::TTypePtr> params;
+            params.reserve(fun->ParamTypes.size());
+            for (const auto& param : fun->ParamTypes) {
+                auto resolved = self(self, param, loc, typeScope);
+                if (!resolved) {
+                    return resolved;
+                }
+                changed = changed || *resolved != param;
+                params.push_back(*resolved);
+            }
+            if (!changed) {
+                return type;
+            }
+            return NAst::TTypePtr(Types().MakeFunction(std::move(params), *returnType));
         } else if (auto maybeFuture = TMaybeType<TFutureType>(type)) {
-            return self(self, maybeFuture.Cast()->ResultType, loc, typeScope);
-        } else if (auto maybeStruct = TMaybeType<TStructType>(type)) {
-            for (auto& [_, fieldType] : maybeStruct.Cast()->Fields) {
-                if (auto err = self(self, fieldType, loc, typeScope)) {
-                    return err;
-                }
+            auto result = self(self, maybeFuture.Cast()->ResultType, loc, typeScope);
+            if (!result || *result == maybeFuture.Cast()->ResultType) {
+                return result ? TResolved(type) : result;
             }
+            return NAst::TTypePtr(Types().MakeFuture(*result));
+        } else if (auto maybeStruct = TMaybeType<TStructType>(type)) {
+            bool changed = false;
+            std::vector<std::pair<std::string, NAst::TTypePtr>> fields;
+            fields.reserve(maybeStruct.Cast()->Fields.size());
+            for (const auto& [name, fieldType] : maybeStruct.Cast()->Fields) {
+                auto resolved = self(self, fieldType, loc, typeScope);
+                if (!resolved) {
+                    return resolved;
+                }
+                changed = changed || *resolved != fieldType;
+                fields.emplace_back(name, *resolved);
+            }
+            if (!changed) {
+                return type;
+            }
+            return NAst::TTypePtr(Types().MakeStruct(std::move(fields)));
         }
-        return {};
+        return type;
     };
-    return resolveTypeRef(resolveTypeRef, type, loc, typeScope);
+    auto resolved = resolveTypeRef(resolveTypeRef, type, loc, typeScope);
+    if (!resolved) {
+        return resolved.error();
+    }
+    type = *resolved;
+    return {};
 }
 
 TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TScopePtr funcScope) {

@@ -1698,7 +1698,9 @@ TTypePtr SubstituteGenericType(
             return type;
         }
         auto result = types.MakeNamed(placeholder->Name, std::move(underlying), std::move(typeArgs));
-        result->Reference = placeholder->Reference;
+        if (placeholder->Reference) {
+            result->Reference = placeholder->Reference;
+        }
         return result;
     }
     if (auto arr = TMaybeType<TArrayType>(type)) {
