@@ -13,10 +13,16 @@
 namespace NQumir {
 namespace NAst {
 
-struct TType : TRefCounted<TType> {
-    bool Mutable = true;
+// Access mode of a variable/parameter (арг / рез / арг рез). It is a property of the
+// declaration, not of the type, so types stay immutable and can be shared (interned).
+struct TAccess {
     bool Readable = true;
+    bool Mutable = true;
 
+    bool operator==(const TAccess&) const = default;
+};
+
+struct TType : TRefCounted<TType> {
     virtual ~TType() = default;
     virtual std::string ToString() const { return ""; }
     virtual const std::string_view TypeName() const = 0;

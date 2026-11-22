@@ -1,0 +1,12 @@
+(block
+  (fun <main> ()
+    (block
+      (var x i64)
+      (var ok bool)
+      (= x (call лит_в_цел "42" ok))
+      (block
+        (call output_int64 x 0)
+        (call output_symbol (cast 32 char))
+        (call output_bool ok)
+        (call output_string "\n"))
+      (cleanup-exit (return)))))

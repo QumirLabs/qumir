@@ -10,7 +10,7 @@
       (block
         (var __lifetime_1 = (retain (borrow знач)))
         (cleanup-exit (return (move __lifetime_1)) (destroy знач)))))
-  (fun g ((var й <string (readonly)>))
+  (fun g ((var й string (attrs readonly)))
     (block
       (var к = (bitcast 0 string))
       (replace к (retain (borrow й)))

@@ -205,9 +205,9 @@
         (destroy w)
         (destroy v1)
         (destroy v0))))
-  (fun dot ((var N <i64 (readonly)>)
-      (var x <array <f64 (readonly)> 1> [0 (- N 1)])
-      (var y <array <f64 (readonly)> 1> [0 (- N 1)])) -> f64
+  (fun dot ((var N i64 (attrs readonly))
+      (var x <array f64 1> [0 (- N 1)] (attrs readonly))
+      (var y <array f64 1> [0 (- N 1)] (attrs readonly))) -> f64
     (block
       (var знач f64)
       (var s f64)
@@ -216,8 +216,8 @@
       (for i 0 (- N 1) 1 (block (= s (+ s (* (index x i) (index y i))))))
       (= знач s)
       (cleanup-exit (return знач))))
-  (fun norm2 ((var N <i64 (readonly)>)
-      (var x <array <f64 (readonly)> 1> [0 (- N 1)])) -> f64
+  (fun norm2 ((var N i64 (attrs readonly))
+      (var x <array f64 1> [0 (- N 1)] (attrs readonly))) -> f64
     (block
       (var знач f64)
       (var s f64)
@@ -227,10 +227,10 @@
       (= s (call sqrt s))
       (= знач s)
       (cleanup-exit (return знач))))
-  (fun dot2 ((var NI <i64 (readonly)>)
-      (var NJ <i64 (readonly)>)
-      (var x <array <f64 (readonly)> 2> [1 NI] [1 NJ])
-      (var y <array <f64 (readonly)> 2> [1 NI] [1 NJ])) -> f64
+  (fun dot2 ((var NI i64 (attrs readonly))
+      (var NJ i64 (attrs readonly))
+      (var x <array f64 2> [1 NI] [1 NJ] (attrs readonly))
+      (var y <array f64 2> [1 NI] [1 NJ] (attrs readonly))) -> f64
     (block
       (var знач f64)
       (var s f64)
@@ -240,9 +240,9 @@
       (for i 1 NI 1 (block (for j 1 NJ 1 (block (= s (+ s (* (index x [i j]) (index y [i j]))))))))
       (= знач s)
       (cleanup-exit (return знач))))
-  (fun norm2_2d ((var NI <i64 (readonly)>)
-      (var NJ <i64 (readonly)>)
-      (var x <array <f64 (readonly)> 2> [1 NI] [1 NJ])) -> f64
+  (fun norm2_2d ((var NI i64 (attrs readonly))
+      (var NJ i64 (attrs readonly))
+      (var x <array f64 2> [1 NI] [1 NJ] (attrs readonly))) -> f64
     (block
       (var знач f64)
       (var s f64)
@@ -253,13 +253,13 @@
       (= s (call sqrt s))
       (= знач s)
       (cleanup-exit (return знач))))
-  (fun matvec_A ((var Nx <i64 (readonly)>)
-      (var Ny <i64 (readonly)>)
-      (var NI <i64 (readonly)>)
-      (var NJ <i64 (readonly)>)
-      (var h2 <f64 (readonly)>)
-      (var x <array <f64 (readonly)> 2> [1 NI] [1 NJ])
-      (var y <array <f64 (readonly)> 2> [1 NI] [1 NJ]))
+  (fun matvec_A ((var Nx i64 (attrs readonly))
+      (var Ny i64 (attrs readonly))
+      (var NI i64 (attrs readonly))
+      (var NJ i64 (attrs readonly))
+      (var h2 f64 (attrs readonly))
+      (var x <array f64 2> [1 NI] [1 NJ] (attrs readonly))
+      (var y <array f64 2> [1 NI] [1 NJ] (attrs readonly)))
     (block
       (var i i64)
       (var j i64)
@@ -282,10 +282,10 @@
               (if (< j NJ) (block (= c (- c (index x [i (+ j 1)])))))
               (= y [i j] (/ c h2))))))
       (cleanup-exit (return))))
-  (fun sturm_count ((var m <i64 (readonly)>)
-      (var alpha <array <f64 (readonly)> 1> [0 (- m 1)])
-      (var beta <array <f64 (readonly)> 1> [0 (- m 2)])
-      (var lam <f64 (readonly)>)) -> i64
+  (fun sturm_count ((var m i64 (attrs readonly))
+      (var alpha <array f64 1> [0 (- m 1)] (attrs readonly))
+      (var beta <array f64 1> [0 (- m 2)] (attrs readonly))
+      (var lam f64 (attrs readonly))) -> i64
     (block
       (var знач i64)
       (var i i64)

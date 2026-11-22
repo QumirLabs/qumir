@@ -5,7 +5,7 @@
       (call ф 10)
       (= знач 1)
       (cleanup-exit (return знач))))
-  (fun ф ((var i <i64 (readonly)>))
+  (fun ф ((var i i64 (attrs readonly)))
     (block
       (block
         (call output_int64 i 0))

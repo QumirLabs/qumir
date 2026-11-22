@@ -1,7 +1,7 @@
 (block
-  (fun функция ((var i1 <ref <i64 (writeonly)>>)
-      (var j1 <f64 (readonly)>)
-      (var k1 <bool (readonly)>))
+  (fun функция ((var i1 <ref i64> (attrs writeonly))
+      (var j1 f64 (attrs readonly))
+      (var k1 bool (attrs readonly)))
     (block
       (var i i64)
       (var j i64)

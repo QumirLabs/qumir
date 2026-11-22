@@ -8,7 +8,7 @@
       (block
         (var __lifetime_0 = (retain (borrow знач)))
         (cleanup-exit (return (move __lifetime_0)) (destroy s) (destroy знач)))))
-  (fun инит ((var s <ref <string (writeonly)>>))
+  (fun инит ((var s <ref string> (attrs writeonly)))
     (block
       (replace s (own-literal "abc"))
       (cleanup-exit (return)))))

@@ -6,7 +6,7 @@
       (= i (cast (* (call f (+ 3.0 5.0)) 10.0) i64))
       (= знач i)
       (cleanup-exit (return знач))))
-  (fun f ((var x <f64 (readonly)>)) -> f64
+  (fun f ((var x f64 (attrs readonly))) -> f64
     (block
       (var знач f64)
       (= знач 1.0)

@@ -14,8 +14,6 @@ namespace {
     template<typename T>
     NAst::TTypePtr outType() {
         auto underlyingType = MakeIntrusive<T>();
-        underlyingType->Mutable = true;
-        underlyingType->Readable = false;
         auto refType = MakeIntrusive<NAst::TReferenceType>(underlyingType);
         return refType;
     }

@@ -3,7 +3,7 @@
     (block
       (call ф 1)
       (cleanup-exit (return))))
-  (fun ф ((var x <i64 (readonly)>))
+  (fun ф ((var x i64 (attrs readonly)))
     (block
       (block
         (call output_string "ok"))

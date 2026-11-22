@@ -87,9 +87,9 @@
         (call output_double res_inf 8 8)
         (call output_string "\n"))
       (cleanup-exit (return) (destroy Ap) (destroy p) (destroy r) (destroy b) (destroy x))))
-  (fun matvec ((var n <i64 (readonly)>)
-      (var v <array <f64 (readonly)> 1> [0 (- n 1)])
-      (var w <array <f64 (writeonly)> 1> [0 (- n 1)]))
+  (fun matvec ((var n i64 (attrs readonly))
+      (var v <array f64 1> [0 (- n 1)] (attrs readonly))
+      (var w <array f64 1> [0 (- n 1)] (attrs writeonly)))
     (block
       (var i i64)
       (var j i64)
@@ -103,8 +103,8 @@
           (for j 0 (- n 1) 1 (block (= sum (+ sum (* (/ 1.0 (+ (cast (+ i j) f64) 1.0)) (index v j))))))
           (= w [i] sum)))
       (cleanup-exit (return))))
-  (fun norm2 ((var n <i64 (readonly)>)
-      (var v <array <f64 (readonly)> 1> [0 (- n 1)])) -> f64
+  (fun norm2 ((var n i64 (attrs readonly))
+      (var v <array f64 1> [0 (- n 1)] (attrs readonly))) -> f64
     (block
       (var знач f64)
       (var i i64)
@@ -113,9 +113,9 @@
       (for i 0 (- n 1) 1 (block (= sum (+ sum (* (index v i) (index v i))))))
       (= знач (call sqrt sum))
       (cleanup-exit (return знач))))
-  (fun dot ((var n <i64 (readonly)>)
-      (var a <array <f64 (readonly)> 1> [0 (- n 1)])
-      (var b <array <f64 (readonly)> 1> [0 (- n 1)])) -> f64
+  (fun dot ((var n i64 (attrs readonly))
+      (var a <array f64 1> [0 (- n 1)] (attrs readonly))
+      (var b <array f64 1> [0 (- n 1)] (attrs readonly))) -> f64
     (block
       (var знач f64)
       (var i i64)
@@ -124,11 +124,11 @@
       (for i 0 (- n 1) 1 (block (= sum (+ sum (* (index a i) (index b i))))))
       (= знач sum)
       (cleanup-exit (return знач))))
-  (fun compute_residual ((var n <i64 (readonly)>)
-      (var x <array <f64 (readonly)> 1> [0 (- n 1)])
-      (var b <array <f64 (readonly)> 1> [0 (- n 1)])
-      (var r <array <f64 (writeonly)> 1> [0 (- n 1)])
-      (var w <array <f64 (readonly)> 1> [0 (- n 1)]))
+  (fun compute_residual ((var n i64 (attrs readonly))
+      (var x <array f64 1> [0 (- n 1)] (attrs readonly))
+      (var b <array f64 1> [0 (- n 1)] (attrs readonly))
+      (var r <array f64 1> [0 (- n 1)] (attrs writeonly))
+      (var w <array f64 1> [0 (- n 1)] (attrs readonly)))
     (block
       (var i i64)
       (call matvec n x w)

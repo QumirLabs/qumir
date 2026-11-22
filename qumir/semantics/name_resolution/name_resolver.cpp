@@ -16,13 +16,6 @@ using namespace NAst;
 
 namespace {
 
-TTypePtr CopyTypeAttrs(const TTypePtr& result, const TTypePtr& source) {
-    if (result && source) {
-        static_cast<TType&>(*result) = static_cast<const TType&>(*source);
-    }
-    return result;
-}
-
 TTypePtr CloneTypeWithGenericBindings(
     const TTypePtr& type,
     const std::unordered_set<std::string>& genericTypeParams,
@@ -65,22 +58,22 @@ TTypePtr CloneTypeWithGenericBindings(
         return type;
     }
     if (auto t = TMaybeType<TIntegerType>(type)) {
-        return CopyTypeAttrs(MakeIntrusive<TIntegerType>(t.Cast()->Kind), type);
+        return MakeIntrusive<TIntegerType>(t.Cast()->Kind);
     }
     if (auto t = TMaybeType<TFloatType>(type)) {
-        return CopyTypeAttrs(MakeIntrusive<TFloatType>(t.Cast()->Kind), type);
+        return MakeIntrusive<TFloatType>(t.Cast()->Kind);
     }
     if (TMaybeType<TBoolType>(type)) {
-        return CopyTypeAttrs(MakeIntrusive<TBoolType>(), type);
+        return MakeIntrusive<TBoolType>();
     }
     if (TMaybeType<TStringType>(type)) {
-        return CopyTypeAttrs(MakeIntrusive<TStringType>(), type);
+        return MakeIntrusive<TStringType>();
     }
     if (TMaybeType<TSymbolType>(type)) {
-        return CopyTypeAttrs(MakeIntrusive<TSymbolType>(), type);
+        return MakeIntrusive<TSymbolType>();
     }
     if (TMaybeType<TVoidType>(type)) {
-        return CopyTypeAttrs(MakeIntrusive<TVoidType>(), type);
+        return MakeIntrusive<TVoidType>();
     }
     if (auto t = TMaybeType<TFunctionType>(type)) {
         auto src = t.Cast();
@@ -90,20 +83,16 @@ TTypePtr CloneTypeWithGenericBindings(
             params.push_back(CloneTypeWithGenericBindings(param, genericTypeParams, bindings, genericValueParams, valueBindings));
         }
         auto ret = CloneTypeWithGenericBindings(src->ReturnType, genericTypeParams, bindings, genericValueParams, valueBindings);
-        return CopyTypeAttrs(MakeIntrusive<TFunctionType>(std::move(params), std::move(ret)), type);
+        return MakeIntrusive<TFunctionType>(std::move(params), std::move(ret));
     }
     if (auto t = TMaybeType<TFutureType>(type)) {
-        return CopyTypeAttrs(
-            MakeIntrusive<TFutureType>(CloneTypeWithGenericBindings(t.Cast()->ResultType, genericTypeParams, bindings, genericValueParams, valueBindings)),
-            type);
+        return MakeIntrusive<TFutureType>(CloneTypeWithGenericBindings(t.Cast()->ResultType, genericTypeParams, bindings, genericValueParams, valueBindings));
     }
     if (auto t = TMaybeType<TArrayType>(type)) {
         auto src = t.Cast();
-        return CopyTypeAttrs(
-            MakeIntrusive<TArrayType>(
+        return MakeIntrusive<TArrayType>(
                 CloneTypeWithGenericBindings(src->ElementType, genericTypeParams, bindings, genericValueParams, valueBindings),
-                src->Arity),
-            type);
+                src->Arity);
     }
     if (auto t = TMaybeType<TVectorType>(type)) {
         auto result = MakeIntrusive<TVectorType>(*t.Cast());
@@ -115,21 +104,17 @@ TTypePtr CloneTypeWithGenericBindings(
         return result;
     }
     if (auto t = TMaybeType<TPointerType>(type)) {
-        return CopyTypeAttrs(
-            MakeIntrusive<TPointerType>(CloneTypeWithGenericBindings(t.Cast()->PointeeType, genericTypeParams, bindings, genericValueParams, valueBindings)),
-            type);
+        return MakeIntrusive<TPointerType>(CloneTypeWithGenericBindings(t.Cast()->PointeeType, genericTypeParams, bindings, genericValueParams, valueBindings));
     }
     if (auto t = TMaybeType<TReferenceType>(type)) {
-        return CopyTypeAttrs(
-            MakeIntrusive<TReferenceType>(CloneTypeWithGenericBindings(t.Cast()->ReferencedType, genericTypeParams, bindings, genericValueParams, valueBindings)),
-            type);
+        return MakeIntrusive<TReferenceType>(CloneTypeWithGenericBindings(t.Cast()->ReferencedType, genericTypeParams, bindings, genericValueParams, valueBindings));
     }
     if (auto t = TMaybeType<TNamedType>(type)) {
         auto src = t.Cast();
         if (src->TypeArgs.empty() && genericTypeParams.contains(src->Name)) {
             auto it = bindings.find(src->Name);
             if (it != bindings.end()) {
-                return CopyTypeAttrs(CloneTypeWithGenericBindings(it->second, {}, {}, {}, {}), type);
+                return CloneTypeWithGenericBindings(it->second, {}, {}, {}, {});
             }
         }
         auto result = MakeIntrusive<TNamedType>(
@@ -137,7 +122,7 @@ TTypePtr CloneTypeWithGenericBindings(
             CloneTypeWithGenericBindings(src->UnderlyingType, genericTypeParams, bindings, genericValueParams, valueBindings),
             CloneGenericArgsWithBindings(src->TypeArgs, genericTypeParams, bindings, genericValueParams, valueBindings));
         result->Reference = src->Reference;
-        return CopyTypeAttrs(std::move(result), type);
+        return std::move(result);
     }
     if (auto t = TMaybeType<TStructType>(type)) {
         std::vector<std::pair<std::string, TTypePtr>> fields;
@@ -145,7 +130,7 @@ TTypePtr CloneTypeWithGenericBindings(
         for (const auto& [name, fieldType] : t.Cast()->Fields) {
             fields.emplace_back(name, CloneTypeWithGenericBindings(fieldType, genericTypeParams, bindings, genericValueParams, valueBindings));
         }
-        return CopyTypeAttrs(MakeIntrusive<TStructType>(std::move(fields)), type);
+        return MakeIntrusive<TStructType>(std::move(fields));
     }
     return type;
 }
@@ -1458,7 +1443,12 @@ std::expected<bool, std::string> TNameResolver::ImportModule(const std::string& 
         auto funType = MakeIntrusive<NAst::TFunctionType>(auto(fn.ArgTypes), fn.ReturnType);
         std::vector<NAst::TParam> params;
         for (size_t i = 0; i < fn.ArgTypes.size(); ++i) {
-            params.push_back(MakeIntrusive<NAst::TVarStmt>(TLocation{}, "arg" + std::to_string(i), fn.ArgTypes[i]));
+            auto param = MakeIntrusive<NAst::TVarStmt>(TLocation{}, "arg" + std::to_string(i), fn.ArgTypes[i]);
+            if (TMaybeType<NAst::TReferenceType>(fn.ArgTypes[i])) {
+                // reference parameters of external functions are output-only
+                param->Access = {.Readable = false, .Mutable = true};
+            }
+            params.push_back(std::move(param));
         }
         auto funDecl = MakeIntrusive<NAst::TFunDecl>(TLocation{}, fn.Name, std::vector<TGenericParam>{}, std::move(params), nullptr, fn.ReturnType);
         funDecl->MangledName = fn.MangledName;

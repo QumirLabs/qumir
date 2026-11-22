@@ -211,9 +211,7 @@ std::expected<TDefiniteAssignmentChecker::TAssignedSet, TError> TDefiniteAssignm
             if (auto maybeArrayType = TMaybeType<TArrayType>(param->Type)) {
                 // skip array params
             } else if (auto maybeReferenceType = TMaybeType<TReferenceType>(param->Type)) {
-                auto refType = maybeReferenceType.Cast();
-                auto unwrappedType = refType->ReferencedType;
-                if (unwrappedType->Readable) {
+                if (param->Access.Readable) {
                     // inOut param
                     auto res = CheckExpr(args[i], scopeId, inAssigned);
                     if (!res) {

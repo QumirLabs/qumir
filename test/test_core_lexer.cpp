@@ -72,7 +72,7 @@ namespace {
         EXPECT_EQ(value.Value.i64, (v)); \
     } while (0)
 
-TTypePtr ParseVarType(const std::string& type) {
+NQumir::NAst::TExprPtrOf<TVarStmt> ParseVar(const std::string& type) {
     std::istringstream input("(var value " + type + ")");
     TTokenStream tokens(input);
     TParser parser;
@@ -86,7 +86,12 @@ TTypePtr ParseVarType(const std::string& type) {
         ADD_FAILURE() << "expected variable declaration";
         return nullptr;
     }
-    return variable->Type;
+    return variable;
+}
+
+TTypePtr ParseVarType(const std::string& type) {
+    auto variable = ParseVar(type);
+    return variable ? variable->Type : nullptr;
 }
 
 } // namespace
@@ -337,7 +342,6 @@ TEST(CoreParseTypeTest, ParsesStandaloneType) {
         "string",
         "char",
         "void",
-        "<i64 (readonly)>",
         "<array i64 2>",
         "<ptr f64>",
     };
@@ -399,7 +403,7 @@ TEST(CoreParseTypeTest, LeavesTrailingTokensInTheStream) {
     EXPECT_EQ(PrintType(*second), "f64");
 }
 
-TEST(CoreTypeAttrs, ParseAndPrintCanonicalAccessModes) {
+TEST(CoreVarAttrs, ParseAndPrintCanonicalAccessModes) {
     struct TCase {
         std::string Source;
         bool Readable;
@@ -408,32 +412,36 @@ TEST(CoreTypeAttrs, ParseAndPrintCanonicalAccessModes) {
     };
     const std::vector<TCase> cases = {
         {"i64", true, true, "i64"},
-        {"<i64 (mutable)>", true, true, "i64"},
-        {"<i64 (readonly)>", true, false, "<i64 (readonly)>"},
-        {"<i64 (writeonly)>", false, true, "<i64 (writeonly)>"},
+        {"i64 (attrs)", true, true, "i64"},
+        {"i64 (attrs mutable)", true, true, "i64"},
+        {"i64 (attrs readonly)", true, false, "i64 (attrs readonly)"},
+        {"<ref i64> (attrs writeonly)", false, true, "<ref i64> (attrs writeonly)"},
+        {"<array f64 1> [0 9] (attrs readonly)", true, false, "<array f64 1> [0 9] (attrs readonly)"},
     };
 
     for (const auto& testCase : cases) {
         SCOPED_TRACE(testCase.Source);
-        auto type = ParseVarType(testCase.Source);
-        ASSERT_NE(type, nullptr);
-        EXPECT_EQ(type->Readable, testCase.Readable);
-        EXPECT_EQ(type->Mutable, testCase.Mutable);
-        EXPECT_EQ(PrintType(type), testCase.Canonical);
+        auto var = ParseVar(testCase.Source);
+        ASSERT_NE(var, nullptr);
+        EXPECT_EQ(var->Access.Readable, testCase.Readable);
+        EXPECT_EQ(var->Access.Mutable, testCase.Mutable);
+        EXPECT_EQ(PrintAst(var), "(var value " + testCase.Canonical + ")");
 
-        auto reparsed = ParseVarType(testCase.Canonical);
+        auto reparsed = ParseVar(testCase.Canonical);
         ASSERT_NE(reparsed, nullptr);
-        EXPECT_EQ(reparsed->Readable, testCase.Readable);
-        EXPECT_EQ(reparsed->Mutable, testCase.Mutable);
+        EXPECT_EQ(reparsed->Access.Readable, testCase.Readable);
+        EXPECT_EQ(reparsed->Access.Mutable, testCase.Mutable);
     }
 }
 
-TEST(CoreTypeAttrs, RejectsDuplicateAndConflictingAttributes) {
+TEST(CoreVarAttrs, RejectsDuplicateConflictingAndMisplacedAttributes) {
     const std::vector<std::string> types = {
-        "<i64 (mutable mutable)>",
-        "<i64 (readonly mutable)>",
-        "<i64 (readonly writeonly)>",
-        "<i64 (readable)>",
+        "i64 (attrs mutable mutable)",
+        "i64 (attrs readonly mutable)",
+        "i64 (attrs readonly writeonly)",
+        "i64 (attrs readable)",
+        "i64 (readonly)",
+        "<i64 (readonly)>", // access belongs to the variable, not to the type
     };
 
     for (const auto& type : types) {

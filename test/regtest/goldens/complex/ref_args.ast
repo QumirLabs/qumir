@@ -21,16 +21,16 @@
         (call output_double (call Im (: z <named компл>)) 0 -1)
         (call output_string "\n"))
       (cleanup-exit (return))))
-  (fun split ((var z <named компл (readonly)>)
-      (var re <ref <f64 (writeonly)>>)
-      (var im <ref <f64 (writeonly)>>))
+  (fun split ((var z <named компл> (attrs readonly))
+      (var re <ref f64> (attrs writeonly))
+      (var im <ref f64> (attrs writeonly)))
     (block
-      (= re (call Re (: z <named компл (readonly)>)))
-      (= im (call Im (: z <named компл (readonly)>)))
+      (= re (call Re (: z <named компл>)))
+      (= im (call Im (: z <named компл>)))
       (cleanup-exit (return))))
-  (fun make_by_ref ((var re <f64 (readonly)>)
-      (var im <f64 (readonly)>)
-      (var z <ref <named компл (writeonly)>>))
+  (fun make_by_ref ((var re f64 (attrs readonly))
+      (var im f64 (attrs readonly))
+      (var z <ref <named компл>> (attrs writeonly)))
     (block
       (= z
         (: (call
@@ -41,7 +41,7 @@
           <named компл>))
       (cleanup-exit (return))))
   (fun add_in_place ((var z <ref <named компл>>)
-      (var delta <named компл (readonly)>))
+      (var delta <named компл> (attrs readonly)))
     (block
-      (= z (: (call complex_add z (: delta <named компл (readonly)>)) <named компл>))
+      (= z (: (call complex_add z (: delta <named компл>)) <named компл>))
       (cleanup-exit (return)))))

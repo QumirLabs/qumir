@@ -419,8 +419,6 @@ TExpectedTask<std::vector<TExprPtr>, TError, TLocation> var_decl_list(TParserCon
     if (!scalarType) {
         co_return TError(first.Location, "неизвестный тип переменной");
     }
-    scalarType->Mutable = isMutable;
-    scalarType->Readable = isReadable;
     // опциональный признак массива после базового типа: 'таб'
     if (isArray == false) {
         auto t = stream.Next();
@@ -438,6 +436,7 @@ TExpectedTask<std::vector<TExprPtr>, TError, TLocation> var_decl_list(TParserCon
     }
     while (true) {
         auto decl = co_await var_decl(context, scalarType, isArray, isPointer, isReference);
+        decl->Access = {.Readable = isReadable, .Mutable = isMutable};
         decls.push_back(decl);
 
         auto t = stream.Next();

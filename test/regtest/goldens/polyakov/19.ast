@@ -8,9 +8,9 @@
         (call TumbaWords (borrow __lifetime_0) (borrow word) 0)
         (destroy __lifetime_0))
       (cleanup-exit (return) (destroy word))))
-  (fun TumbaWords ((var A <string (readonly)>)
-      (var w0 <string (readonly)>)
-      (var N <i64 (readonly)>))
+  (fun TumbaWords ((var A string (attrs readonly))
+      (var w0 string (attrs readonly))
+      (var N i64 (attrs readonly)))
     (block
       (if
         (== N (call длин (borrow w0)))

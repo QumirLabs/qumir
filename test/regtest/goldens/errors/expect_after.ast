@@ -4,7 +4,7 @@
       (var i i64)
       (= i (call ф 8))
       (cleanup-exit (return))))
-  (fun ф ((var й <i64 (readonly)>)) -> i64 (attrs
+  (fun ф ((var й i64 (attrs readonly))) -> i64 (attrs
       (expect_after (call __ensure (> знач 10) "(> знач 10) @ Line: 8, Byte: 4, Column: 4")))
     (block
       (var знач i64)

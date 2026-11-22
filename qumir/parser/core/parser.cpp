@@ -466,14 +466,18 @@ TAstTask ParseExpr(TParserContext& context) {
     co_return Error(token, "expected expression");
 }
 
-// Reads an optional "(...)" attribute list and applies the modifiers to type.
-// Access modifiers (mutable/readonly/writeonly) are mutually exclusive; the
-// Access modifiers (mutable/readonly/writeonly) are mutually exclusive.
-TExpectedTask<std::monostate, TError, TLocation> ParseTypeAttrs(TParserContext& context, TType& type) {
+// Reads an optional "(attrs ...)" list of a variable declaration. The access modifiers
+// readonly/writeonly/mutable are mutually exclusive; the default is readable and mutable.
+TExpectedTask<TAccess, TError, TLocation> ParseVarAttrs(TParserContext& context) {
+    TAccess access;
     auto token = context.Stream.Next();
     if (!IsOp(token, '(')) {
         context.Stream.Unget(token);
-        co_return std::monostate{};
+        co_return access;
+    }
+    auto head = context.Stream.Next();
+    if (head.Type != TToken::Identifier || head.Name != "attrs") {
+        co_return Error(head, "expected (attrs ...) after variable declaration");
     }
     bool accessSeen = false;
     while (true) {
@@ -482,20 +486,22 @@ TExpectedTask<std::monostate, TError, TLocation> ParseTypeAttrs(TParserContext& 
             break;
         }
         if (token.Type != TToken::Identifier) {
-            co_return Error(token, "expected type attribute");
+            co_return Error(token, "expected variable attribute");
         }
         if (token.Name == "mutable" || token.Name == "readonly" || token.Name == "writeonly") {
             if (accessSeen) {
-                co_return Error(token, "duplicate or conflicting access type attribute: " + token.Name);
+                co_return Error(token, "duplicate or conflicting access attribute: " + token.Name);
             }
             accessSeen = true;
-            type.Readable = token.Name != "writeonly";
-            type.Mutable = token.Name != "readonly";
+            access = {
+                .Readable = token.Name != "writeonly",
+                .Mutable = token.Name != "readonly",
+            };
         } else {
-            co_return Error(token, "unknown type attribute: " + token.Name);
+            co_return Error(token, "unknown variable attribute: " + token.Name);
         }
     }
-    co_return std::monostate{};
+    co_return access;
 }
 
 TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
@@ -503,7 +509,6 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
 
     // Scalar types wrapped in angle brackets: <i64 (mutable)> etc.
     if (auto scalar = ScalarTypeByName(head)) {
-        co_await ParseTypeAttrs(context, *scalar);
         co_await Expect(context, '>');
         co_return scalar;
     }
@@ -553,7 +558,6 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     if (head == "future") {
         auto resultType = co_await ParseType(context);
         auto type = MakeIntrusive<TFutureType>(std::move(resultType));
-        co_await ParseTypeAttrs(context, *type);
         co_await Expect(context, '>');
         co_return type;
     }
@@ -567,14 +571,12 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     if (head == "ptr") {
         auto pointee = co_await ParseType(context);
         auto type = MakeIntrusive<TPointerType>(std::move(pointee));
-        co_await ParseTypeAttrs(context, *type);
         co_await Expect(context, '>');
         co_return type;
     }
     if (head == "ref") {
         auto referenced = co_await ParseType(context);
         auto type = MakeIntrusive<TReferenceType>(std::move(referenced));
-        co_await ParseTypeAttrs(context, *type);
         co_await Expect(context, '>');
         co_return type;
     }
@@ -599,13 +601,11 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
         // as opposed to "<named Name UnderlyingType (attrs)>".
         if (IsOp(tok, '(')) {
             context.Stream.Unget(tok);
-            co_await ParseTypeAttrs(context, *type);
-            co_await Expect(context, '>');
+                co_await Expect(context, '>');
             co_return type;
         }
         context.Stream.Unget(tok);
         type->UnderlyingType = co_await ParseType(context);
-        co_await ParseTypeAttrs(context, *type);
         co_await Expect(context, '>');
         co_return type;
     }
@@ -869,8 +869,11 @@ TListHandlerMap MakeDefaultHandlers() {
             ctx.Stream.Unget(peek);
             auto type = co_await ParseType(ctx);
             auto bounds = co_await ParseBounds(ctx);
+            auto access = co_await ParseVarAttrs(ctx);
             co_await Expect(ctx, ')');
-            co_return MakeIntrusive<TVarStmt>(loc, std::move(name), std::move(type), std::move(bounds));
+            auto var = MakeIntrusive<TVarStmt>(loc, std::move(name), std::move(type), std::move(bounds));
+            var->Access = access;
+            co_return var;
         }},
         {"fun", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             // (fun Name [optional generic params] ((var a) (var b)) -> return type (block body))
