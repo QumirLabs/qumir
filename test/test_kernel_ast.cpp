@@ -75,10 +75,6 @@ std::string CompileKernelObjectIr(const char* source, int optLevel)
 TEST(KernelAst, LoadsU64FromPointerIndex) {
     std::istringstream input(WordHashSource);
     NQumir::NAst::NCore::TTokenStream tokens(input);
-    NQumir::NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
-    auto parsed = parser.Parse(tokens);
-    ASSERT_TRUE(parsed) << parsed.error().ToString();
-
     NQumir::TLLVMRunner runner({
         .NativeCode = true,
         .CoreInput = true,
@@ -87,6 +83,10 @@ TEST(KernelAst, LoadsU64FromPointerIndex) {
         .EnablePerfJitEventListener = true,
         .OptLevel = 3,
     });
+    NQumir::NAst::NCore::TParser parser(runner.TypeFactory());
+    auto parsed = parser.Parse(tokens);
+    ASSERT_TRUE(parsed) << parsed.error().ToString();
+
 
     std::string error;
     void* entry = runner.CompileKernelAst(*parsed, "word_hash", &error);

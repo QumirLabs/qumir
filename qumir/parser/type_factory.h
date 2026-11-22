@@ -68,31 +68,29 @@ public:
         return ret ? ret : (ret = MakeIntrusive<TReferenceType>(referenced));
     }
 
-    // Interned by (name, typeArgs). UnderlyingType is not part of the key: a named type is
-    // declared by name, so the same name completes with the same underlying type, and an
-    // incomplete named type (no underlying yet) is completed in place, once. A conflicting
-    // redefinition - the name is declared again with a different underlying type, e.g. a
-    // reused resolver or a second program - gets a fresh object and replaces the cached one.
+    // Interned by (name, typeArgs). UnderlyingType and Reference are not part of the key: a
+    // named type is declared by name, so the same name completes with the same underlying
+    // type and comes from the same module. An incomplete named type (no underlying yet) is
+    // completed in place, once. A conflicting redefinition - the name is declared again with
+    // a different underlying type, e.g. a reused resolver or a second program - gets a fresh
+    // object and replaces the cached one.
     TConcreteTypePtr<TNamedType> MakeNamed(
         const std::string& name,
         const TTypePtr& underlying = nullptr,
-        std::vector<TGenericArg>&& typeArgs = {})
+        std::vector<TGenericArg>&& typeArgs = {},
+        std::optional<std::string> reference = std::nullopt)
     {
         auto& ret = NamedTypes_[{name, typeArgs}];
-        if (!ret) {
-            return ret = MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs));
+        if (!ret || (underlying && ret->UnderlyingType() && ret->UnderlyingType() != underlying)) {
+            return ret = MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs), std::move(reference));
         }
-        if (!underlying) {
-            return ret;
-        }
-        if (!ret->UnderlyingType()) {
+        if (underlying && !ret->UnderlyingType()) {
             ret->SetUnderlyingType(underlying);
-            return ret;
         }
-        if (ret->UnderlyingType() == underlying || TypeKey(ret->UnderlyingType()) == TypeKey(underlying)) {
-            return ret;
+        if (reference && !ret->Reference()) {
+            ret->SetReference(std::move(reference));
         }
-        return ret = MakeIntrusive<TNamedType>(name, underlying, std::move(typeArgs));
+        return ret;
     }
 
     TConcreteTypePtr<TStructType> MakeStruct(std::vector<std::pair<std::string, TTypePtr>>&& fields) {

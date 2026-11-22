@@ -41,10 +41,10 @@ constexpr const char* Source = R"(
     (block (return (call builtin::byte_match_backend)))))
 )";
 
-NAst::TExprPtr Parse(const std::string& source) {
+NAst::TExprPtr Parse(NAst::TTypeFactory& types, const std::string& source) {
     std::istringstream input(source);
     NAst::NCore::TTokenStream tokens(input);
-    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
+    NAst::NCore::TParser parser(types);
     auto parsed = parser.Parse(tokens);
     EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());
     return parsed
@@ -124,7 +124,7 @@ protected:
         });
         std::string error;
         auto entries = Runner->CompileKernelAst(
-            Parse(Source),
+            Parse(Runner->TypeFactory(), Source),
             {"match8", "match16", "backend"},
             &error);
         ASSERT_EQ(entries.size(), 3u) << error;
@@ -244,7 +244,7 @@ TEST(ByteMatch, PortableVectorIrAndWasmBackend) {
         std::string error;
         testing::internal::CaptureStderr();
         auto object = runner.CompileKernelAstToObject(
-            Parse(Source),
+            Parse(runner.TypeFactory(), Source),
             {"match8", "match16", "backend"},
             &error);
         const auto ir = testing::internal::GetCapturedStderr();
@@ -277,7 +277,7 @@ TEST(ByteMatch, NativeSimdAssembly) {
     std::string error;
     testing::internal::CaptureStderr();
     auto object = runner.CompileKernelAstToObject(
-        Parse(Source),
+        Parse(runner.TypeFactory(), Source),
         {"match8", "match16", "backend"},
         &error);
     const auto assembly = testing::internal::GetCapturedStderr();
@@ -324,7 +324,7 @@ TEST(ByteMatch, ColdAndWarmInlineObjectCache) {
         TLLVMRunner runner({.NativeCode = true, .CoreInput = true, .AllowOverloads = true, .OptLevel = 3});
         std::string error;
         auto linked = runner.CompileFusedKernelsCached(
-            Parse(source),
+            Parse(runner.TypeFactory(), source),
             {"kernel8", "kernel16", "kernel_backend"},
             directory.string(),
             "v1",

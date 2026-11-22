@@ -60,6 +60,26 @@ TEST(TypeFactory, NamedTypesAreInternedByNameAndArgsAndCompletedOnce) {
     EXPECT_EQ(redefined->UnderlyingType(), f64);
 }
 
+TEST(TypeFactory, NamedReferenceIsCompletedLikeUnderlyingType) {
+    TTypeFactory types;
+    auto i64 = types.MakeInteger();
+
+    auto named = types.MakeNamed("X", i64);
+    EXPECT_FALSE(named->Reference());
+
+    // The module a type comes from is a property of its name: filled in once.
+    EXPECT_EQ(types.MakeNamed("X", i64, {}, "Module"), named);
+    EXPECT_EQ(named->Reference(), "Module");
+    EXPECT_EQ(types.MakeNamed("X", i64, {}, "Other"), named);
+    EXPECT_EQ(named->Reference(), "Module");
+}
+
+TEST(TypeFactory, TypesFromDifferentFactoriesAreDifferentObjects) {
+    TTypeFactory first;
+    TTypeFactory second;
+    EXPECT_NE(first.MakeInteger(), second.MakeInteger());
+}
+
 TEST(TypeFactory, PointersAreHashableAndOrdered) {
     TTypeFactory types;
     std::unordered_set<TTypePtr> set{types.MakeInteger(), types.MakeInteger(), types.Make<TBoolType>()};

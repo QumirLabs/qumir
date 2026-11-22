@@ -105,14 +105,11 @@ TTypePtr CloneTypeWithGenericBindings(
                 return CloneTypeWithGenericBindings(types, it->second, {}, {}, {}, {});
             }
         }
-        auto result = types.MakeNamed(
+        return types.MakeNamed(
             src->Name,
             CloneTypeWithGenericBindings(types, src->UnderlyingType(), genericTypeParams, bindings, genericValueParams, valueBindings),
-            CloneGenericArgsWithBindings(types, src->TypeArgs, genericTypeParams, bindings, genericValueParams, valueBindings));
-        if (src->Reference()) {
-            result->SetReference(src->Reference());
-        }
-        return std::move(result);
+            CloneGenericArgsWithBindings(types, src->TypeArgs, genericTypeParams, bindings, genericValueParams, valueBindings),
+            src->Reference());
     }
     if (auto t = TMaybeType<TStructType>(type)) {
         std::vector<std::pair<std::string, TTypePtr>> fields;
@@ -431,11 +428,11 @@ std::optional<TError> TNameResolver::ResolveTypeRef(TTypePtr& type, const TLocat
             }
             // Interned by (name, resolved arguments): resolving the same name twice gives the
             // same object, completed with its underlying type.
-            auto result = Types().MakeNamed(named->Name, underlying, std::move(resolvedArgs));
-            auto modIt = ImportedModuleSymbols.find(named->Name);
-            if (modIt != ImportedModuleSymbols.end()) {
-                result->SetReference(modIt->second); // marks type as imported from this module
+            std::optional<std::string> reference;
+            if (auto modIt = ImportedModuleSymbols.find(named->Name); modIt != ImportedModuleSymbols.end()) {
+                reference = modIt->second; // marks type as imported from this module
             }
+            auto result = Types().MakeNamed(named->Name, underlying, std::move(resolvedArgs), std::move(reference));
             if (auto err = self(self, result->UnderlyingType(), loc, typeScope); !err) {
                 return err;
             }
@@ -661,7 +658,9 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
             if (auto err = ResolveTypeRef(underlying, typeDecl->Location, typeScope)) {
                 co_return *err;
             }
-            named->SetUnderlyingType(underlying);
+            if (underlying != named->UnderlyingType()) {
+                typeDecl->Type = Types().MakeNamed(named->Name, underlying, auto(named->TypeArgs), named->Reference());
+            }
         }
         co_return {};
     }

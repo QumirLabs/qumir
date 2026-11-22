@@ -41,6 +41,9 @@ struct TIRRunnerOptions {
 
 class TIRRunner {
 public:
+    // The factory every type of this runner comes from; build an AST for Run() with it.
+    NAst::TTypeFactory& TypeFactory() { return Types; }
+
     TIRRunner(
         std::ostream& out,
         std::istream& in,

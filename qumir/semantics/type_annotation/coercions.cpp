@@ -10,7 +10,7 @@ using namespace NAst;
 namespace {
 
 bool SameKind(const TTypePtr& a, const TTypePtr& b) {
-    return TypeKey(a) == TypeKey(b);
+    return a == b;
 }
 
 bool IsGenericTypeParam(const TTypePtr& type, const std::unordered_set<std::string>* genericTypeParams) {
@@ -59,7 +59,7 @@ std::optional<TArgCost> CombineGenericCost(
         matched = true;
         return cost;
     }
-    if (TypeKey(paramType) == TypeKey(argType)) {
+    if (paramType == argType) {
         return TArgCost{};
     }
     return std::nullopt;

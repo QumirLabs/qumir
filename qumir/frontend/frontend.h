@@ -40,6 +40,10 @@ struct TFrontendOptions {
 // thread-safe; the host registers the registry modules.
 class TFrontend {
 public:
+    // The factory every type of this session comes from. An AST handed to this frontend
+    // must be built with it (types are interned per factory, equal types are one object).
+    NAst::TTypeFactory& TypeFactory() { return Types; }
+
     explicit TFrontend(TFrontendOptions options);
 
     // Parses the program and composes it with the source modules it uses.

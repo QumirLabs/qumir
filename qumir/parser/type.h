@@ -375,23 +375,24 @@ struct TNamedType : TType {
     explicit TNamedType(
         const std::string& name,
         const TTypePtr& underlying,
-        std::vector<TGenericArg>&& typeArgs = {})
+        std::vector<TGenericArg>&& typeArgs = {},
+        std::optional<std::string> reference = std::nullopt)
         : Name(name)
         , TypeArgs(std::move(typeArgs))
         , UnderlyingType_(underlying)
+        , Reference_(std::move(reference))
     {}
 
     // A named type is declared by name and completed later (name resolution, imports), so
-    // these two are the only parts of a type that are set after creation. They are written
-    // through setters: the object itself stays const for everyone else.
+    // these two are the only parts of a type that are set after creation. Only the type
+    // factory writes them (TTypeFactory::MakeNamed completes an existing type once); the
+    // object itself stays const for everyone else.
 
     // Resolved on name resolution phase, exported by modules.
     const TTypePtr& UnderlyingType() const { return UnderlyingType_; }
-    void SetUnderlyingType(const TTypePtr& type) const { UnderlyingType_ = type; }
 
     // Set = imported from this module; not printed in AST.
     const std::optional<std::string>& Reference() const { return Reference_; }
-    void SetReference(std::optional<std::string> reference) const { Reference_ = std::move(reference); }
 
     std::string ToString() const override {
         std::string result = Name;
@@ -416,6 +417,11 @@ struct TNamedType : TType {
     }
 
 private:
+    friend class TTypeFactory;
+
+    void SetUnderlyingType(const TTypePtr& type) const { UnderlyingType_ = type; }
+    void SetReference(std::optional<std::string> reference) const { Reference_ = std::move(reference); }
+
     mutable TTypePtr UnderlyingType_;
     mutable std::optional<std::string> Reference_;
 };
