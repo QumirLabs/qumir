@@ -66,7 +66,7 @@ std::string CompileKernelObjectIr(const char* source, int optLevel)
         .ResolveCoreInput = true,
         .AllowOverloads = true,
         .OptLevel = optLevel,
-    });
+    }, nullptr, &NQumir::NTest::TestTypes());
     std::string error;
     testing::internal::CaptureStderr();
     auto object = runner.CompileKernelAstToObject(*parsed, {"kernel"}, &error);
