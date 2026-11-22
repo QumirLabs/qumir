@@ -48,6 +48,9 @@ public:
     // `types` is the host's factory, which must outlive the frontend. Without one the
     // frontend owns a factory (qumirc, tests).
     explicit TFrontend(TFrontendOptions options, NAst::TTypeFactory* types = nullptr);
+    // Members refer to each other (Types to OwnedTypes_, Builder to Module), so it never moves.
+    TFrontend(const TFrontend&) = delete;
+    TFrontend& operator=(const TFrontend&) = delete;
 
     // Parses the program and composes it with the source modules it uses.
     std::expected<NAst::TExprPtr, TError> Parse(std::istream& input);

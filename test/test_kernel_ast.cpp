@@ -10,6 +10,11 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <type_traits>
+
+// A runner holds references into itself, so it is neither copied nor moved.
+static_assert(!std::is_copy_constructible_v<NQumir::TLLVMRunner>);
+static_assert(!std::is_move_constructible_v<NQumir::TLLVMRunner>);
 
 namespace {
 
