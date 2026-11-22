@@ -51,21 +51,10 @@ NFrontend::TFrontendOptions FrontendOptions(const TLLVMRunnerOptions& options) {
 
 } // namespace
 
-TLLVMRunner::TLLVMRunner(TLLVMRunnerOptions options, std::unique_ptr<NCodeGen::ICodegenBackend> backend)
-    : TLLVMRunner(nullptr, std::move(options), std::move(backend))
-{}
-
 TLLVMRunner::TLLVMRunner(
-    NAst::TTypeFactory& types,
     TLLVMRunnerOptions options,
-    std::unique_ptr<NCodeGen::ICodegenBackend> backend)
-    : TLLVMRunner(&types, std::move(options), std::move(backend))
-{}
-
-TLLVMRunner::TLLVMRunner(
-    NAst::TTypeFactory* types,
-    TLLVMRunnerOptions options,
-    std::unique_ptr<NCodeGen::ICodegenBackend> backend)
+    std::unique_ptr<NCodeGen::ICodegenBackend> backend,
+    NAst::TTypeFactory* types)
     : TFrontend(FrontendOptions(options), types)
     , Options(std::move(options))
     // Run() loads the object into this process, so the default targets the

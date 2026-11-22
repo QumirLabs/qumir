@@ -104,12 +104,12 @@ TEST(KernelAst, LoadsU64FromPointerIndex) {
 TEST(KernelAst, CompilesOnHostTypeFactory) {
     // Declared first: the factory outlives the runner, as a host's does.
     NQumir::NAst::TTypeFactory types;
-    NQumir::TLLVMRunner runner(types, {
+    NQumir::TLLVMRunner runner({
         .NativeCode = true,
         .CoreInput = true,
         .ResolveCoreInput = true,
         .OptLevel = 1,
-    });
+    }, nullptr, &types);
     ASSERT_EQ(&runner.TypeFactory(), &types);
 
     std::istringstream input(RootsSource);

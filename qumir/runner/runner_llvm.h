@@ -63,13 +63,11 @@ public:
 
     // The host picks the codegen backend of Run() and of the kernel APIs; null
     // means TLLVMBackend. The cache kernel APIs need TLLVMBackend.
-    // This runner owns its type factory (qumiri, tests).
-    TLLVMRunner(TLLVMRunnerOptions options = {}, std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr);
-    // Compiles on the host's factory, which must outlive the runner.
+    // `types` is the host's factory, which must outlive the runner; null: the runner owns one.
     TLLVMRunner(
-        NAst::TTypeFactory& types,
         TLLVMRunnerOptions options = {},
-        std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr);
+        std::unique_ptr<NCodeGen::ICodegenBackend> backend = nullptr,
+        NAst::TTypeFactory* types = nullptr);
 
     void RegisterModule(std::shared_ptr<NRegistry::IModule> module, bool import = false);
 
@@ -138,12 +136,6 @@ public:
         std::string* error);
 
 private:
-    // Null `types`: the frontend owns a factory.
-    TLLVMRunner(
-        NAst::TTypeFactory* types,
-        TLLVMRunnerOptions options,
-        std::unique_ptr<NCodeGen::ICodegenBackend> backend);
-
     struct TPreparedCachedCompilation {
         std::vector<std::string> ObjectFiles;
         std::vector<std::string> ObjectBlobs;
