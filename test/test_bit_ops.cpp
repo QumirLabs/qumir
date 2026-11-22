@@ -131,21 +131,21 @@ TExprPtr ident(const std::string& name) {
     return MakeIntrusive<TIdentExpr>(TLocation{}, name);
 }
 
-TExprPtr binary(const std::string& op, TExprPtr left, TExprPtr right) {
-    return MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator(op), std::move(left), std::move(right));
+TExprPtr binary(const std::string& op, const TExprPtr& left, const TExprPtr& right) {
+    return MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator(op), left, right);
 }
 
-TExprPtr unary(const std::string& op, TExprPtr operand) {
-    return MakeIntrusive<TUnaryExpr>(TLocation{}, TOperator(op), std::move(operand));
+TExprPtr unary(const std::string& op, const TExprPtr& operand) {
+    return MakeIntrusive<TUnaryExpr>(TLocation{}, TOperator(op), operand);
 }
 
-TExprPtr assignX(TExprPtr value) {
-    return MakeIntrusive<TAssignExpr>(TLocation{}, "x", std::move(value));
+TExprPtr assignX(const TExprPtr& value) {
+    return MakeIntrusive<TAssignExpr>(TLocation{}, "x", value);
 }
 
-TRunResult RunBitExpr(TExprPtr expr, EBackend backend = EBackend::VM, bool optimizeIr = false) {
+TRunResult RunBitExpr(const TExprPtr& expr, EBackend backend = EBackend::VM, bool optimizeIr = false) {
     const std::string src = "алг\nнач\n  цел x\n  вывод x, нс\nкон\n";
-    return RunWithInjection(src, 1, {assignX(std::move(expr))}, backend, optimizeIr);
+    return RunWithInjection(src, 1, {assignX(expr)}, backend, optimizeIr);
 }
 
 } // namespace

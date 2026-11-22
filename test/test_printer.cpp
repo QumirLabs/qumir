@@ -79,6 +79,13 @@ TExprPtr MakeIdent(std::string name) {
 
 } // namespace
 
+namespace {
+template<typename To, typename From>
+TIntrusivePtr<To> DynCast(const TIntrusivePtr<From>& from) {
+    return TIntrusivePtr<To>(dynamic_cast<To*>(from.Get()));
+}
+} // namespace
+
 TEST(PrinterCustomNodes, TagCompact) {
     auto expr = MakeIntrusive<TTagExpr>("hello", MakeIdent("x"));
     EXPECT_EQ(PrintAst(expr, MakeOptions()), "(tag \"hello\" x)");
@@ -397,7 +404,7 @@ TPrintOptions MakeTypePrintOptions() {
     TPrintOptions opts;
     opts.TypePrinters[TOptType::TypeId] = [](TType& type, TPrinter& p, int level) {
         TNamedType named("Opt", nullptr, {TGenericArg::TypeArg(static_cast<TOptType&>(type).Inner)});
-        p.PrintType(std::make_shared<TNamedType>(std::move(named)), level);
+        p.PrintType(MakeIntrusive<TNamedType>(std::move(named)), level);
     };
     return opts;
 }
@@ -408,19 +415,19 @@ TTypeParserMap MakeTypeParsers() {
         if (args.size() != 1 || args[0].Kind != TGenericArg::EKind::Type) {
             return std::unexpected("Opt expects one type argument");
         }
-        return std::make_shared<TOptType>(std::move(args[0].Type));
+        return MakeIntrusive<TOptType>(std::move(args[0].Type));
     };
     parsers["Unit"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (!args.empty()) {
             return std::unexpected("Unit expects no arguments");
         }
-        return std::make_shared<TUnitType>();
+        return MakeIntrusive<TUnitType>();
     };
     parsers["Dec"] = [](std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
         if (args.size() != 2 || args[0].Kind != TGenericArg::EKind::Value || args[1].Kind != TGenericArg::EKind::Value) {
             return std::unexpected("Dec expects two value arguments");
         }
-        return std::make_shared<TDecType>(std::stoi(args[0].Value), std::stoi(args[1].Value));
+        return MakeIntrusive<TDecType>(std::stoi(args[0].Value), std::stoi(args[1].Value));
     };
     return parsers;
 }
@@ -432,47 +439,47 @@ std::expected<TTypePtr, TError> ParseTypeText(const std::string& src, const TTyp
 }
 
 TTypePtr MakeNestedType() {
-    auto dec = std::make_shared<TDecType>(18, 4);
-    auto opt = std::make_shared<TOptType>(dec);
-    auto optOpt = std::make_shared<TOptType>(opt);
-    return std::make_shared<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
+    auto dec = MakeIntrusive<TDecType>(18, 4);
+    auto opt = MakeIntrusive<TOptType>(dec);
+    auto optOpt = MakeIntrusive<TOptType>(opt);
+    return MakeIntrusive<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
         {"a", optOpt},
         {"b", dec},
-        {"c", std::make_shared<TIntegerType>(TIntegerType::I64)},
+        {"c", MakeIntrusive<TIntegerType>(TIntegerType::I64)},
     });
 }
 
 } // namespace
 
 TEST(TypeExtensions, PrintWithoutPrinterThrows) {
-    EXPECT_THROW(PrintType(std::make_shared<TOptType>(std::make_shared<TIntegerType>(TIntegerType::I64))), std::runtime_error);
+    EXPECT_THROW(PrintType(MakeIntrusive<TOptType>(MakeIntrusive<TIntegerType>(TIntegerType::I64))), std::runtime_error);
 }
 
 TEST(TypeExtensions, PrintCustomTypes) {
     auto opts = MakeTypePrintOptions();
-    EXPECT_EQ(PrintType(std::make_shared<TOptType>(std::make_shared<TIntegerType>(TIntegerType::I64)), opts),
+    EXPECT_EQ(PrintType(MakeIntrusive<TOptType>(MakeIntrusive<TIntegerType>(TIntegerType::I64)), opts),
               "<named Opt [i64]>");
-    EXPECT_EQ(PrintType(std::make_shared<TDecType>(18, 4), opts), "<named Dec [18 4]>");
+    EXPECT_EQ(PrintType(MakeIntrusive<TDecType>(18, 4), opts), "<named Dec [18 4]>");
 }
 
 TEST(TypeExtensions, ParseWithoutParsersKeepsNamedType) {
     auto type = ParseTypeText("<named Opt [i64]>", {});
     ASSERT_TRUE(type.has_value());
     EXPECT_TRUE(TMaybeType<TNamedType>(*type));
-    EXPECT_FALSE(std::dynamic_pointer_cast<TOptType>(*type));
+    EXPECT_FALSE(DynCast<TOptType>(*type));
 }
 
 TEST(TypeExtensions, BareNamedTypeConsultsParsers) {
     TPrintOptions opts;
     opts.ShortNamedTypes.insert("Unit");
-    auto text = PrintType(std::make_shared<TUnitType>(), opts);
+    auto text = PrintType(MakeIntrusive<TUnitType>(), opts);
     EXPECT_EQ(text, "Unit");
     auto parsed = ParseTypeText(text, MakeTypeParsers());
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
-    EXPECT_TRUE(std::dynamic_pointer_cast<TUnitType>(*parsed));
+    EXPECT_TRUE(DynCast<TUnitType>(*parsed));
     auto plain = ParseTypeText(text, {});
     ASSERT_TRUE(plain.has_value());
-    EXPECT_FALSE(std::dynamic_pointer_cast<TUnitType>(*plain));
+    EXPECT_FALSE(DynCast<TUnitType>(*plain));
 }
 
 TEST(TypeExtensions, RoundTripNested) {
@@ -485,15 +492,15 @@ TEST(TypeExtensions, RoundTripNested) {
 
     auto st = TMaybeType<TStructType>(*parsed);
     ASSERT_TRUE(st);
-    auto outer = std::dynamic_pointer_cast<TOptType>(st.Cast()->Fields[0].second);
+    auto outer = DynCast<TOptType>(st.Cast()->Fields[0].second);
     ASSERT_TRUE(outer);
-    auto inner = std::dynamic_pointer_cast<TOptType>(outer->Inner);
+    auto inner = DynCast<TOptType>(outer->Inner);
     ASSERT_TRUE(inner);
-    auto dec = std::dynamic_pointer_cast<TDecType>(inner->Inner);
+    auto dec = DynCast<TDecType>(inner->Inner);
     ASSERT_TRUE(dec);
     EXPECT_EQ(dec->Precision, 18);
     EXPECT_EQ(dec->Scale, 4);
-    EXPECT_TRUE(std::dynamic_pointer_cast<TDecType>(st.Cast()->Fields[1].second));
+    EXPECT_TRUE(DynCast<TDecType>(st.Cast()->Fields[1].second));
 }
 
 TEST(TypeExtensions, ParserTypeParsersApplyInsideExpressions) {
@@ -503,7 +510,7 @@ TEST(TypeExtensions, ParserTypeParsersApplyInsideExpressions) {
     TTokenStream ts(in);
     auto expr = parser.Parse(ts);
     ASSERT_TRUE(expr.has_value()) << expr.error().ToString();
-    EXPECT_TRUE(std::dynamic_pointer_cast<TOptType>((*expr)->Type));
+    EXPECT_TRUE(DynCast<TOptType>((*expr)->Type));
 }
 
 TEST(TypeExtensions, ParserErrorFromBuilder) {

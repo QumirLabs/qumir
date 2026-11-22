@@ -77,7 +77,7 @@ public:
     // Selects the JIT entry point by source function name. This keeps the entry
     // stable when generic specializations are appended during type annotation.
     void* CompileKernelAst(
-        NAst::TExprPtr ast, const std::string& entryName, std::string* error);
+        const NAst::TExprPtr& ast, const std::string& entryName, std::string* error);
     // Compiles an AST already processed by LoadAndCompose, including any LLVM
     // bitcode carried by its source modules; another backend rejects such bitcode.
     void* CompileKernelAst(
@@ -85,7 +85,7 @@ public:
         const std::string& entryName,
         std::string* error);
     std::unordered_map<std::string, void*> CompileKernelAst(
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         const std::vector<std::string>& entryNames,
         std::string* error);
     // A backend other than TLLVMBackend compiles all entries into one object,
@@ -99,7 +99,7 @@ public:
     // Options.TargetTriple) instead of JIT-compiling. Returns object bytes.
     // Another backend emits, for the host, the object that CompileKernelAst links.
     std::optional<std::string> CompileKernelAstToObject(
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         const std::vector<std::string>& entryNames,
         std::string* error);
     std::optional<std::string> CompileKernelAstToObject(
@@ -113,7 +113,7 @@ public:
     // recompiled and links against the deps by name. Returns the entry pointers
     // with a lifetime handle that scopes their JIT to the caller.
     NCodeGen::TLlvmRunner::TLinkedModule CompileFusedKernelsCached(
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         const std::vector<std::string>& entryNames,
         const std::string& cacheDir,
         const std::string& cacheSchema,
@@ -124,7 +124,7 @@ public:
     // returned as paths, freshly compiled dependencies as object blobs, and the
     // query-specific kernel as a separate object. The caller owns final linking.
     std::optional<TCachedObjectModule> CompileFusedKernelsToObjectsCached(
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         const std::vector<std::string>& entryNames,
         const std::string& cacheDir,
         const std::string& cacheSchema,
@@ -147,7 +147,7 @@ private:
     };
 
     std::optional<TPreparedCachedCompilation> PrepareFusedKernelsCached(
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         const std::vector<std::string>& entryNames,
         const std::string& cacheDir,
         const std::string& cacheSchema,
@@ -179,7 +179,7 @@ private:
     void PrintModuleIr();
     // Lowers `ast` and emits Module with Backend_ into one object.
     std::optional<std::string> EmitBackendKernels(
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         const std::vector<std::string>& entryNames,
         std::string* error,
         std::vector<NAst::TPragma> mainPragmas = {},
@@ -192,7 +192,7 @@ private:
 
     // LLVM-backend frontend of the CompileKernelAst overloads: lower then emit.
     std::unique_ptr<NCodeGen::ILLVMModuleArtifacts> EmitKernelArtifacts(
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         const std::vector<std::string>& entryNames,
         std::string* error,
         std::vector<NAst::TPragma> mainPragmas = {},

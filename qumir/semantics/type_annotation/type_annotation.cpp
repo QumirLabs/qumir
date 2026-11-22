@@ -58,7 +58,7 @@ bool IsWideIntegerType(const TTypePtr& type) {
 std::optional<TError> ValidateVectorTypes(const TTypePtr& type, const TLocation& location) {
     std::unordered_set<const TType*> checked;
     auto validate = [&](auto& self, const TTypePtr& current) -> std::optional<TError> {
-        if (!current || !checked.insert(current.get()).second) {
+        if (!current || !checked.insert(current.Get()).second) {
             return {};
         }
         if (auto vector = TMaybeType<TVectorType>(current)) {
@@ -168,7 +168,7 @@ std::string FormatCallSignature(const std::string& name, const std::vector<TExpr
     return out.str();
 }
 
-bool WideningIntOK(TTypePtr typeSrc, TTypePtr typeDst) {
+bool WideningIntOK(const TTypePtr& typeSrc, const TTypePtr& typeDst) {
     auto src = TMaybeType<TIntegerType>(typeSrc).Cast();
     auto dst = TMaybeType<TIntegerType>(typeDst).Cast();
     if (!src || !dst) {
@@ -201,7 +201,7 @@ bool IsNumericType(const TTypePtr& type) {
     return TMaybeType<TIntegerType>(type) || TMaybeType<TFloatType>(type);
 }
 
-bool WideningFloatOK(TTypePtr typeSrc, TTypePtr typeDst) {
+bool WideningFloatOK(const TTypePtr& typeSrc, const TTypePtr& typeDst) {
     auto src = TMaybeType<TFloatType>(typeSrc).Cast();
     auto dst = TMaybeType<TFloatType>(typeDst).Cast();
     return src && dst && dst->BitWidth() >= src->BitWidth();
@@ -238,7 +238,7 @@ bool IntegerLiteralFits(int64_t value, const TIntegerType& type) {
     return false;
 }
 
-bool RetypeIntegerLiteralIfFits(TExprPtr expr, TTypePtr toType) {
+bool RetypeIntegerLiteralIfFits(const TExprPtr& expr, const TTypePtr& toType) {
     if (!expr || !toType) {
         return false;
     }
@@ -251,7 +251,7 @@ bool RetypeIntegerLiteralIfFits(TExprPtr expr, TTypePtr toType) {
     if (number->IsFloat()) {
         // A float literal takes the float width the context asks for.
         if (TMaybeType<TFloatType>(toType)) {
-            number->Type = std::move(toType);
+            number->Type = toType;
             return true;
         }
         return false;
@@ -261,7 +261,7 @@ bool RetypeIntegerLiteralIfFits(TExprPtr expr, TTypePtr toType) {
     }
     if (TMaybeType<TFloatType>(toType)) {
         number->FloatValue = static_cast<double>(number->IntValue);
-        number->Type = std::move(toType);
+        number->Type = toType;
         return true;
     }
     auto maybeInteger = TMaybeType<TIntegerType>(toType);
@@ -272,18 +272,18 @@ bool RetypeIntegerLiteralIfFits(TExprPtr expr, TTypePtr toType) {
         return false;
     }
 
-    number->Type = std::move(toType);
+    number->Type = toType;
     return true;
 }
 
-bool IsIntegerLiteral(TExprPtr expr) {
+bool IsIntegerLiteral(const TExprPtr& expr) {
     auto maybeNumber = TMaybeNode<TNumberExpr>(expr);
     return maybeNumber
         && !maybeNumber.Cast()->IsFloat()
         && TMaybeType<TIntegerType>(maybeNumber.Cast()->Type);
 }
 
-bool IntegerLiteralCanUseType(TExprPtr expr, TTypePtr toType) {
+bool IntegerLiteralCanUseType(const TExprPtr& expr, const TTypePtr& toType) {
     if (!expr || !toType) {
         return false;
     }
@@ -299,7 +299,7 @@ bool IntegerLiteralCanUseType(TExprPtr expr, TTypePtr toType) {
         && IntegerLiteralFits(maybeNumber.Cast()->IntValue, *maybeInteger.Cast());
 }
 
-bool EqualTypes(TTypePtr a, TTypePtr b) {
+bool EqualTypes(const TTypePtr& a, const TTypePtr& b) {
     if (!a || !b) {
         return a == b;
     }
@@ -341,7 +341,7 @@ bool EqualTypes(TTypePtr a, TTypePtr b) {
     return true;
 }
 
-bool CanImplicit(TTypePtr S, TTypePtr D, NSemantics::TNameResolver* ctx) {
+bool CanImplicit(const TTypePtr& S, const TTypePtr& D, NSemantics::TNameResolver* ctx) {
     if (EqualTypes(S, D)) {
         return true;
     }
@@ -414,7 +414,7 @@ TExprPtr TryInlineByName(const std::string& name, std::vector<TExprPtr> args,
     return nullptr;
 }
 
-TExprPtr InsertImplicitCastIfNeeded(TExprPtr expr, TTypePtr toType, NSemantics::TNameResolver* ctx) {
+TExprPtr InsertImplicitCastIfNeeded(const TExprPtr& expr, const TTypePtr& toType, NSemantics::TNameResolver* ctx) {
     if (!expr->Type || !toType) {
         return expr;
     }
@@ -457,7 +457,7 @@ TExprPtr InsertImplicitCastIfNeeded(TExprPtr expr, TTypePtr toType, NSemantics::
 
     if (auto synthName = ctx->GetCast(expr->Type, toType)) {
         auto callee = MakeIntrusive<TIdentExpr>(expr->Location, *synthName);
-        callee->Type = std::make_shared<TFunctionType>(
+        callee->Type = MakeIntrusive<TFunctionType>(
             std::vector<TTypePtr>{expr->Type}, toType);
         auto call = MakeIntrusive<TCallExpr>(expr->Location, callee,
             std::vector<TExprPtr>{expr});
@@ -465,7 +465,7 @@ TExprPtr InsertImplicitCastIfNeeded(TExprPtr expr, TTypePtr toType, NSemantics::
         return call;
     }
 
-    return MakeCast(std::move(expr), std::move(toType));
+    return MakeCast(expr, toType);
 }
 
 // Annotates expr if its Type is not yet set (i.e. came from an inline factory replacement).
@@ -475,18 +475,18 @@ TTask AnnotateIfNeeded(TExprPtr expr, NSemantics::TNameResolver& ctx, NSemantics
 }
 
 TExprPtr MakeModuleOpCall(const std::string& synthName, std::vector<TExprPtr> args,
-    TTypePtr returnType, TLocation loc, NSemantics::TNameResolver& ctx)
+    const TTypePtr& returnType, TLocation loc, NSemantics::TNameResolver& ctx)
 {
     auto callee = MakeIntrusive<TIdentExpr>(loc, synthName);
     std::vector<TTypePtr> argTypes;
     for (auto& a : args) argTypes.push_back(a->Type);
-    callee->Type = std::make_shared<TFunctionType>(std::move(argTypes), returnType);
+    callee->Type = MakeIntrusive<TFunctionType>(std::move(argTypes), returnType);
     auto call = MakeIntrusive<TCallExpr>(loc, callee, std::move(args));
     call->Type = returnType;
     return call;
 }
 
-TTypePtr CommonNumericType(TTypePtr a, TTypePtr b) {
+TTypePtr CommonNumericType(const TTypePtr& a, const TTypePtr& b) {
     auto maybeAFloat = TMaybeType<TFloatType>(a);
     auto maybeBFloat = TMaybeType<TFloatType>(b);
     if (maybeAFloat && maybeBFloat) {
@@ -512,7 +512,7 @@ TTypePtr CommonNumericType(TTypePtr a, TTypePtr b) {
     return {};
 }
 
-TTypePtr CommonValueType(TTypePtr a, TTypePtr b, NSemantics::TNameResolver& ctx) {
+TTypePtr CommonValueType(const TTypePtr& a, const TTypePtr& b, NSemantics::TNameResolver& ctx) {
     if (EqualTypes(a, b)) {
         return a;
     }
@@ -537,9 +537,9 @@ TExprPtr AnnotateNumber(const TExprPtrOf<TNumberExpr>& num) {
         return num;
     }
     if (num->IsFloat()) {
-        num->Type = std::make_shared<TFloatType>();
+        num->Type = MakeIntrusive<TFloatType>();
     } else {
-        num->Type = std::make_shared<TIntegerType>();
+        num->Type = MakeIntrusive<TIntegerType>();
     }
     return num;
 }
@@ -593,8 +593,8 @@ std::string FormatStructCastMismatch(const TStructType& source, const TStructTyp
     }
 
     if (details.empty()) {
-        return "исходная структура: " + TypeDiagnosticName(std::make_shared<TStructType>(source))
-            + ", целевая структура: " + TypeDiagnosticName(std::make_shared<TStructType>(target));
+        return "исходная структура: " + TypeDiagnosticName(MakeIntrusive<TStructType>(source))
+            + ", целевая структура: " + TypeDiagnosticName(MakeIntrusive<TStructType>(target));
     }
 
     std::string result;
@@ -616,7 +616,7 @@ bool HasConcreteStructFieldTypes(const TStructType& structure) {
     return true;
 }
 
-bool ApplyStructConstructContext(TExprPtr expr, TTypePtr targetType) {
+bool ApplyStructConstructContext(const TExprPtr& expr, const TTypePtr& targetType) {
     if (!TMaybeType<TStructType>(UnwrapNamedType(targetType))) {
         return false;
     }
@@ -719,7 +719,7 @@ TTask AnnotateCast(const TExprPtrOf<TCastExpr>& cast, NSemantics::TNameResolver&
         auto targetStructType = UnwrapNamedType(targetType);
         if (auto synthName = context.GetCast(cast->Operand->Type, cast->Type)) {
             auto callee = MakeIntrusive<TIdentExpr>(cast->Location, *synthName);
-            callee->Type = std::make_shared<TFunctionType>(
+            callee->Type = MakeIntrusive<TFunctionType>(
                 std::vector<TTypePtr>{cast->Operand->Type}, cast->Type);
             auto call = MakeIntrusive<TCallExpr>(cast->Location, callee,
                 std::vector<TExprPtr>{cast->Operand});
@@ -759,7 +759,7 @@ TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolv
         if (unary->Operator == TOperator("!")
             && (TMaybeType<TIntegerType>(element) || TMaybeType<TFloatType>(element) || TMaybeType<TBoolType>(element)))
         {
-            unary->Type = std::make_shared<TVectorType>(std::make_shared<TBoolType>(), vector->Size);
+            unary->Type = MakeIntrusive<TVectorType>(MakeIntrusive<TBoolType>(), vector->Size);
             co_return unary;
         }
         if (unary->Operator == TOperator("~") && TMaybeType<TIntegerType>(element)) {
@@ -791,17 +791,17 @@ TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolv
     if (unary->Operator == TOperator("!")) {
         auto maybeBool = TMaybeType<TBoolType>(unary->Type);
         if (maybeBool) {
-            unary->Type = std::make_shared<TBoolType>();
+            unary->Type = MakeIntrusive<TBoolType>();
             co_return unary;
         }
         auto maybeInt = TMaybeType<TIntegerType>(unary->Type);
         if (maybeInt) {
-            unary->Type = std::make_shared<TBoolType>();
+            unary->Type = MakeIntrusive<TBoolType>();
             co_return unary;
         }
         auto maybeFloat = TMaybeType<TFloatType>(unary->Type);
         if (maybeFloat) {
-            unary->Type = std::make_shared<TBoolType>();
+            unary->Type = MakeIntrusive<TBoolType>();
             co_return unary;
         }
         if (auto m = context.GetUnaryOp("!", UnwrapReferenceType(unary->Type))) {
@@ -840,7 +840,7 @@ TTask AnnotateFunDecl(const TExprPtrOf<TFunDecl>& funDecl, NSemantics::TNameReso
         co_return TError(funDecl->Location, "Не указан возвращаемый тип функции");
     }
 
-    funDecl->Type = std::make_shared<TFunctionType>(std::move(params), funDecl->RetType);
+    funDecl->Type = MakeIntrusive<TFunctionType>(std::move(params), funDecl->RetType);
 
     // RetType as seen by `(return ...)` inside this function: for coroutines
     // this is the unwrapped Future<T> result type, otherwise funDecl->RetType
@@ -933,7 +933,7 @@ TTask AnnotateReturn(const TExprPtrOf<TReturnExpr>& ret, NSemantics::TNameResolv
         }
     }
 
-    ret->Type = std::make_shared<TVoidType>();
+    ret->Type = MakeIntrusive<TVoidType>();
     co_return ret;
 }
 
@@ -960,7 +960,7 @@ TTask AnnotateDestroy(
     if (destroy->Aux) {
         destroy->Aux = co_await DoAnnotate(destroy->Aux, context, scopeId);
     }
-    destroy->Type = std::make_shared<TVoidType>();
+    destroy->Type = MakeIntrusive<TVoidType>();
     co_return destroy;
 }
 
@@ -989,7 +989,7 @@ TTask AnnotateReplace(
         }
         replace->Value = InsertImplicitCastIfNeeded(replace->Value, targetType, &context);
     }
-    replace->Type = std::make_shared<TVoidType>();
+    replace->Type = MakeIntrusive<TVoidType>();
     co_return replace;
 }
 
@@ -1034,7 +1034,7 @@ TTask AnnotateCleanupExit(
     for (auto& cleanup : exit->Cleanups) {
         cleanup = co_await DoAnnotate(cleanup, context, scopeId);
     }
-    exit->Type = std::make_shared<TVoidType>();
+    exit->Type = MakeIntrusive<TVoidType>();
     co_return exit;
 }
 
@@ -1046,12 +1046,12 @@ TTask AnnotateGlobalCleanup(
     for (auto& expr : cleanup->Cleanups) {
         expr = co_await DoAnnotate(expr, context, scopeId);
     }
-    cleanup->Type = std::make_shared<TVoidType>();
+    cleanup->Type = MakeIntrusive<TVoidType>();
     co_return cleanup;
 }
 
 // Tries exact match, then cast-left, then cast-right. Returns TCallExpr or nullptr.
-TExprPtr TryModuleBinaryOp(TExprPtr left, TExprPtr right,
+TExprPtr TryModuleBinaryOp(const TExprPtr& left, const TExprPtr& right,
     const TOperator& op, NSemantics::TNameResolver& ctx)
 {
     const std::string opStr = op.ToString();
@@ -1155,7 +1155,7 @@ TTask AnnotateVector(
         }
     }
     if (!target) {
-        vector->Type = std::make_shared<TVectorType>(elementType, static_cast<int>(vector->Elements.size()));
+        vector->Type = MakeIntrusive<TVectorType>(elementType, static_cast<int>(vector->Elements.size()));
     }
     co_return vector;
 }
@@ -1180,7 +1180,7 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
             return error(std::move(message));
         }
         if (binary->Operator == TOperator("/") && !TMaybeType<TFloatType>(common)) {
-            common = std::make_shared<TFloatType>();
+            common = MakeIntrusive<TFloatType>();
         }
         return TBinaryOpTypes{common, common, common};
     };
@@ -1199,7 +1199,7 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
                 return TBinaryOpTypes{left, right, left};
             }
             if (TMaybeType<TIntegerType>(left) && TMaybeType<TIntegerType>(right)) {
-                return TBinaryOpTypes{left, right, std::make_shared<TIntegerType>()};
+                return TBinaryOpTypes{left, right, MakeIntrusive<TIntegerType>()};
             }
             return error("binary expression operands must be numeric types (float ** float, float ** int, or int ** int)");
         case TOperator("&"):
@@ -1223,22 +1223,22 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
                 if (!common) {
                     return common;
                 }
-                common->Result = std::make_shared<TBoolType>();
+                common->Result = MakeIntrusive<TBoolType>();
                 return common;
             }
             if (TMaybeType<TBoolType>(left) && TMaybeType<TBoolType>(right)) {
-                return TBinaryOpTypes{left, right, std::make_shared<TBoolType>()};
+                return TBinaryOpTypes{left, right, MakeIntrusive<TBoolType>()};
             }
             if (
                 (binary->Operator == TOperator("==") || binary->Operator == TOperator("!="))
                 && TMaybeType<TPointerType>(left) && TMaybeType<TPointerType>(right))
             {
-                return TBinaryOpTypes{left, right, std::make_shared<TBoolType>()};
+                return TBinaryOpTypes{left, right, MakeIntrusive<TBoolType>()};
             }
             return error("Операции сравнения применимы только к совместимым типам");
         case TOperator("&&"):
         case TOperator("||"): {
-            auto boolType = std::make_shared<TBoolType>();
+            auto boolType = MakeIntrusive<TBoolType>();
             if (CanImplicit(left, boolType, &context) && CanImplicit(right, boolType, &context)) {
                 return TBinaryOpTypes{boolType, boolType, boolType};
             }
@@ -1255,7 +1255,7 @@ TBinaryOpTypesResult AnnotateStringBinaryOp(
     const TTypePtr& right)
 {
     if (IsStringType(left) && IsStringType(right)) {
-        auto stringType = std::make_shared<TStringType>();
+        auto stringType = MakeIntrusive<TStringType>();
         switch (binary->Operator) {
             case TOperator("+"):
                 return TBinaryOpTypes{stringType, stringType, stringType};
@@ -1266,9 +1266,9 @@ TBinaryOpTypesResult AnnotateStringBinaryOp(
             case TOperator("=="):
             case TOperator("!="):
                 if (TMaybeType<TSymbolType>(left) && TMaybeType<TSymbolType>(right)) {
-                    return TBinaryOpTypes{left, right, std::make_shared<TBoolType>()};
+                    return TBinaryOpTypes{left, right, MakeIntrusive<TBoolType>()};
                 }
-                return TBinaryOpTypes{stringType, stringType, std::make_shared<TBoolType>()};
+                return TBinaryOpTypes{stringType, stringType, MakeIntrusive<TBoolType>()};
         }
     }
     return std::unexpected(TError(binary->Location,
@@ -1333,15 +1333,15 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
             "Целочисленный элемент вектора должен быть не шире 64 бит."));
     }
     if (leftVector) {
-        types->Left = std::make_shared<TVectorType>(types->Left, size);
+        types->Left = MakeIntrusive<TVectorType>(types->Left, size);
     }
     if (rightVector) {
-        types->Right = std::make_shared<TVectorType>(types->Right, size);
+        types->Right = MakeIntrusive<TVectorType>(types->Right, size);
     }
     if (bitwise && !EqualTypes(UnwrapReferenceType(binary->Right->Type), types->Right)) {
         binary->Right = MakeCast(binary->Right, types->Right);
     }
-    types->Result = std::make_shared<TVectorType>(types->Result, size);
+    types->Result = MakeIntrusive<TVectorType>(types->Result, size);
     return types;
 }
 
@@ -1405,7 +1405,7 @@ TTask AnnotateBlock(const TExprPtrOf<TBlockExpr>& block, NSemantics::TNameResolv
     if (!block->Stmts.empty() && block->Stmts.back()->Type) {
         block->Type = block->Stmts.back()->Type;
     } else {
-        block->Type = std::make_shared<TVoidType>();
+        block->Type = MakeIntrusive<TVoidType>();
     }
     co_return block;
 }
@@ -1433,7 +1433,7 @@ TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameRes
     if (!EqualTypes(valueType, symbolType)) {
         auto futureValueType = FutureResultType(valueType);
         if (futureValueType && CanImplicit(futureValueType, symbolType, &context)) {
-            assign->Type = std::make_shared<NAst::TVoidType>();
+            assign->Type = MakeIntrusive<NAst::TVoidType>();
             co_return assign;
         }
         if (!CanImplicit(valueType, symbolType, &context)) {
@@ -1442,7 +1442,7 @@ TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameRes
         assign->Value = InsertImplicitCastIfNeeded(assign->Value, sym->Type, &context);
     }
 
-    assign->Type = std::make_shared<NAst::TVoidType>();
+    assign->Type = MakeIntrusive<NAst::TVoidType>();
     co_return assign;
 }
 
@@ -1487,7 +1487,7 @@ TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSema
         if (arrayAssign->Indices.size() != arrayType->Arity) {
             co_return TError(arrayAssign->Location, "Неверное количество индексов в присваивании элементу массива '" + arrayAssign->Name + "': ожидается " + std::to_string(arrayType->Arity) + ", получено " + std::to_string(arrayAssign->Indices.size()) + ".");
         }
-        arrayAssign->Type = std::make_shared<NAst::TVoidType>();
+        arrayAssign->Type = MakeIntrusive<NAst::TVoidType>();
         co_return arrayAssign;
     } else if (maybePointerType) {
         auto pointerType = maybePointerType.Cast();
@@ -1499,7 +1499,7 @@ TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSema
         if (!arrayAssign->Indices[0]->Type) {
             co_return TError(arrayAssign->Location, "Индекс в присваивании по указателю '" + arrayAssign->Name + "' не имеет типа.");
         }
-        auto intType = std::make_shared<TIntegerType>();
+        auto intType = MakeIntrusive<TIntegerType>();
         if (!EqualTypes(arrayAssign->Indices[0]->Type, intType)) {
             if (!CanImplicit(arrayAssign->Indices[0]->Type, intType, &context)) {
                 co_return TError(arrayAssign->Location, "Индекс в присваивании по указателю '" + arrayAssign->Name + "' должен быть целым числом.");
@@ -1516,7 +1516,7 @@ TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSema
             arrayAssign->Value = InsertImplicitCastIfNeeded(arrayAssign->Value, pointerType->PointeeType, &context);
         }
 
-        arrayAssign->Type = std::make_shared<NAst::TVoidType>();
+        arrayAssign->Type = MakeIntrusive<NAst::TVoidType>();
         co_return arrayAssign;
     } else if (maybeStringType) {
         // Only allow s[1] = 'c' (symbol to string)
@@ -1533,7 +1533,7 @@ TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSema
         if (!TMaybeType<TSymbolType>(valueType)) {
             co_return TError(arrayAssign->Location, "Значение в присваивании элементу строки '" + arrayAssign->Name + "' должно быть символом (например, s[1]='a').");
         }
-        arrayAssign->Type = std::make_shared<NAst::TVoidType>();
+        arrayAssign->Type = MakeIntrusive<NAst::TVoidType>();
         co_return arrayAssign;
     } else {
         co_return TError(arrayAssign->Location, "Идентификатор '" + arrayAssign->Name + "' не является массивом, строкой или указателем, поэтому нельзя использовать присваивание по индексу.");
@@ -1650,51 +1650,51 @@ TTypePtr CloneTypeShape(const TTypePtr& shape) {
         return shape;
     }
     if (auto t = TMaybeType<TIntegerType>(shape)) {
-        return std::make_shared<TIntegerType>(t.Cast()->Kind);
+        return MakeIntrusive<TIntegerType>(t.Cast()->Kind);
     }
     if (auto t = TMaybeType<TFloatType>(shape)) {
-        return std::make_shared<TFloatType>(t.Cast()->Kind);
+        return MakeIntrusive<TFloatType>(t.Cast()->Kind);
     }
     if (TMaybeType<TBoolType>(shape)) {
-        return std::make_shared<TBoolType>();
+        return MakeIntrusive<TBoolType>();
     }
     if (TMaybeType<TStringType>(shape)) {
-        return std::make_shared<TStringType>();
+        return MakeIntrusive<TStringType>();
     }
     if (TMaybeType<TSymbolType>(shape)) {
-        return std::make_shared<TSymbolType>();
+        return MakeIntrusive<TSymbolType>();
     }
     if (TMaybeType<TVoidType>(shape)) {
-        return std::make_shared<TVoidType>();
+        return MakeIntrusive<TVoidType>();
     }
     if (auto t = TMaybeType<TFunctionType>(shape)) {
         auto src = t.Cast();
-        return std::make_shared<TFunctionType>(src->ParamTypes, src->ReturnType);
+        return MakeIntrusive<TFunctionType>(auto(src->ParamTypes), src->ReturnType);
     }
     if (auto t = TMaybeType<TFutureType>(shape)) {
-        return std::make_shared<TFutureType>(t.Cast()->ResultType);
+        return MakeIntrusive<TFutureType>(t.Cast()->ResultType);
     }
     if (auto t = TMaybeType<TArrayType>(shape)) {
         auto src = t.Cast();
-        return std::make_shared<TArrayType>(src->ElementType, src->Arity);
+        return MakeIntrusive<TArrayType>(src->ElementType, src->Arity);
     }
     if (auto t = TMaybeType<TVectorType>(shape)) {
-        return std::make_shared<TVectorType>(*t.Cast());
+        return MakeIntrusive<TVectorType>(*t.Cast());
     }
     if (auto t = TMaybeType<TPointerType>(shape)) {
-        return std::make_shared<TPointerType>(t.Cast()->PointeeType);
+        return MakeIntrusive<TPointerType>(t.Cast()->PointeeType);
     }
     if (auto t = TMaybeType<TReferenceType>(shape)) {
-        return std::make_shared<TReferenceType>(t.Cast()->ReferencedType);
+        return MakeIntrusive<TReferenceType>(t.Cast()->ReferencedType);
     }
     if (auto t = TMaybeType<TNamedType>(shape)) {
         auto src = t.Cast();
-        auto result = std::make_shared<TNamedType>(src->Name, src->UnderlyingType, src->TypeArgs);
+        auto result = MakeIntrusive<TNamedType>(src->Name, src->UnderlyingType, auto(src->TypeArgs));
         result->Reference = src->Reference;
         return result;
     }
     if (auto t = TMaybeType<TStructType>(shape)) {
-        return std::make_shared<TStructType>(t.Cast()->Fields);
+        return MakeIntrusive<TStructType>(auto(t.Cast()->Fields));
     }
     return shape;
 }
@@ -1745,7 +1745,7 @@ TTypePtr SubstituteGenericType(
         if (!changed) {
             return type;
         }
-        auto result = std::make_shared<TNamedType>(placeholder->Name, std::move(underlying), std::move(typeArgs));
+        auto result = MakeIntrusive<TNamedType>(placeholder->Name, std::move(underlying), std::move(typeArgs));
         result->Reference = placeholder->Reference;
         static_cast<TType&>(*result) = static_cast<const TType&>(*placeholder);
         return result;
@@ -1754,12 +1754,12 @@ TTypePtr SubstituteGenericType(
         auto src = arr.Cast();
         auto elem = SubstituteGenericType(src->ElementType, genericParams, bindings);
         if (elem == src->ElementType) return type;
-        auto result = std::make_shared<TArrayType>(std::move(elem), src->Arity);
+        auto result = MakeIntrusive<TArrayType>(std::move(elem), src->Arity);
         static_cast<TType&>(*result) = static_cast<const TType&>(*src);
         return result;
     }
     if (auto vector = TMaybeType<TVectorType>(type)) {
-        auto result = std::make_shared<TVectorType>(*vector.Cast());
+        auto result = MakeIntrusive<TVectorType>(*vector.Cast());
         result->ElementType = SubstituteGenericType(result->ElementType, genericParams, bindings);
         if (auto it = bindings.Values.find(result->SizeParam); it != bindings.Values.end()) {
             result->BindSize(it->second);
@@ -1770,7 +1770,7 @@ TTypePtr SubstituteGenericType(
         auto src = ptr.Cast();
         auto pointee = SubstituteGenericType(src->PointeeType, genericParams, bindings);
         if (pointee == src->PointeeType) return type;
-        auto result = std::make_shared<TPointerType>(std::move(pointee));
+        auto result = MakeIntrusive<TPointerType>(std::move(pointee));
         static_cast<TType&>(*result) = static_cast<const TType&>(*src);
         return result;
     }
@@ -1778,7 +1778,7 @@ TTypePtr SubstituteGenericType(
         auto src = ref.Cast();
         auto referenced = SubstituteGenericType(src->ReferencedType, genericParams, bindings);
         if (referenced == src->ReferencedType) return type;
-        auto result = std::make_shared<TReferenceType>(std::move(referenced));
+        auto result = MakeIntrusive<TReferenceType>(std::move(referenced));
         static_cast<TType&>(*result) = static_cast<const TType&>(*src);
         return result;
     }
@@ -1786,7 +1786,7 @@ TTypePtr SubstituteGenericType(
         auto src = future.Cast();
         auto inner = SubstituteGenericType(src->ResultType, genericParams, bindings);
         if (inner == src->ResultType) return type;
-        auto result = std::make_shared<TFutureType>(std::move(inner));
+        auto result = MakeIntrusive<TFutureType>(std::move(inner));
         static_cast<TType&>(*result) = static_cast<const TType&>(*src);
         return result;
     }
@@ -1803,7 +1803,7 @@ TTypePtr SubstituteGenericType(
         auto ret = SubstituteGenericType(src->ReturnType, genericParams, bindings);
         changed = changed || (ret != src->ReturnType);
         if (!changed) return type;
-        auto result = std::make_shared<TFunctionType>(std::move(params), std::move(ret));
+        auto result = MakeIntrusive<TFunctionType>(std::move(params), std::move(ret));
         static_cast<TType&>(*result) = static_cast<const TType&>(*src);
         return result;
     }
@@ -1818,7 +1818,7 @@ TTypePtr SubstituteGenericType(
             fields.emplace_back(name, std::move(sf));
         }
         if (!changed) return type;
-        auto result = std::make_shared<TStructType>(std::move(fields));
+        auto result = MakeIntrusive<TStructType>(std::move(fields));
         static_cast<TType&>(*result) = static_cast<const TType&>(*src);
         return result;
     }
@@ -1834,7 +1834,7 @@ std::optional<std::string> UnifyGenericType(
     const TTypePtr& argType,
     const TGenericParamSets& genericParams,
     TGenericBindings& bindings,
-    TExprPtr argExpr = nullptr,
+    const TExprPtr& argExpr = nullptr,
     bool retypeIntegerLiterals = true)
 {
     if (!paramType || !argType) {
@@ -2031,7 +2031,7 @@ std::optional<std::string> InferGenericBindings(
     const TGenericParamSets& genericParams,
     TGenericBindings& bindings,
     bool retypeIntegerLiterals,
-    TTypePtr expectedReturnType = nullptr,
+    const TTypePtr& expectedReturnType = nullptr,
     bool requireAllBindings = true)
 {
     const size_t count = std::min(decl.Params.size(), args.size());
@@ -2457,7 +2457,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
     for (auto& param : probe->Params) {
         paramTypes.push_back(param->Type);
     }
-    probe->Type = std::make_shared<TFunctionType>(std::move(paramTypes), probe->RetType);
+    probe->Type = MakeIntrusive<TFunctionType>(std::move(paramTypes), probe->RetType);
 
     auto declRes = context.ResolveInstantiatedFunDecl(probe, false);
     if (!declRes) {
@@ -2601,7 +2601,7 @@ TFunDeclTask InstantiateGenericFunction(
         : genericDecl->OriginalName;
     cloned->Inline = genericDecl->Inline;
     cloned->LastAssert = CloneAndSubstituteExpr(genericDecl->LastAssert, genericParams, bindings);
-    cloned->Type = std::make_shared<TFunctionType>(std::move(paramTypes), cloned->RetType);
+    cloned->Type = MakeIntrusive<TFunctionType>(std::move(paramTypes), cloned->RetType);
 
     auto declRes = context.ResolveInstantiatedFunDecl(cloned);
     if (!declRes) {
@@ -2648,7 +2648,7 @@ std::optional<TTypePtr> SubstituteGenericOperatorReturnType(
     const TExprPtrOf<TFunDecl>& decl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
-    TTypePtr expectedReturnType,
+    const TTypePtr& expectedReturnType,
     TLocation loc,
     TError& error)
 {
@@ -2888,7 +2888,7 @@ std::expected<TTypePtr, TError> VectorIntrinsicResult(
         if (!pointer) {
             return error("ожидается указатель.");
         }
-        return std::make_shared<TVoidType>();
+        return MakeIntrusive<TVoidType>();
     }
     if (op == "gather") {
         auto indices = TMaybeType<TVectorType>(types[1]).Cast();
@@ -2899,7 +2899,7 @@ std::expected<TTypePtr, TError> VectorIntrinsicResult(
         if ((!IsNumericType(element) && !TMaybeType<TBoolType>(element)) || IsWideIntegerType(element)) {
             return error("тип элемента должен быть числом не шире 64 бит или bool.");
         }
-        return std::make_shared<TVectorType>(element, indices->Size);
+        return MakeIntrusive<TVectorType>(element, indices->Size);
     }
     auto vector = TMaybeType<TVectorType>(types[0]).Cast();
     if (!vector) {
@@ -2933,9 +2933,9 @@ std::expected<TTypePtr, TError> VectorIntrinsicResult(
         return types[1];
     }
     if (op == "movemask") {
-        return std::make_shared<TIntegerType>(TIntegerType::U32);
+        return MakeIntrusive<TIntegerType>(TIntegerType::U32);
     }
-    return std::make_shared<TBoolType>();
+    return MakeIntrusive<TBoolType>();
 }
 
 TTask AnnotateVectorIntrinsic(
@@ -2961,7 +2961,7 @@ TTask AnnotateVectorIntrinsic(
     }
     if (op == "gather") {
         auto indices = TMaybeType<TVectorType>(argTypes[1]).Cast();
-        auto indexType = std::make_shared<TVectorType>(std::make_shared<TIntegerType>(), indices->Size);
+        auto indexType = MakeIntrusive<TVectorType>(MakeIntrusive<TIntegerType>(), indices->Size);
         if (!EqualTypes(argTypes[1], indexType)) {
             call->Args[1] = MakeCast(call->Args[1], indexType);
             argTypes[1] = indexType;
@@ -2980,11 +2980,11 @@ TTask AnnotateVectorIntrinsic(
         auto function = MakeIntrusive<TFunDecl>(call->Location, name, std::vector<TGenericParam>{},
             std::move(params), nullptr, result);
         function->MangledName = builtin;
-        function->Type = std::make_shared<TFunctionType>(argTypes, result);
+        function->Type = MakeIntrusive<TFunctionType>(auto(argTypes), result);
         context.DeclareFunction(name, function);
     }
     call->Callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, name);
-    call->Callee->Type = std::make_shared<TFunctionType>(std::move(argTypes), result);
+    call->Callee->Type = MakeIntrusive<TFunctionType>(std::move(argTypes), result);
     call->Type = result;
     co_return call;
 }
@@ -3145,7 +3145,7 @@ TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolve
     if (!ifExpr->Cond->Type) {
         co_return TError(ifExpr->Cond->Location, "Условие в `если' не имеет типа. Проверьте корректность выражения в условии.");
     }
-    auto boolT = std::make_shared<TBoolType>();
+    auto boolT = MakeIntrusive<TBoolType>();
     auto condType = UnwrapReferenceType(ifExpr->Cond->Type);
     if (!EqualTypes(condType, boolT)) {
         if (!CanImplicit(condType, boolT, &context)) {
@@ -3165,7 +3165,7 @@ TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolve
         if (!TMaybeType<TVoidType>(thenType)) {
             co_return TError(ifExpr->Then->Location, "if-expression без ветви `иначе': ветвь `то' должна иметь тип void.");
         }
-        ifExpr->Type = std::make_shared<TVoidType>();
+        ifExpr->Type = MakeIntrusive<TVoidType>();
         co_return ifExpr;
     }
 
@@ -3180,7 +3180,7 @@ TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolve
     // Both branches void -> statement context
     if (TMaybeType<TVoidType>(SettledBranchType(thenType))
         && TMaybeType<TVoidType>(SettledBranchType(elseType))) {
-        ifExpr->Type = std::make_shared<TVoidType>();
+        ifExpr->Type = MakeIntrusive<TVoidType>();
         co_return ifExpr;
     }
 
@@ -3202,22 +3202,22 @@ TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolve
 
 TTask AnnotateWhile(const TExprPtrOf<TWhileStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
-    loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, std::make_shared<TBoolType>(), &context);
+    loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, MakeIntrusive<TBoolType>(), &context);
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
-    loop->Type = std::make_shared<TVoidType>();
+    loop->Type = MakeIntrusive<TVoidType>();
     co_return loop;
 }
 
 TTask AnnotateRepeat(const TExprPtrOf<TRepeatStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
     loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
-    loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, std::make_shared<TBoolType>(), &context);
-    loop->Type = std::make_shared<TVoidType>();
+    loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, MakeIntrusive<TBoolType>(), &context);
+    loop->Type = MakeIntrusive<TVoidType>();
     co_return loop;
 }
 
 TTask AnnotateFor(const TExprPtrOf<TForStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    auto intType = std::make_shared<TIntegerType>();
+    auto intType = MakeIntrusive<TIntegerType>();
 
     auto symbolId = context.Lookup(loop->VarName, scopeId);
     if (!symbolId) {
@@ -3237,15 +3237,15 @@ TTask AnnotateFor(const TExprPtrOf<TForStmtExpr>& loop, NSemantics::TNameResolve
         loop->Step = InsertImplicitCastIfNeeded(loop->Step, intType, &context);
     }
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
-    loop->Type = std::make_shared<TVoidType>();
+    loop->Type = MakeIntrusive<TVoidType>();
     co_return loop;
 }
 
 TTask AnnotateTimes(const TExprPtrOf<TTimesStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Count = co_await DoAnnotate(loop->Count, context, scopeId);
-    loop->Count = InsertImplicitCastIfNeeded(loop->Count, std::make_shared<TIntegerType>(), &context);
+    loop->Count = InsertImplicitCastIfNeeded(loop->Count, MakeIntrusive<TIntegerType>(), &context);
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
-    loop->Type = std::make_shared<TVoidType>();
+    loop->Type = MakeIntrusive<TVoidType>();
     co_return loop;
 }
 
@@ -3259,7 +3259,7 @@ TTask AnnotateMultiIndex(const TExprPtrOf<TMultiIndexExpr>& indexExpr, NSemantic
         co_return TError(indexExpr->Location, "Многомерная индексация поддерживается только для массивов. Проверьте, что вы обращаетесь к массиву, а не к другому типу.");
     }
 
-    auto intType = std::make_shared<TIntegerType>();
+    auto intType = MakeIntrusive<TIntegerType>();
     for (size_t i = 0; i < indexExpr->Indices.size(); ++i) {
         auto& index = indexExpr->Indices[i];
         index = co_await DoAnnotate(index, context, scopeId);
@@ -3288,7 +3288,7 @@ TTask AnnotateIndex(const TExprPtrOf<TIndexExpr>& indexExpr, NSemantics::TNameRe
     if (!indexExpr->Index->Type) {
         co_return TError(indexExpr->Location, "Индекс в выражении индексации не имеет типа. Убедитесь, что выражение индекса корректно и его тип определён.");
     }
-    auto intType = std::make_shared<TIntegerType>();
+    auto intType = MakeIntrusive<TIntegerType>();
     if (!EqualTypes(indexExpr->Index->Type, intType)) {
         if (!CanImplicit(indexExpr->Index->Type, intType, &context)) {
             co_return TError(indexExpr->Location, "Индекс в выражении индексации должен быть целым числом. Например: a[2], s[1].");
@@ -3297,7 +3297,7 @@ TTask AnnotateIndex(const TExprPtrOf<TIndexExpr>& indexExpr, NSemantics::TNameRe
     }
     auto collectionType = UnwrapNamedType(UnwrapReferenceType(indexExpr->Collection->Type));
     if (TMaybeType<TStringType>(collectionType)) {
-        indexExpr->Type = std::make_shared<TSymbolType>();
+        indexExpr->Type = MakeIntrusive<TSymbolType>();
     } else if (auto maybeArrayType = TMaybeType<TArrayType>(collectionType)) {
         auto arrayType = maybeArrayType.Cast();
         indexExpr->Type = arrayType->ElementType;
@@ -3330,7 +3330,7 @@ TTask AnnotateSlice(const TExprPtrOf<TSliceExpr>& sliceExpr, NSemantics::TNameRe
     if (!sliceExpr->Start->Type) {
         co_return TError(sliceExpr->Location, "Начальный индекс в срезе не имеет типа. Убедитесь, что выражение индекса корректно и его тип определён.");
     }
-    auto intType = std::make_shared<TIntegerType>();
+    auto intType = MakeIntrusive<TIntegerType>();
     if (!EqualTypes(sliceExpr->Start->Type, intType)) {
         if (!CanImplicit(sliceExpr->Start->Type, intType, &context)) {
             co_return TError(sliceExpr->Location, "Начальный индекс в срезе должен быть целым числом. Пример: s[1:3].");
@@ -3390,8 +3390,8 @@ TTask AnnotateFieldAccess(const TExprPtrOf<TFieldAccessExpr>& fieldAccess, NSema
         "Поле '" + fieldAccess->FieldName + "' не найдено в структуре. Доступные поля: " + available + ".");
 }
 
-static std::pair<std::shared_ptr<TStructType>, std::string>
-ResolveStructField(TTypePtr objType, const std::string& fieldName, int& outIndex) {
+static std::pair<TConcreteTypePtr<TStructType>, std::string>
+ResolveStructField(const TTypePtr& objType, const std::string& fieldName, int& outIndex) {
     auto structType = TMaybeType<TStructType>(UnwrapNamedType(UnwrapReferenceType(objType))).Cast();
     if (!structType) return {nullptr, ""};
     const auto& fields = structType->Fields;
@@ -3442,7 +3442,7 @@ TTask AnnotateFieldAssign(const TExprPtrOf<TFieldAssignExpr>& fieldAssign, NSema
         fieldAssign->Value = InsertImplicitCastIfNeeded(fieldAssign->Value, fieldType, &context);
     }
 
-    fieldAssign->Type = std::make_shared<TVoidType>();
+    fieldAssign->Type = MakeIntrusive<TVoidType>();
     co_return fieldAssign;
 }
 
@@ -3491,13 +3491,13 @@ TTask DoAnnotate(TExprPtr expr, NSemantics::TNameResolver& context, NSemantics::
     } else if (auto maybeFieldAssign = TMaybeNode<TFieldAssignExpr>(expr)) {
         co_return co_await AnnotateFieldAssign(maybeFieldAssign.Cast(), context, scopeId);
     } else if (TMaybeNode<TUseExpr>(expr)) {
-        expr->Type = std::make_shared<TVoidType>();
+        expr->Type = MakeIntrusive<TVoidType>();
         co_return expr;
     } else if (TMaybeNode<TBreakStmt>(expr)) {
-        expr->Type = std::make_shared<TVoidType>();
+        expr->Type = MakeIntrusive<TVoidType>();
         co_return expr;
     } else if (TMaybeNode<TContinueStmt>(expr)) {
-        expr->Type = std::make_shared<TVoidType>();
+        expr->Type = MakeIntrusive<TVoidType>();
         co_return expr;
     } else if (auto maybeReturn = TMaybeNode<TReturnExpr>(expr)) {
         co_return co_await AnnotateReturn(maybeReturn.Cast(), context, scopeId);
@@ -3513,7 +3513,7 @@ TTask DoAnnotate(TExprPtr expr, NSemantics::TNameResolver& context, NSemantics::
                 && !context.GetUnaryOp("print", type))
             {
                 if (auto printer = co_await InstantiateGenericOperator(
-                        "print", {arg.Expr}, std::make_shared<TVoidType>(), context, arg.Expr->Location))
+                        "print", {arg.Expr}, MakeIntrusive<TVoidType>(), context, arg.Expr->Location))
                 {
                     context.RegisterUnaryOp("print", type, *printer);
                 }
@@ -3570,7 +3570,7 @@ TTypeAnnotator::TTypeAnnotator(NSemantics::TNameResolver& context)
     : Context(context)
 {}
 
-std::expected<TExprPtr, TError> TTypeAnnotator::Annotate(TExprPtr expr)
+std::expected<TExprPtr, TError> TTypeAnnotator::Annotate(const TExprPtr& expr)
 {
     auto result = DoAnnotate(expr, Context, NSemantics::TScopeId{0}).result();
     if (!result) {

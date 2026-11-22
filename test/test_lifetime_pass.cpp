@@ -19,8 +19,8 @@ TIntrusivePtr<TBlockExpr> Block(std::vector<TExprPtr> statements) {
     return MakeIntrusive<TBlockExpr>(TLocation{}, std::move(statements));
 }
 
-TIntrusivePtr<TVarStmt> Variable(std::string name, TTypePtr type) {
-    return MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), std::move(type));
+TIntrusivePtr<TVarStmt> Variable(std::string name, const TTypePtr& type) {
+    return MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), type);
 }
 
 TIntrusivePtr<TIdentExpr> Ident(std::string name) {
@@ -44,16 +44,16 @@ TIntrusivePtr<TCallExpr> Call(
 TIntrusivePtr<TFunDecl> Function(
     std::string name,
     std::vector<TParam> parameters,
-    TIntrusivePtr<TBlockExpr> body,
-    TTypePtr returnType = std::make_shared<TVoidType>())
+    const TIntrusivePtr<TBlockExpr>& body,
+    const TTypePtr& returnType = MakeIntrusive<TVoidType>())
 {
     return MakeIntrusive<TFunDecl>(
         TLocation{},
         std::move(name),
         std::vector<TGenericParam>{},
         std::move(parameters),
-        std::move(body),
-        std::move(returnType));
+        body,
+        returnType);
 }
 
 std::string Print(const TExprPtr& expr) {
@@ -65,7 +65,7 @@ std::string Print(const TExprPtr& expr) {
 } // namespace
 
 TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
-    auto stringType = std::make_shared<TStringType>();
+    auto stringType = MakeIntrusive<TStringType>();
     auto make = Function(
         "make",
         {},
@@ -74,9 +74,9 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
 
     auto a = Variable("a", stringType);
     auto b = Variable("b", stringType);
-    auto arrayType = std::make_shared<TArrayType>(stringType, 1);
+    auto arrayType = MakeIntrusive<TArrayType>(stringType, 1);
     auto items = Variable("items", arrayType);
-    auto structType = std::make_shared<TStructType>(
+    auto structType = MakeIntrusive<TStructType>(
         std::vector<std::pair<std::string, TTypePtr>>{
             {"text", stringType},
         });
@@ -110,7 +110,7 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
 
     auto refParam = Variable(
         "result",
-        std::make_shared<TReferenceType>(stringType));
+        MakeIntrusive<TReferenceType>(stringType));
     auto refBody = Block({
         MakeIntrusive<TAssignExpr>(TLocation{}, "result", Literal("reference")),
     });
@@ -142,7 +142,7 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
 }
 
 TEST(LifetimePass, SplitsStringDeclarationInitializerAfterNullInitialization) {
-    auto value = Variable("value", std::make_shared<TStringType>());
+    auto value = Variable("value", MakeIntrusive<TStringType>());
     value->Init = Literal("initial");
     auto body = Block({value});
     TExprPtr root = Block({Function("main", {}, body)});
@@ -161,7 +161,7 @@ TEST(LifetimePass, SplitsStringDeclarationInitializerAfterNullInitialization) {
 }
 
 TEST(LifetimePass, DestroysTwoOwnedCallArgumentsInReverseOrder) {
-    auto stringType = std::make_shared<TStringType>();
+    auto stringType = MakeIntrusive<TStringType>();
     auto makeFirst = Function(
         "make_first",
         {},
@@ -203,7 +203,7 @@ TEST(LifetimePass, DestroysTwoOwnedCallArgumentsInReverseOrder) {
 }
 
 TEST(LifetimePass, PreservesNestedCallResultPastArgumentCleanup) {
-    auto stringType = std::make_shared<TStringType>();
+    auto stringType = MakeIntrusive<TStringType>();
     auto make = Function(
         "make",
         {},
@@ -240,18 +240,18 @@ TEST(LifetimePass, PreservesNestedCallResultPastArgumentCleanup) {
 }
 
 TEST(LifetimePass, MaterializesLiteralOnlyWhenCallAbiRequiresIt) {
-    auto stringType = std::make_shared<TStringType>();
+    auto stringType = MakeIntrusive<TStringType>();
     auto raw = Function(
         "raw",
         {Variable("value", stringType)},
         Block({}),
-        std::make_shared<TVoidType>());
+        MakeIntrusive<TVoidType>());
     raw->MangledName = "raw";
     auto managed = Function(
         "managed",
         {Variable("value", stringType)},
         Block({}),
-        std::make_shared<TVoidType>());
+        MakeIntrusive<TVoidType>());
     managed->MangledName = "managed";
     managed->RequireArgsMaterialization = true;
     auto body = Block({
@@ -289,7 +289,7 @@ TEST(LifetimePass, MaterializesLiteralOnlyWhenCallAbiRequiresIt) {
 }
 
 TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
-    auto stringType = std::make_shared<TStringType>();
+    auto stringType = MakeIntrusive<TStringType>();
     auto first = Variable("first", stringType);
     first->Init = Literal("first");
     auto second = Variable("second", stringType);
@@ -317,14 +317,14 @@ TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
 
 TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
     auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    condition->Type = std::make_shared<TBoolType>();
+    condition->Type = MakeIntrusive<TBoolType>();
     auto loopCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    loopCondition->Type = std::make_shared<TBoolType>();
-    auto value = Variable("value", std::make_shared<TStringType>());
+    loopCondition->Type = MakeIntrusive<TBoolType>();
+    auto value = Variable("value", MakeIntrusive<TStringType>());
     value->Init = Literal("iteration");
     auto items = Variable(
         "items",
-        std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1));
+        MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1));
     items->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
@@ -361,8 +361,8 @@ TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
 }
 
 TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
-    auto i64 = std::make_shared<TIntegerType>();
-    auto plain = Variable("plain", std::make_shared<TArrayType>(i64, 1));
+    auto i64 = MakeIntrusive<TIntegerType>();
+    auto plain = Variable("plain", MakeIntrusive<TArrayType>(i64, 1));
     plain->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}),
@@ -379,7 +379,7 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
 
     auto strings = Variable(
         "strings",
-        std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1));
+        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1));
     strings->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}),
@@ -404,14 +404,14 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
 }
 
 TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
-    auto i64 = std::make_shared<TIntegerType>();
+    auto i64 = MakeIntrusive<TIntegerType>();
     auto lower = Variable("lower", i64);
     lower->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
     auto upper = Variable("upper", i64);
     upper->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2});
     auto grid = Variable(
         "grid",
-        std::make_shared<TArrayType>(std::make_shared<TStringType>(), 2));
+        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 2));
     grid->Bounds.push_back({Ident("lower"), Ident("upper")});
     grid->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}),
@@ -444,8 +444,8 @@ TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
 }
 
 TEST(LifetimePass, DoesNotDestroyArrayParameter) {
-    auto arrayType = std::make_shared<TArrayType>(
-        std::make_shared<TStringType>(),
+    auto arrayType = MakeIntrusive<TArrayType>(
+        MakeIntrusive<TStringType>(),
         1);
     auto parameter = Variable("items", arrayType);
     parameter->Bounds.push_back({
@@ -471,10 +471,10 @@ TEST(LifetimePass, EvaluatesEffectfulStringArrayBoundOnce) {
         Block({MakeIntrusive<TReturnExpr>(
             TLocation{},
             MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}))}),
-        std::make_shared<TIntegerType>());
+        MakeIntrusive<TIntegerType>());
     auto items = Variable(
         "items",
-        std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1));
+        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1));
     items->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         Call("bound"),
@@ -501,18 +501,18 @@ TEST(LifetimePass, EvaluatesEffectfulStringArrayBoundOnce) {
 }
 
 TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
-    auto first = Variable("first", std::make_shared<TStringType>());
+    auto first = Variable("first", MakeIntrusive<TStringType>());
     first->Init = Literal("first");
     auto plain = Variable(
         "plain",
-        std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1));
+        MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1));
     plain->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
     });
     auto words = Variable(
         "words",
-        std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1));
+        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1));
     words->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}),
@@ -548,7 +548,7 @@ TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
 }
 
 TEST(LifetimePass, DoesNotRewriteFinalizedLifetimeAstTwice) {
-    auto value = Variable("value", std::make_shared<TStringType>());
+    auto value = Variable("value", MakeIntrusive<TStringType>());
     value->Init = Literal("value");
     TExprPtr root = Block({Function("main", {}, Block({value}))});
     NSemantics::TNameResolver resolver;

@@ -37,83 +37,83 @@ void ExpectTraits(
 } // namespace
 
 TEST(LifetimeTraits, ScalarTypesAreTrivial) {
-    ExpectTraits(std::make_shared<TIntegerType>(), ELifetimeKind::Trivial, true, false);
-    ExpectTraits(std::make_shared<TFloatType>(), ELifetimeKind::Trivial, true, false);
-    ExpectTraits(std::make_shared<TBoolType>(), ELifetimeKind::Trivial, true, false);
-    ExpectTraits(std::make_shared<TSymbolType>(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(MakeIntrusive<TIntegerType>(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(MakeIntrusive<TFloatType>(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(MakeIntrusive<TBoolType>(), ELifetimeKind::Trivial, true, false);
+    ExpectTraits(MakeIntrusive<TSymbolType>(), ELifetimeKind::Trivial, true, false);
     ExpectTraits(
-        std::make_shared<TPointerType>(std::make_shared<TStringType>()),
+        MakeIntrusive<TPointerType>(MakeIntrusive<TStringType>()),
         ELifetimeKind::Trivial,
         true,
         false);
 }
 
 TEST(LifetimeTraits, StringIsRefCounted) {
-    ExpectTraits(std::make_shared<TStringType>(), ELifetimeKind::RefCounted, true, true);
+    ExpectTraits(MakeIntrusive<TStringType>(), ELifetimeKind::RefCounted, true, true);
 }
 
 TEST(LifetimeTraits, NumericVectorsAreTrivial) {
     const std::vector<TTypePtr> elements = {
-        std::make_shared<TIntegerType>(),
-        std::make_shared<TFloatType>(),
-        std::make_shared<TBoolType>(),
+        MakeIntrusive<TIntegerType>(),
+        MakeIntrusive<TFloatType>(),
+        MakeIntrusive<TBoolType>(),
     };
     for (const auto& element : elements) {
-        ExpectTraits(std::make_shared<TVectorType>(element, 4), ELifetimeKind::Trivial, true, false);
+        ExpectTraits(MakeIntrusive<TVectorType>(element, 4), ELifetimeKind::Trivial, true, false);
     }
 }
 
 TEST(LifetimeTraits, NamedStringUsesUnderlyingType) {
-    auto type = std::make_shared<TNamedType>("Text", std::make_shared<TStringType>());
+    auto type = MakeIntrusive<TNamedType>("Text", MakeIntrusive<TStringType>());
     ExpectTraits(type, ELifetimeKind::RefCounted, true, true);
 }
 
 TEST(LifetimeTraits, StringReferenceIsBorrowed) {
-    auto type = std::make_shared<TReferenceType>(std::make_shared<TStringType>());
+    auto type = MakeIntrusive<TReferenceType>(MakeIntrusive<TStringType>());
     ExpectTraits(type, ELifetimeKind::Trivial, true, false);
 }
 
 TEST(LifetimeTraits, PlainArrayIsUnique) {
-    auto type = std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1);
+    auto type = MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1);
     ExpectTraits(type, ELifetimeKind::Unique, false, true);
 }
 
 TEST(LifetimeTraits, StringArrayIsUnique) {
-    auto type = std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1);
+    auto type = MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1);
     ExpectTraits(type, ELifetimeKind::Unique, false, true);
 }
 
 TEST(LifetimeTraits, TrivialStructIsCopyableAggregate) {
-    auto type = std::make_shared<TStructType>(
+    auto type = MakeIntrusive<TStructType>(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"number", std::make_shared<TIntegerType>()},
-            {"flag", std::make_shared<TBoolType>()},
+            {"number", MakeIntrusive<TIntegerType>()},
+            {"flag", MakeIntrusive<TBoolType>()},
         });
     ExpectTraits(type, ELifetimeKind::Aggregate, true, false);
 }
 
 TEST(LifetimeTraits, StructWithStringNeedsDestroy) {
-    auto type = std::make_shared<TStructType>(
+    auto type = MakeIntrusive<TStructType>(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"value", std::make_shared<TStringType>()},
+            {"value", MakeIntrusive<TStringType>()},
         });
     ExpectTraits(type, ELifetimeKind::Aggregate, true, true);
 }
 
 TEST(LifetimeTraits, StructWithArrayIsNotCopyable) {
-    auto type = std::make_shared<TStructType>(
+    auto type = MakeIntrusive<TStructType>(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"items", std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1)},
+            {"items", MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1)},
         });
     ExpectTraits(type, ELifetimeKind::Aggregate, false, true);
 }
 
 TEST(LifetimeTraits, NestedStructPropagatesFieldTraits) {
-    auto inner = std::make_shared<TStructType>(
+    auto inner = MakeIntrusive<TStructType>(
         std::vector<std::pair<std::string, TTypePtr>>{
-            {"value", std::make_shared<TStringType>()},
+            {"value", MakeIntrusive<TStringType>()},
         });
-    auto outer = std::make_shared<TStructType>(
+    auto outer = MakeIntrusive<TStructType>(
         std::vector<std::pair<std::string, TTypePtr>>{
             {"inner", std::move(inner)},
         });
@@ -121,7 +121,7 @@ TEST(LifetimeTraits, NestedStructPropagatesFieldTraits) {
 }
 
 TEST(LifetimeTraits, UnknownManagedShapeIsRejected) {
-    auto type = std::make_shared<TUnknownManagedType>();
+    auto type = MakeIntrusive<TUnknownManagedType>();
     EXPECT_THROW(GetLifetimeTraits(type), std::invalid_argument);
 }
 

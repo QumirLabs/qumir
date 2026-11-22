@@ -568,7 +568,7 @@ void RefreshFunctionType(const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl)
     for (const auto& param : funDecl->Params) {
         params.push_back(param->Type);
     }
-    funDecl->Type = std::make_shared<NAst::TFunctionType>(std::move(params), funDecl->RetType);
+    funDecl->Type = MakeIntrusive<NAst::TFunctionType>(std::move(params), funDecl->RetType);
 }
 
 struct TCoroutineAnalysis {

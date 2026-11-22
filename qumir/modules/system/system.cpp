@@ -12,49 +12,49 @@ namespace NRegistry {
 
 namespace {
     template<typename T>
-    std::shared_ptr<NAst::TType> outType() {
-        auto underlyingType = std::make_shared<T>();
+    NAst::TTypePtr outType() {
+        auto underlyingType = MakeIntrusive<T>();
         underlyingType->Mutable = true;
         underlyingType->Readable = false;
-        auto refType = std::make_shared<NAst::TReferenceType>(underlyingType);
+        auto refType = MakeIntrusive<NAst::TReferenceType>(underlyingType);
         return refType;
     }
 
-    NAst::TExprPtr number(NAst::TTypePtr type, int64_t value) {
+    NAst::TExprPtr number(const NAst::TTypePtr& type, int64_t value) {
         auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
-        expr->Type = std::move(type);
+        expr->Type = type;
         return expr;
     }
 
-    NAst::TExprPtr unary(const char* op, NAst::TExprPtr operand, NAst::TTypePtr type) {
-        auto expr = MakeIntrusive<NAst::TUnaryExpr>(TLocation{}, NAst::TOperator(op), std::move(operand));
-        expr->Type = std::move(type);
+    NAst::TExprPtr unary(const char* op, const NAst::TExprPtr& operand, const NAst::TTypePtr& type) {
+        auto expr = MakeIntrusive<NAst::TUnaryExpr>(TLocation{}, NAst::TOperator(op), operand);
+        expr->Type = type;
         return expr;
     }
 
-    NAst::TExprPtr binary(const char* op, NAst::TExprPtr left, NAst::TExprPtr right, NAst::TTypePtr type) {
-        auto expr = MakeIntrusive<NAst::TBinaryExpr>(TLocation{}, NAst::TOperator(op), std::move(left), std::move(right));
-        expr->Type = std::move(type);
+    NAst::TExprPtr binary(const char* op, const NAst::TExprPtr& left, const NAst::TExprPtr& right, const NAst::TTypePtr& type) {
+        auto expr = MakeIntrusive<NAst::TBinaryExpr>(TLocation{}, NAst::TOperator(op), left, right);
+        expr->Type = type;
         return expr;
     }
 
-    NAst::TExprPtr ifExpr(NAst::TExprPtr cond, NAst::TExprPtr thenExpr, NAst::TExprPtr elseExpr, NAst::TTypePtr type) {
-        auto expr = MakeIntrusive<NAst::TIfExpr>(TLocation{}, std::move(cond), std::move(thenExpr), std::move(elseExpr));
-        expr->Type = std::move(type);
+    NAst::TExprPtr ifExpr(const NAst::TExprPtr& cond, const NAst::TExprPtr& thenExpr, const NAst::TExprPtr& elseExpr, const NAst::TTypePtr& type) {
+        auto expr = MakeIntrusive<NAst::TIfExpr>(TLocation{}, cond, thenExpr, elseExpr);
+        expr->Type = type;
         return expr;
     }
 }
 
 SystemModule::SystemModule() {
-    auto integerType = std::make_shared<NAst::TIntegerType>();
-    auto floatType = std::make_shared<NAst::TFloatType>();
-    auto boolType = std::make_shared<NAst::TBoolType>();
-    auto voidType = std::make_shared<NAst::TVoidType>();
-    auto stringType = std::make_shared<NAst::TStringType>();
-    auto voidPtrType = std::make_shared<NAst::TPointerType>(voidType);
-    auto fileUnderlying = std::make_shared<NAst::TIntegerType>(NAst::TIntegerType::I32);
-    auto fileType = std::make_shared<NAst::TNamedType>("file", fileUnderlying);
-    auto symbolType = std::make_shared<NAst::TSymbolType>();
+    auto integerType = MakeIntrusive<NAst::TIntegerType>();
+    auto floatType = MakeIntrusive<NAst::TFloatType>();
+    auto boolType = MakeIntrusive<NAst::TBoolType>();
+    auto voidType = MakeIntrusive<NAst::TVoidType>();
+    auto stringType = MakeIntrusive<NAst::TStringType>();
+    auto voidPtrType = MakeIntrusive<NAst::TPointerType>(voidType);
+    auto fileUnderlying = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::I32);
+    auto fileType = MakeIntrusive<NAst::TNamedType>("file", fileUnderlying);
+    auto symbolType = MakeIntrusive<NAst::TSymbolType>();
 
     ExternalTypes_ = {
         { .Name = "file", .Type = fileUnderlying },
@@ -64,7 +64,7 @@ SystemModule::SystemModule() {
         return MakeIntrusive<NAst::TIdentExpr>(TLocation{}, name);
     };
 
-    auto letBlock = [](std::vector<std::pair<std::string, NAst::TExprPtr>> vars, NAst::TExprPtr body) -> NAst::TExprPtr {
+    auto letBlock = [](std::vector<std::pair<std::string, NAst::TExprPtr>> vars, const NAst::TExprPtr& body) -> NAst::TExprPtr {
         auto bodyType = body->Type;
         std::vector<NAst::TExprPtr> stmts;
         for (auto& [name, value] : vars) {
@@ -72,13 +72,13 @@ SystemModule::SystemModule() {
             var->Init = std::move(value);
             stmts.push_back(std::move(var));
         }
-        stmts.push_back(std::move(body));
+        stmts.push_back(body);
         auto block = MakeIntrusive<NAst::TBlockExpr>(TLocation{}, std::move(stmts));
         block->Type = bodyType;
         return block;
     };
 
-    auto inlineMin = [&](NAst::TTypePtr type) {
+    auto inlineMin = [&](const NAst::TTypePtr& type) {
         return [type, boolType, &ident, &letBlock](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto body = ifExpr(
                 binary("<", ident("$$left"), ident("$$right"), boolType),
@@ -88,7 +88,7 @@ SystemModule::SystemModule() {
             return letBlock({{"$$left", args[0]}, {"$$right", args[1]}}, std::move(body));
         };
     };
-    auto inlineMax = [&](NAst::TTypePtr type) {
+    auto inlineMax = [&](const NAst::TTypePtr& type) {
         return [type, boolType, &ident, &letBlock](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto body = ifExpr(
                 binary(">", ident("$$left"), ident("$$right"), boolType),
@@ -98,7 +98,7 @@ SystemModule::SystemModule() {
             return letBlock({{"$$left", args[0]}, {"$$right", args[1]}}, std::move(body));
         };
     };
-    auto inlineAbs = [&](NAst::TTypePtr type) {
+    auto inlineAbs = [&](const NAst::TTypePtr& type) {
         return [type, boolType, &ident, &letBlock](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto body = ifExpr(
                 binary("<", ident("$$value"), number(type, 0), boolType),
@@ -467,7 +467,7 @@ SystemModule::SystemModule() {
                 NRuntime::output_symbol(static_cast<int32_t>(std::bit_cast<int64_t>(args[0])));
                 return 0;
             },
-            .ArgTypes = { std::make_shared<NAst::TSymbolType>() },
+            .ArgTypes = { MakeIntrusive<NAst::TSymbolType>() },
             .ReturnType = voidType,
         },
 
@@ -800,7 +800,7 @@ SystemModule::SystemModule() {
             .ArgTypes = { symbolType },
             .ReturnType = integerType,
             .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], std::make_shared<NAst::TIntegerType>());
+                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], MakeIntrusive<NAst::TIntegerType>());
             }
         },
         {
@@ -808,7 +808,7 @@ SystemModule::SystemModule() {
             .ArgTypes = { integerType },
             .ReturnType = symbolType,
             .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], std::make_shared<NAst::TSymbolType>());
+                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], MakeIntrusive<NAst::TSymbolType>());
             }
         },
 

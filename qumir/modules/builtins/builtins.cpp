@@ -11,13 +11,13 @@ namespace NQumir {
 namespace NRegistry {
 
 BuiltinsModule::BuiltinsModule() {
-    auto i64Type = std::make_shared<NAst::TIntegerType>();
-    auto i32Type = std::make_shared<NAst::TIntegerType>(NAst::TIntegerType::I32);
-    auto u8Type = std::make_shared<NAst::TIntegerType>(NAst::TIntegerType::U8);
-    auto u32Type = std::make_shared<NAst::TIntegerType>(NAst::TIntegerType::U32);
-    auto u64Type = std::make_shared<NAst::TIntegerType>(NAst::TIntegerType::U64);
-    auto ptrU8Type = std::make_shared<NAst::TPointerType>(u8Type);
-    auto voidType = std::make_shared<NAst::TVoidType>();
+    auto i64Type = MakeIntrusive<NAst::TIntegerType>();
+    auto i32Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::I32);
+    auto u8Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::U8);
+    auto u32Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::U32);
+    auto u64Type = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::U64);
+    auto ptrU8Type = MakeIntrusive<NAst::TPointerType>(u8Type);
+    auto voidType = MakeIntrusive<NAst::TVoidType>();
 
     ExternalFunctions_ = {
         {

@@ -28,6 +28,7 @@ using NQumir::NAst::TPointerType;
 using NQumir::NAst::TStructType;
 using NQumir::NAst::TTypeDeclStmt;
 using NQumir::NAst::TTypePtr;
+using NQumir::MakeIntrusive;
 using NQumir::NAst::TVarStmt;
 using NQumir::NAst::TVoidType;
 using NQumir::NAst::MangleFunctionSignature;
@@ -153,12 +154,12 @@ TEST(CoreWrappedTokenStreamTest, Window) {
 }
 
 TEST(CoreTypeTest, FutureTypesPrintAndParse) {
-    auto voidFuture = std::make_shared<TFutureType>(std::make_shared<TVoidType>());
+    auto voidFuture = MakeIntrusive<TFutureType>(MakeIntrusive<TVoidType>());
     EXPECT_EQ(PrintType(voidFuture), "<future void>");
     EXPECT_EQ(TypeKey(voidFuture), "Future::Void");
 
-    auto namedFuture = std::make_shared<TFutureType>(
-        std::make_shared<TNamedType>("color", std::make_shared<TIntegerType>()));
+    auto namedFuture = MakeIntrusive<TFutureType>(
+        MakeIntrusive<TNamedType>("color", MakeIntrusive<TIntegerType>()));
     EXPECT_EQ(PrintType(namedFuture), "<future <named color i64>>");
     EXPECT_EQ(TypeKey(namedFuture), "Future::Named::color");
 
@@ -216,20 +217,20 @@ TEST(CoreTypeTest, ParametricNamedTypeValueArgsPrintAndParse) {
 }
 
 TEST(CoreTypeTest, TypeMangleKeyUsesPlainNamedAndStructLayout) {
-    auto structure = std::make_shared<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
-        {"Value", std::make_shared<TIntegerType>(TIntegerType::I32)},
-        {"Valid", std::make_shared<TNamedType>("n", nullptr)},
-        {"Bytes", std::make_shared<TPointerType>(std::make_shared<TIntegerType>(TIntegerType::U8))},
+    auto structure = MakeIntrusive<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
+        {"Value", MakeIntrusive<TIntegerType>(TIntegerType::I32)},
+        {"Valid", MakeIntrusive<TNamedType>("n", nullptr)},
+        {"Bytes", MakeIntrusive<TPointerType>(MakeIntrusive<TIntegerType>(TIntegerType::U8))},
     });
-    auto named = std::make_shared<TNamedType>("AggKey_i32_n", structure);
+    auto named = MakeIntrusive<TNamedType>("AggKey_i32_n", structure);
 
     EXPECT_EQ(TypeMangleKey(named), "AggKey_i32_n");
     EXPECT_EQ(TypeMangleKey(structure), "Struct_i32_n_Ptr_u8");
     EXPECT_EQ(
         MangleFunctionSignature(
             "__overload_key_clone_owned",
-            std::make_shared<TVoidType>(),
-            {named, std::make_shared<TPointerType>(std::make_shared<TIntegerType>(TIntegerType::U8))}),
+            MakeIntrusive<TVoidType>(),
+            {named, MakeIntrusive<TPointerType>(MakeIntrusive<TIntegerType>(TIntegerType::U8))}),
         "__overload_key_clone_owned$void__$AggKey_i32_n$Ptr_u8");
 }
 
@@ -306,16 +307,16 @@ TEST(CoreTypeTest, ParametricTypeDeclRejectsDuplicateParams) {
 }
 
 TEST(CoreTypeTest, IntegerWidthsPrintAndParse) {
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::I8)), "i8");
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::I16)), "i16");
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::I32)), "i32");
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::I64)), "i64");
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::U8)), "u8");
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::U16)), "u16");
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::U32)), "u32");
-    EXPECT_EQ(PrintType(std::make_shared<TIntegerType>(TIntegerType::U64)), "u64");
-    EXPECT_EQ(PrintType(std::make_shared<TFloatType>(TFloatType::F32)), "f32");
-    EXPECT_EQ(PrintType(std::make_shared<TFloatType>()), "f64");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I8)), "i8");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I16)), "i16");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I32)), "i32");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I64)), "i64");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U8)), "u8");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U16)), "u16");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U32)), "u32");
+    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U64)), "u64");
+    EXPECT_EQ(PrintType(MakeIntrusive<TFloatType>(TFloatType::F32)), "f32");
+    EXPECT_EQ(PrintType(MakeIntrusive<TFloatType>()), "f64");
 
     std::istringstream input("(var x u32)");
     TTokenStream tokens(input);
@@ -520,7 +521,7 @@ TEST(CoreIdentifierQuotingTest, PlainNamesStayBare) {
     for (const auto* name : {"foo", "my_var", "$x", "x1", "+", "-", "->", "a:b", "<main>"}) {
         SCOPED_TRACE(name);
         auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
-            NQumir::TLocation{}, name, std::make_shared<NQumir::NAst::TBoolType>());
+            NQumir::TLocation{}, name, MakeIntrusive<NQumir::NAst::TBoolType>());
         EXPECT_EQ(PrintAst(var, TPrintOptions{.Pretty = false}), std::string("(var ") + name + " bool)");
     }
 }
@@ -552,9 +553,9 @@ TEST(CoreIdentifierQuotingTest, PlainIdentifiersMatchTheLexer) {
 TEST(CoreIdentifierQuotingTest, StructFieldNamesRoundTrip) {
     for (const auto& name : TrickyIdentifiers()) {
         SCOPED_TRACE(name);
-        auto type = std::make_shared<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
-            {name, std::make_shared<NQumir::NAst::TBoolType>()},
-            {"z", std::make_shared<NQumir::NAst::TBoolType>()},
+        auto type = MakeIntrusive<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
+            {name, MakeIntrusive<NQumir::NAst::TBoolType>()},
+            {"z", MakeIntrusive<NQumir::NAst::TBoolType>()},
         });
         const auto text = PrintType(type);
 
@@ -574,7 +575,7 @@ TEST(CoreIdentifierQuotingTest, VariableNamesRoundTrip) {
     for (const auto& name : TrickyIdentifiers()) {
         SCOPED_TRACE(name);
         auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
-            NQumir::TLocation{}, name, std::make_shared<NQumir::NAst::TBoolType>());
+            NQumir::TLocation{}, name, MakeIntrusive<NQumir::NAst::TBoolType>());
         const auto text = PrintAst(var, TPrintOptions{.Pretty = false});
 
         std::istringstream input(text);
@@ -612,6 +613,6 @@ TEST(CoreIdentifierQuotingTest, EscapesInBars) {
 
 TEST(CoreIdentifierQuotingTest, EmptyNameIsRejected) {
     auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
-        NQumir::TLocation{}, "", std::make_shared<NQumir::NAst::TBoolType>());
+        NQumir::TLocation{}, "", MakeIntrusive<NQumir::NAst::TBoolType>());
     EXPECT_THROW(PrintAst(var, TPrintOptions{.Pretty = false}), std::invalid_argument);
 }

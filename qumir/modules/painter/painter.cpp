@@ -8,19 +8,19 @@ namespace NRegistry {
 using namespace NRuntime;
 
 PainterModule::PainterModule() {
-    auto integerType  = std::make_shared<NAst::TIntegerType>();
-    auto boolType     = std::make_shared<NAst::TBoolType>();
-    auto voidType     = std::make_shared<NAst::TVoidType>();
-    auto stringType   = std::make_shared<NAst::TStringType>();
-    auto intArrayType = std::make_shared<NAst::TArrayType>(integerType, 1);
+    auto integerType  = MakeIntrusive<NAst::TIntegerType>();
+    auto boolType     = MakeIntrusive<NAst::TBoolType>();
+    auto voidType     = MakeIntrusive<NAst::TVoidType>();
+    auto stringType   = MakeIntrusive<NAst::TStringType>();
+    auto intArrayType = MakeIntrusive<NAst::TArrayType>(integerType, 1);
 
-    auto colorType = std::make_shared<NAst::TNamedType>("цвет", integerType);
+    auto colorType = MakeIntrusive<NAst::TNamedType>("цвет", integerType);
 
     auto makeOutInt = [&]() -> NAst::TTypePtr {
-        auto t = std::make_shared<NAst::TIntegerType>();
+        auto t = MakeIntrusive<NAst::TIntegerType>();
         t->Mutable  = true;
         t->Readable = false;
-        return std::make_shared<NAst::TReferenceType>(t);
+        return MakeIntrusive<NAst::TReferenceType>(t);
     };
 
     ExternalFunctions_ = {

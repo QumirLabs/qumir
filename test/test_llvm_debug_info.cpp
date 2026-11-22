@@ -37,7 +37,7 @@ namespace {
 void BuildModule(TModule& module, bool withDebugInfo = true) {
     module.DebugOptions.EmitDebugInfo = withDebugInfo;
     TBuilder builder(module);
-    auto integer = std::make_shared<NAst::TIntegerType>();
+    auto integer = MakeIntrusive<NAst::TIntegerType>();
     const int i64 = FromAstType(integer, module.Types);
     const int f64 = module.Types.I(EKind::F64);
     builder.NewFunction("mangled_divide", {TLocal{0}, TLocal{2}}, 1);
@@ -49,8 +49,8 @@ void BuildModule(TModule& module, bool withDebugInfo = true) {
         auto& function = module.Functions.front();
         function.DebugInfo = TFunctionDebugInfo{
             "divide", {2, 1, 1}, 10,
-            std::make_shared<NAst::TFunctionType>(
-                std::vector<NAst::TTypePtr>{integer, integer}, std::make_shared<NAst::TFloatType>())};
+            MakeIntrusive<NAst::TFunctionType>(
+                std::vector<NAst::TTypePtr>{integer, integer}, MakeIntrusive<NAst::TFloatType>())};
         function.LocalDebugInfo = {
             {"x", {2, 1, 1}, 10, integer},
             {"x", {4, 1, 1}, 11, integer},
@@ -182,17 +182,17 @@ TEST(LLVMDebugInfo, PrimitiveTypesReferencesAndOpaqueFallback) {
         TIntegerType::I64, TIntegerType::I128, TIntegerType::U8, TIntegerType::U16,
         TIntegerType::U32, TIntegerType::U64, TIntegerType::U128})
     {
-        astTypes.push_back(std::make_shared<TIntegerType>(kind));
+        astTypes.push_back(MakeIntrusive<TIntegerType>(kind));
     }
-    auto integer = std::make_shared<TIntegerType>();
-    auto structure = std::make_shared<TStructType>(
+    auto integer = MakeIntrusive<TIntegerType>();
+    auto structure = MakeIntrusive<TStructType>(
         std::vector<std::pair<std::string, TTypePtr>>{{"field", integer}});
     astTypes.insert(astTypes.end(), {
-        std::make_shared<TFloatType>(), std::make_shared<TBoolType>(),
-        std::make_shared<TSymbolType>(), std::make_shared<TStringType>(),
-        std::make_shared<TPointerType>(std::make_shared<TIntegerType>(TIntegerType::I8)),
-        std::make_shared<TReferenceType>(integer), std::make_shared<TArrayType>(integer, 1),
-        structure, std::make_shared<TNamedType>("alias", integer),
+        MakeIntrusive<TFloatType>(), MakeIntrusive<TBoolType>(),
+        MakeIntrusive<TSymbolType>(), MakeIntrusive<TStringType>(),
+        MakeIntrusive<TPointerType>(MakeIntrusive<TIntegerType>(TIntegerType::I8)),
+        MakeIntrusive<TReferenceType>(integer), MakeIntrusive<TArrayType>(integer, 1),
+        structure, MakeIntrusive<TNamedType>("alias", integer),
     });
     for (unsigned pointerBits : {32, 64}) {
         TModule source;

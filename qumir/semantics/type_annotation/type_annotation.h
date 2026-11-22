@@ -15,7 +15,7 @@ class TTypeAnnotator {
 public:
     explicit TTypeAnnotator(NSemantics::TNameResolver& context);
 
-    std::expected<NAst::TExprPtr, TError> Annotate(NAst::TExprPtr expr);
+    std::expected<NAst::TExprPtr, TError> Annotate(const NAst::TExprPtr& expr);
 
 private:
     NSemantics::TNameResolver& Context;

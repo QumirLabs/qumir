@@ -35,13 +35,13 @@ TEST(AstClone, LifetimeAndHiddenChildrenAreDeeplyCloned) {
     };
 
     auto variable = MakeIntrusive<TVarStmt>(
-        loc, "variable", std::make_shared<TIntegerType>());
+        loc, "variable", MakeIntrusive<TIntegerType>());
     variable->Init = ident("variable_init");
     auto vars = MakeIntrusive<TVarsBlockExpr>(
         loc, std::vector<TExprPtr>{variable});
 
     auto parameter = MakeIntrusive<TVarStmt>(
-        loc, "parameter", std::make_shared<TIntegerType>());
+        loc, "parameter", MakeIntrusive<TIntegerType>());
     parameter->Init = ident("parameter_init");
     auto function = MakeIntrusive<TFunDecl>(
         loc,
@@ -50,7 +50,7 @@ TEST(AstClone, LifetimeAndHiddenChildrenAreDeeplyCloned) {
         std::vector<TParam>{parameter},
         MakeIntrusive<TBlockExpr>(
             loc, std::vector<TExprPtr>{ident("function_body")}),
-        std::make_shared<TVoidType>());
+        MakeIntrusive<TVoidType>());
 
     auto original = MakeIntrusive<TBlockExpr>(loc, std::vector<TExprPtr>{
         MakeIntrusive<TRetainExpr>(loc, ident("retain")),

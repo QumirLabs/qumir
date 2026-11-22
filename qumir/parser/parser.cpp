@@ -41,12 +41,12 @@ inline TExprPtr list(TLocation loc, std::vector<TExprPtr> elements) {
     return MakeIntrusive<TBlockExpr>(std::move(loc), std::move(elements));
 }
 
-inline TExprPtr unary(TLocation loc, TOperator op, TExprPtr operand) {
-    return MakeIntrusive<TUnaryExpr>(std::move(loc), op, std::move(operand));
+inline TExprPtr unary(TLocation loc, TOperator op, const TExprPtr& operand) {
+    return MakeIntrusive<TUnaryExpr>(std::move(loc), op, operand);
 }
 
-inline TExprPtr binary(TLocation loc, TOperator op, TExprPtr left, TExprPtr right) {
-    return MakeIntrusive<TBinaryExpr>(std::move(loc), op, std::move(left), std::move(right));
+inline TExprPtr binary(TLocation loc, TOperator op, const TExprPtr& left, const TExprPtr& right) {
+    return MakeIntrusive<TBinaryExpr>(std::move(loc), op, left, right);
 }
 
 inline TExprPtr num(TLocation loc, int64_t v) {
@@ -60,13 +60,13 @@ inline TExprPtr num(TLocation loc, double v) {
 inline TExprPtr num(TLocation loc, bool v) {
     return MakeIntrusive<TCastExpr>(loc,
         MakeIntrusive<TNumberExpr>(loc, v),
-        std::make_shared<TBoolType>());
+        MakeIntrusive<TBoolType>());
 }
 
 inline TExprPtr sym(TLocation loc, int64_t v) {
     return MakeIntrusive<TCastExpr>(loc,
         MakeIntrusive<TNumberExpr>(loc, v),
-        std::make_shared<TSymbolType>());
+        MakeIntrusive<TSymbolType>());
 }
 
 inline TExprPtr ident(TLocation loc, std::string n) {
@@ -315,7 +315,7 @@ TExpectedTask<TExprPtrOf<TVarStmt>, TError, TLocation> var_decl(TParserContext& 
         // flat index = i * (dim1_size * dim2_size) + j * dim2_size + k, where
         // dimN_size = right_bound_N - left_bound_N + 1
         // precompute sizes during variable initialization?
-        varType = std::make_shared<TArrayType>(scalarType, bounds.size());
+        varType = MakeIntrusive<TArrayType>(scalarType, bounds.size());
     } else {
         // скобки после имени запрещены для скалярного типа
         auto t = stream.Next();
@@ -326,9 +326,9 @@ TExpectedTask<TExprPtrOf<TVarStmt>, TError, TLocation> var_decl(TParserContext& 
     }
 
     if (isPointer) {
-        varType = std::make_shared<TPointerType>(varType);
+        varType = MakeIntrusive<TPointerType>(varType);
     } else if (isReference) {
-        varType = std::make_shared<TReferenceType>(varType);
+        varType = MakeIntrusive<TReferenceType>(varType);
     }
 
     auto var = MakeIntrusive<TVarStmt>(nameTok.Location, name, varType, std::move(bounds));
@@ -339,36 +339,36 @@ TTypePtr getScalarType(EKeyword kw, bool& isArray, const std::string& typeName, 
     isArray = false;
     switch (kw) {
         case EKeyword::Int:
-            return std::make_shared<TIntegerType>();
+            return MakeIntrusive<TIntegerType>();
         case EKeyword::Float:
-            return std::make_shared<TFloatType>();
+            return MakeIntrusive<TFloatType>();
         case EKeyword::Bool:
-            return std::make_shared<TBoolType>();
+            return MakeIntrusive<TBoolType>();
         case EKeyword::String:
-            return std::make_shared<TStringType>();
+            return MakeIntrusive<TStringType>();
         case EKeyword::Char:
-            return std::make_shared<TSymbolType>();
+            return MakeIntrusive<TSymbolType>();
 
         case EKeyword::IntTab:
             isArray = true;
-            return std::make_shared<TIntegerType>();
+            return MakeIntrusive<TIntegerType>();
         case EKeyword::FloatTab:
             isArray = true;
-            return std::make_shared<TFloatType>();
+            return MakeIntrusive<TFloatType>();
         case EKeyword::BoolTab:
             isArray = true;
-            return std::make_shared<TBoolType>();
+            return MakeIntrusive<TBoolType>();
         case EKeyword::StringTab:
             isArray = true;
-            return std::make_shared<TStringType>();
+            return MakeIntrusive<TStringType>();
         case EKeyword::CharTab:
             isArray = true;
-            return std::make_shared<TSymbolType>();
+            return MakeIntrusive<TSymbolType>();
 
         case EKeyword::File:
-            return std::make_shared<TNamedType>("file", nameResolver->LookupType("file"));
+            return MakeIntrusive<TNamedType>("file", nameResolver->LookupType("file"));
         case EKeyword::NamedType:
-            return std::make_shared<TNamedType>(typeName, nameResolver->LookupType(typeName));
+            return MakeIntrusive<TNamedType>(typeName, nameResolver->LookupType(typeName));
         default:
             return nullptr;
     }
@@ -512,7 +512,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     auto& stream = context.Stream;
     auto* mm = context.ModuleManager;
     auto next = stream.Next();
-    TTypePtr returnType = std::make_shared<TVoidType>();
+    TTypePtr returnType = MakeIntrusive<TVoidType>();
     std::vector<TExprPtrOf<TVarStmt>> args;
     std::string name = "<main>";
 
@@ -664,7 +664,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         for (auto& a : funDecl->Params) {
             paramTypes.push_back(a->Type);
         }
-        funDecl->Type = std::make_shared<TFunctionType>(std::move(paramTypes), returnType);
+        funDecl->Type = MakeIntrusive<TFunctionType>(std::move(paramTypes), returnType);
 
         co_return funDecl;
     } else {
@@ -1060,7 +1060,7 @@ Factor/Primary ::= Number | Ident | ( Expr ) | fun
 TAstTask factor(TParserContext& context) {
     auto& stream = context.Stream;
     auto token = stream.Next();
-    auto withSuffix = [&](TExprPtr lit) -> TExprPtr {
+    auto withSuffix = [&](const TExprPtr& lit) -> TExprPtr {
         auto peek = stream.Next();
         if (peek.Type == TToken::Identifier && context.LexerContext) {
             const auto& suffixes = context.LexerContext->GetLiteralSuffixes();

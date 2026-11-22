@@ -136,7 +136,7 @@ class TNameResolver : public IModuleManager {
 public:
     TNameResolver(const TNameResolverOptions& options = {});
 
-    std::optional<TError> Resolve(NAst::TExprPtr root);
+    std::optional<TError> Resolve(const NAst::TExprPtr& root);
     void ApplyPragmas(const std::vector<NAst::TPragma>& pragmas) override;
     TScopePtr GetOrCreateRootScope();
 
@@ -150,7 +150,7 @@ public:
     // Modules, not imported yet, that have a command `name` taking `argCount` arguments.
     std::vector<std::string> ModulesWithFunction(const std::string& name, size_t argCount) const;
 
-    TSymbolId DeclareFunction(const std::string& name, NAst::TExprPtr node);
+    TSymbolId DeclareFunction(const std::string& name, const NAst::TExprPtr& node);
     NAst::TExprPtr GetSymbolNode(TSymbolId id) const;
     std::vector<std::pair<int, NAst::TExprPtrOf<NAst::TFunDecl>>> GetExternalFunctions();
 
@@ -170,7 +170,7 @@ public:
         return std::exchange(GenericInstantiations, {});
     }
 
-    TSymbolId Declare(const std::string& name, NAst::TExprPtr node, TSymbolInfo parentSymbol);
+    TSymbolId Declare(const std::string& name, const NAst::TExprPtr& node, TSymbolInfo parentSymbol);
 
     // just adds module to dict of modules
     void RegisterModule(NRegistry::IModule* module);
@@ -233,9 +233,9 @@ public:
         std::size_t arity) const;
 
     NAst::TTypePtr LookupType(const std::string& name) const override;
-    void RegisterType(const std::string& name, NAst::TTypePtr type);
-    void RegisterImportedType(const std::string& name, NAst::TTypePtr type) override {
-        RegisterType(name, std::move(type));
+    void RegisterType(const std::string& name, const NAst::TTypePtr& type);
+    void RegisterImportedType(const std::string& name, const NAst::TTypePtr& type) override {
+        RegisterType(name, type);
     }
 
 private:
@@ -254,7 +254,7 @@ private:
     // the call target. Mirrors how ImportModule lifts runtime IsOp functions.
     std::optional<TError> RegisterOperatorDecls(const NAst::TExprPtr& root);
     void ImportUseStmts(const NAst::TExprPtr& root);
-    std::expected<TSymbolId, TError> Declare(const std::string& name, NAst::TExprPtr node, TScopePtr scope, TScopePtr funcScope);
+    std::expected<TSymbolId, TError> Declare(const std::string& name, const NAst::TExprPtr& node, TScopePtr scope, TScopePtr funcScope);
     TScopePtr NewScope(TScopePtr parent, TScopePtr funcScope);
 
     // Returns true if two TFunDecl have identical parameter type signatures.
@@ -262,14 +262,14 @@ private:
 
     void RegisterTypeDecl(
         const std::string& name,
-        NAst::TTypePtr underlying,
+        const NAst::TTypePtr& underlying,
         std::vector<NAst::TGenericParam> genericParams);
 
     // Registers one TFunDecl into an existing overload set under a generated synthName.
     // Returns an error if param types match an already-registered overload.
     std::expected<TSymbolId, TError> RegisterOverloadEntry(
         const std::string& canonicalName,
-        NAst::TExprPtr node,
+        const NAst::TExprPtr& node,
         std::vector<TSymbolId>& overloads);
 
     // Called on the first name collision between two TFunDecl.
@@ -277,7 +277,7 @@ private:
     std::expected<TSymbolId, TError> StartOverloadSet(
         const std::string& name,
         TSymbolId existingSymId,
-        NAst::TExprPtr newNode,
+        const NAst::TExprPtr& newNode,
         TScopePtr scope);
 
     TNameResolverOptions Options;

@@ -34,11 +34,11 @@ TIntrusivePtr<TOwnLiteralExpr> OwnedLiteral(std::string value = "value") {
         MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value)));
 }
 
-TIntrusivePtr<TDestroyExpr> Destroy(TExprPtr value, TExprPtr aux = nullptr) {
+TIntrusivePtr<TDestroyExpr> Destroy(const TExprPtr& value, const TExprPtr& aux = nullptr) {
     return MakeIntrusive<TDestroyExpr>(
         TLocation{},
-        std::move(value),
-        std::move(aux));
+        value,
+        aux);
 }
 
 TIntrusivePtr<TFunDecl> Function(
@@ -51,7 +51,7 @@ TIntrusivePtr<TFunDecl> Function(
         std::vector<TGenericParam>{},
         std::move(parameters),
         MakeIntrusive<TBlockExpr>(TLocation{}, std::move(statements)),
-        std::make_shared<TVoidType>());
+        MakeIntrusive<TVoidType>());
 }
 
 std::string InstructionName(
@@ -193,14 +193,14 @@ void ExpectTrace(
     EXPECT_EQ(result->Trace, expected) << result->Ir;
 }
 
-TIntrusivePtr<TVarStmt> Parameter(std::string name, TTypePtr type) {
-    return MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), std::move(type));
+TIntrusivePtr<TVarStmt> Parameter(std::string name, const TTypePtr& type) {
+    return MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), type);
 }
 
 } // namespace
 
 TEST(LifetimeLowering, RetainUsesRuntimeAbi) {
-    auto parameter = Parameter("value", std::make_shared<TStringType>());
+    auto parameter = Parameter("value", MakeIntrusive<TStringType>());
     auto retain = MakeIntrusive<TRetainExpr>(TLocation{}, Ident("value"));
     ExpectTrace(
         {parameter},
@@ -228,13 +228,13 @@ TEST(LifetimeLowering, MoveAddsNoInstructions) {
 }
 
 TEST(LifetimeLowering, BorrowAddsNoInstructions) {
-    auto parameter = Parameter("value", std::make_shared<TStringType>());
+    auto parameter = Parameter("value", MakeIntrusive<TStringType>());
     auto direct = Lower(
         {parameter},
         {Destroy(MakeIntrusive<TRetainExpr>(TLocation{}, Ident("value")))});
     ASSERT_TRUE(direct.has_value()) << direct.error().ToString();
 
-    parameter = Parameter("value", std::make_shared<TStringType>());
+    parameter = Parameter("value", MakeIntrusive<TStringType>());
     auto borrowed = Lower(
         {parameter},
         {Destroy(MakeIntrusive<TRetainExpr>(
@@ -245,7 +245,7 @@ TEST(LifetimeLowering, BorrowAddsNoInstructions) {
 }
 
 TEST(LifetimeLowering, DestroyStringUsesRelease) {
-    auto value = Parameter("value", std::make_shared<TStringType>());
+    auto value = Parameter("value", MakeIntrusive<TStringType>());
     value->Init = OwnedLiteral();
     ExpectTrace(
         {},
@@ -254,7 +254,7 @@ TEST(LifetimeLowering, DestroyStringUsesRelease) {
 }
 
 TEST(LifetimeLowering, ValidatesLifetimeAstBeforeLowering) {
-    auto parameter = Parameter("value", std::make_shared<TStringType>());
+    auto parameter = Parameter("value", MakeIntrusive<TStringType>());
     auto result = Lower({parameter}, {Destroy(Ident("value"))});
     ASSERT_FALSE(result.has_value());
     EXPECT_NE(
@@ -263,8 +263,8 @@ TEST(LifetimeLowering, ValidatesLifetimeAstBeforeLowering) {
 }
 
 TEST(LifetimeLowering, DestroyPlainArrayUsesArrayDestroy) {
-    auto arrayType = std::make_shared<TArrayType>(
-        std::make_shared<TIntegerType>(),
+    auto arrayType = MakeIntrusive<TArrayType>(
+        MakeIntrusive<TIntegerType>(),
         1);
     auto items = Parameter("items", arrayType);
     items->Bounds.push_back({
@@ -278,8 +278,8 @@ TEST(LifetimeLowering, DestroyPlainArrayUsesArrayDestroy) {
 }
 
 TEST(LifetimeLowering, DestroyStringArrayPassesAllocationSize) {
-    auto arrayType = std::make_shared<TArrayType>(
-        std::make_shared<TStringType>(),
+    auto arrayType = MakeIntrusive<TArrayType>(
+        MakeIntrusive<TStringType>(),
         1);
     auto items = Parameter("items", arrayType);
     items->Bounds.push_back({
@@ -297,8 +297,8 @@ TEST(LifetimeLowering, DestroyStringArrayPassesAllocationSize) {
 }
 
 TEST(LifetimeLowering, DestroyStringArrayRequiresAllocationSize) {
-    auto arrayType = std::make_shared<TArrayType>(
-        std::make_shared<TStringType>(),
+    auto arrayType = MakeIntrusive<TArrayType>(
+        MakeIntrusive<TStringType>(),
         1);
     auto items = Parameter("items", arrayType);
     items->Bounds.push_back({
@@ -315,7 +315,7 @@ TEST(LifetimeLowering, DestroyStringArrayRequiresAllocationSize) {
 TEST(LifetimeLowering, ReplaceEvaluatesRhsBeforeTargetAndDestroysOldValue) {
     auto parameter = Parameter(
         "target",
-        std::make_shared<TReferenceType>(std::make_shared<TStringType>()));
+        MakeIntrusive<TReferenceType>(MakeIntrusive<TStringType>()));
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         Ident("target"),
@@ -327,7 +327,7 @@ TEST(LifetimeLowering, ReplaceEvaluatesRhsBeforeTargetAndDestroysOldValue) {
 }
 
 TEST(LifetimeLowering, RewrittenSideEffectingIndexIsEvaluatedOnce) {
-    auto pointerType = std::make_shared<TPointerType>(std::make_shared<TStringType>());
+    auto pointerType = MakeIntrusive<TPointerType>(MakeIntrusive<TStringType>());
     auto parameter = Parameter("items", pointerType);
     auto nextIndex = MakeIntrusive<TCallExpr>(
         TLocation{},
@@ -355,13 +355,13 @@ TEST(LifetimeLowering, StructuredCleanupExitLowersItsActionsBeforeExit) {
 }
 
 TEST(LifetimeLowering, GlobalCleanupBuildsModuleDestructorInLifoOrder) {
-    auto stringType = std::make_shared<TStringType>();
+    auto stringType = MakeIntrusive<TStringType>();
     auto first = MakeIntrusive<TVarStmt>(TLocation{}, "first", stringType);
     first->Init = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "first");
     auto plain = MakeIntrusive<TVarStmt>(
         TLocation{},
         "plain",
-        std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1));
+        MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1));
     plain->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
@@ -369,7 +369,7 @@ TEST(LifetimeLowering, GlobalCleanupBuildsModuleDestructorInLifoOrder) {
     auto words = MakeIntrusive<TVarStmt>(
         TLocation{},
         "words",
-        std::make_shared<TArrayType>(stringType, 1));
+        MakeIntrusive<TArrayType>(stringType, 1));
     words->Bounds.push_back({
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),

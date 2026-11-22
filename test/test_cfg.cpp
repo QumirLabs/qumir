@@ -207,13 +207,13 @@ TEST(IRType, NestedStructAlignsLikeItsWidestField) {
 
 TEST(IRType, AstVectorAliasesUseTheSameIRType) {
     TTypeTable types;
-    auto vector = std::make_shared<NAst::TVectorType>(
-        std::make_shared<NAst::TIntegerType>(NAst::TIntegerType::I32), 4);
-    auto alias = std::make_shared<NAst::TNamedType>("V", vector);
+    auto vector = MakeIntrusive<NAst::TVectorType>(
+        MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::I32), 4);
+    auto alias = MakeIntrusive<NAst::TNamedType>("V", vector);
     const int expected = types.Vec(types.I(EKind::I32), 4);
     EXPECT_EQ(FromAstType(vector, types), expected);
     EXPECT_EQ(FromAstType(alias, types), expected);
-    EXPECT_EQ(FromAstType(std::make_shared<NAst::TPointerType>(alias), types), types.Ptr(expected));
+    EXPECT_EQ(FromAstType(MakeIntrusive<NAst::TPointerType>(alias), types), types.Ptr(expected));
 }
 
 TEST(CfgTest, InstructionDebugInfoIsOptional) {

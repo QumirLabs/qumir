@@ -40,7 +40,7 @@ public:
     // dependency validation path as a module read from an `.oz` file.
     std::expected<const TSourceModule*, TError> LoadAst(
         const std::string& name,
-        NAst::TExprPtr ast,
+        const NAst::TExprPtr& ast,
         std::vector<std::string> llvmBitcode = {},
         std::vector<NAst::TPragma> pragmas = {},
         std::filesystem::path origin = {});

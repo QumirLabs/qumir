@@ -13,7 +13,7 @@ class TDefiniteAssignmentChecker {
 public:
     explicit TDefiniteAssignmentChecker(TNameResolver& context);
 
-    std::expected<void, TError> Check(NAst::TExprPtr root);
+    std::expected<void, TError> Check(const NAst::TExprPtr& root);
 
 private:
     using TAssignedSet = std::unordered_set<int>; // assigned symbol ids
