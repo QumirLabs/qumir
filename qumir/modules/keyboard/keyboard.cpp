@@ -59,7 +59,7 @@ namespace NRegistry {
 namespace {
 
 NAst::TExprPtr ScanCodeConst(NAst::TTypePtr scanCodeType, int64_t value) {
-    auto expr = std::make_shared<NAst::TNumberExpr>(TLocation{}, value);
+    auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
     expr->Type = std::move(scanCodeType);
     return expr;
 }
@@ -67,11 +67,11 @@ NAst::TExprPtr ScanCodeConst(NAst::TTypePtr scanCodeType, int64_t value) {
 NAst::TExprPtr MakeScanCodeCast(NAst::TExprPtr value, NAst::TTypePtr targetType) {
     // A plain TCastExpr would be dispatched back to the module's own `cast`
     // operator by type annotation, looping forever; bitcast bypasses operators.
-    return std::make_shared<NAst::TBitcastExpr>(value->Location, std::move(value), std::move(targetType));
+    return MakeIntrusive<NAst::TBitcastExpr>(value->Location, std::move(value), std::move(targetType));
 }
 
 NAst::TExprPtr MakeBinary(const char* op, NAst::TExprPtr left, NAst::TExprPtr right, NAst::TTypePtr type) {
-    auto expr = std::make_shared<NAst::TBinaryExpr>(left->Location, NAst::TOperator(op), std::move(left), std::move(right));
+    auto expr = MakeIntrusive<NAst::TBinaryExpr>(left->Location, NAst::TOperator(op), std::move(left), std::move(right));
     expr->Type = std::move(type);
     return expr;
 }

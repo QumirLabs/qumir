@@ -203,7 +203,7 @@ std::expected<TComposeResult, TError> Compose(
     }
 
     return TComposeResult{
-        std::make_shared<TBlockExpr>(mainAst->Location, std::move(stmts)),
+        MakeIntrusive<TBlockExpr>(mainAst->Location, std::move(stmts)),
         std::move(*pragmas),
         std::move(llvmBitcode),
     };

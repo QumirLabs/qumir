@@ -51,13 +51,13 @@ TRunResult RunWithInjection(
     if (!parsed) return {{}, parsed.error().ToString()};
     auto ast = std::move(parsed.value());
 
-    auto* topBlock = dynamic_cast<TBlockExpr*>(ast.get());
+    auto* topBlock = dynamic_cast<TBlockExpr*>(ast.Get());
     if (!topBlock) return {{}, "expected TBlockExpr at top level"};
 
     TBlockExpr* funcBody = nullptr;
     for (auto& stmt : topBlock->Stmts) {
-        if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.get())) {
-            funcBody = funDecl->Body.get();
+        if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.Get())) {
+            funcBody = funDecl->Body.Get();
             break;
         }
     }
@@ -116,34 +116,34 @@ TRunResult RunWithInjection(
 }
 
 TExprPtr num(int64_t value) {
-    return std::make_shared<TNumberExpr>(TLocation{}, value);
+    return MakeIntrusive<TNumberExpr>(TLocation{}, value);
 }
 
 TExprPtr fnum(double value) {
-    return std::make_shared<TNumberExpr>(TLocation{}, value);
+    return MakeIntrusive<TNumberExpr>(TLocation{}, value);
 }
 
 TExprPtr str(std::string value) {
-    return std::make_shared<TStringLiteralExpr>(TLocation{}, std::move(value));
+    return MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value));
 }
 
 TExprPtr ident(const std::string& name) {
-    return std::make_shared<TIdentExpr>(TLocation{}, name);
+    return MakeIntrusive<TIdentExpr>(TLocation{}, name);
 }
 
 TExprPtr binary(const std::string& op, TExprPtr left, TExprPtr right) {
-    return std::make_shared<TBinaryExpr>(TLocation{}, TOperator(op), std::move(left), std::move(right));
+    return MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator(op), std::move(left), std::move(right));
 }
 
 TExprPtr call(const std::string& name, std::vector<TExprPtr> args) {
-    return std::make_shared<TCallExpr>(
+    return MakeIntrusive<TCallExpr>(
         TLocation{},
-        std::make_shared<TIdentExpr>(TLocation{}, name),
+        MakeIntrusive<TIdentExpr>(TLocation{}, name),
         std::move(args));
 }
 
 TExprPtr ifExpr(TExprPtr cond, TExprPtr thenExpr, TExprPtr elseExpr) {
-    return std::make_shared<TIfExpr>(
+    return MakeIntrusive<TIfExpr>(
         TLocation{},
         std::move(cond),
         std::move(thenExpr),
@@ -151,13 +151,13 @@ TExprPtr ifExpr(TExprPtr cond, TExprPtr thenExpr, TExprPtr elseExpr) {
 }
 
 TExprPtr letExpr(std::string name, TExprPtr value, TExprPtr body) {
-    auto var = std::make_shared<TVarStmt>(TLocation{}, std::move(name), nullptr);
+    auto var = MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), nullptr);
     var->Init = std::move(value);
-    return std::make_shared<TBlockExpr>(TLocation{}, std::vector<TExprPtr>{std::move(var), std::move(body)});
+    return MakeIntrusive<TBlockExpr>(TLocation{}, std::vector<TExprPtr>{std::move(var), std::move(body)});
 }
 
 TExprPtr assign(const std::string& name, TExprPtr value) {
-    return std::make_shared<TAssignExpr>(TLocation{}, name, std::move(value));
+    return MakeIntrusive<TAssignExpr>(TLocation{}, name, std::move(value));
 }
 
 TRunResult RunIntIfExpr(TExprPtr expr, EBackend backend = EBackend::VM) {

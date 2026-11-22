@@ -41,7 +41,7 @@ bool IsStringArray(const TTypePtr& type) {
 }
 
 TExprPtr Integer(const TLocation& location, int64_t value) {
-    auto result = std::make_shared<TNumberExpr>(location, value);
+    auto result = MakeIntrusive<TNumberExpr>(location, value);
     result->Type = std::make_shared<TIntegerType>();
     return result;
 }
@@ -52,7 +52,7 @@ TExprPtr Binary(
     TExprPtr left,
     TExprPtr right)
 {
-    auto result = std::make_shared<TBinaryExpr>(
+    auto result = MakeIntrusive<TBinaryExpr>(
         location,
         op,
         std::move(left),
@@ -153,13 +153,13 @@ std::expected<TExprPtr, TError> RequireOwned(TExprPtr value) {
     auto loc = value->Location;
     switch (*ownership) {
     case EValueOwnership::Literal:
-        return std::make_shared<TOwnLiteralExpr>(loc, std::move(value));
+        return MakeIntrusive<TOwnLiteralExpr>(loc, std::move(value));
     case EValueOwnership::Borrowed:
-        return std::make_shared<TRetainExpr>(
+        return MakeIntrusive<TRetainExpr>(
             loc,
-            std::make_shared<TBorrowExpr>(loc, std::move(value)));
+            MakeIntrusive<TBorrowExpr>(loc, std::move(value)));
     case EValueOwnership::Owned:
-        return std::make_shared<TMoveExpr>(loc, std::move(value));
+        return MakeIntrusive<TMoveExpr>(loc, std::move(value));
     case EValueOwnership::NotApplicable:
         return std::unexpected(TError(
             loc,
@@ -169,9 +169,9 @@ std::expected<TExprPtr, TError> RequireOwned(TExprPtr value) {
 }
 
 TExprPtr MakeNullString(const TLocation& location, const TTypePtr& type) {
-    auto zero = std::make_shared<TNumberExpr>(location, int64_t{0});
+    auto zero = MakeIntrusive<TNumberExpr>(location, int64_t{0});
     zero->Type = std::make_shared<TIntegerType>();
-    return std::make_shared<TBitcastExpr>(location, std::move(zero), type);
+    return MakeIntrusive<TBitcastExpr>(location, std::move(zero), type);
 }
 
 bool IsNullString(const TExprPtr& expr) {
@@ -237,7 +237,7 @@ public:
         {
             cleanups.push_back(MakeDestroy(*local));
         }
-        block.Cast()->Stmts.push_back(std::make_shared<TGlobalCleanupExpr>(
+        block.Cast()->Stmts.push_back(MakeIntrusive<TGlobalCleanupExpr>(
             root->Location,
             std::move(cleanups)));
         return true;
@@ -256,14 +256,14 @@ private:
     };
 
     TExprPtr MakeDestroy(const TLocal& local) const {
-        auto value = std::make_shared<TIdentExpr>(local.Location, local.Name);
+        auto value = MakeIntrusive<TIdentExpr>(local.Location, local.Name);
         value->Type = local.Type;
         TExprPtr aux;
         if (local.AuxName) {
-            aux = std::make_shared<TIdentExpr>(local.Location, *local.AuxName);
+            aux = MakeIntrusive<TIdentExpr>(local.Location, *local.AuxName);
             aux->Type = std::make_shared<TIntegerType>();
         }
-        return std::make_shared<TDestroyExpr>(
+        return MakeIntrusive<TDestroyExpr>(
             local.Location,
             std::move(value),
             std::move(aux));
@@ -305,7 +305,7 @@ private:
     // Converts a source return into a value-preserving structured cleanup exit.
     std::expected<bool, TError> RewriteReturn(
         TExprPtr& expr,
-        const std::shared_ptr<TReturnExpr>& returnExpr,
+        const TExprPtrOf<TReturnExpr>& returnExpr,
         TScopeId scopeId)
     {
         if (!FunctionBoundary_) {
@@ -326,23 +326,23 @@ private:
                 return std::unexpected(owned.error());
             }
             const auto resultName = SyntheticNames_.Next();
-            auto result = std::make_shared<TVarStmt>(
+            auto result = MakeIntrusive<TVarStmt>(
                 returnExpr->Location,
                 resultName,
                 std::make_shared<TStringType>());
             result->Init = std::move(owned.value());
-            auto resultValue = std::make_shared<TIdentExpr>(
+            auto resultValue = MakeIntrusive<TIdentExpr>(
                 returnExpr->Location,
                 resultName);
             resultValue->Type = result->Type;
-            auto exit = std::make_shared<TCleanupExitExpr>(
+            auto exit = MakeIntrusive<TCleanupExitExpr>(
                 returnExpr->Location,
                 ECleanupExitKind::Return,
-                std::make_shared<TMoveExpr>(
+                MakeIntrusive<TMoveExpr>(
                     returnExpr->Location,
                     std::move(resultValue)),
                 std::move(cleanups));
-            auto wrapper = std::make_shared<TBlockExpr>(
+            auto wrapper = MakeIntrusive<TBlockExpr>(
                 returnExpr->Location,
                 std::vector<TExprPtr>{std::move(result), std::move(exit)});
             wrapper->Type = std::make_shared<TVoidType>();
@@ -350,7 +350,7 @@ private:
             return true;
         }
 
-        expr = std::make_shared<TCleanupExitExpr>(
+        expr = MakeIntrusive<TCleanupExitExpr>(
             returnExpr->Location,
             ECleanupExitKind::Return,
             std::move(value),
@@ -366,7 +366,7 @@ private:
         if (LoopBoundaries_.empty()) {
             return std::unexpected(TError(expr->Location, "Loop exit outside loop."));
         }
-        expr = std::make_shared<TCleanupExitExpr>(
+        expr = MakeIntrusive<TCleanupExitExpr>(
             expr->Location,
             kind,
             nullptr,
@@ -398,7 +398,7 @@ private:
     }
 
     std::expected<bool, TError> RewriteBlock(
-        const std::shared_ptr<TBlockExpr>& block,
+        const TExprPtrOf<TBlockExpr>& block,
         TScopeId parentScope,
         bool resultUsed)
     {
@@ -447,7 +447,7 @@ private:
                         {
                             const auto boundName = SyntheticNames_.Next();
                             const auto boundLocation = (*bound)->Location;
-                            auto boundValue = std::make_shared<TVarStmt>(
+                            auto boundValue = MakeIntrusive<TVarStmt>(
                                 boundLocation,
                                 boundName,
                                 std::make_shared<TIntegerType>());
@@ -456,12 +456,12 @@ private:
                             }
                             statements.push_back(std::move(boundValue));
                             if (!FunctionBoundary_) {
-                                statements.push_back(std::make_shared<TAssignExpr>(
+                                statements.push_back(MakeIntrusive<TAssignExpr>(
                                     boundLocation,
                                     boundName,
                                     std::move(*bound)));
                             }
-                            auto savedBound = std::make_shared<TIdentExpr>(
+                            auto savedBound = MakeIntrusive<TIdentExpr>(
                                 variable.Cast()->Location,
                                 boundName);
                             savedBound->Type = std::make_shared<TIntegerType>();
@@ -475,7 +475,7 @@ private:
                 std::optional<std::string> auxName;
                 if (IsStringArray(variable.Cast()->Type)) {
                     auxName = SyntheticNames_.Next();
-                    auto allocationSize = std::make_shared<TVarStmt>(
+                    auto allocationSize = MakeIntrusive<TVarStmt>(
                         variable.Cast()->Location,
                         *auxName,
                         std::make_shared<TIntegerType>());
@@ -484,7 +484,7 @@ private:
                     }
                     statements.push_back(std::move(allocationSize));
                     if (!FunctionBoundary_) {
-                        statements.push_back(std::make_shared<TAssignExpr>(
+                        statements.push_back(MakeIntrusive<TAssignExpr>(
                             variable.Cast()->Location,
                             *auxName,
                             ArrayAllocationSize(*variable.Cast())));
@@ -545,11 +545,11 @@ private:
                     if (!owned) {
                         return std::unexpected(owned.error());
                     }
-                    auto target = std::make_shared<TIdentExpr>(
+                    auto target = MakeIntrusive<TIdentExpr>(
                         variable.Cast()->Location,
                         variable.Cast()->Name);
                     target->Type = variable.Cast()->Type;
-                    statements.push_back(std::make_shared<TReplaceExpr>(
+                    statements.push_back(MakeIntrusive<TReplaceExpr>(
                         variable.Cast()->Location,
                         std::move(target),
                         std::move(owned.value())));
@@ -586,9 +586,9 @@ private:
                 }
                 if (*ownership == EValueOwnership::Owned) {
                     auto loc = statement->Location;
-                    statement = std::make_shared<TDestroyExpr>(
+                    statement = MakeIntrusive<TDestroyExpr>(
                         loc,
-                        std::make_shared<TMoveExpr>(
+                        MakeIntrusive<TMoveExpr>(
                             loc,
                             std::move(statement)));
                     changed = true;
@@ -597,7 +597,7 @@ private:
             statements.push_back(statement);
         }
         const bool fallsThrough = !AlwaysExits(
-            std::make_shared<TBlockExpr>(block->Location, statements));
+            MakeIntrusive<TBlockExpr>(block->Location, auto(statements)));
         if (FunctionBoundary_ && fallsThrough) {
             auto cleanups = MakeCleanups(Scopes_.size() - 1);
             if (!cleanups.empty()) {
@@ -615,7 +615,7 @@ private:
 
     std::expected<bool, TError> RewriteAssign(
         TExprPtr& expr,
-        const std::shared_ptr<TAssignExpr>& assign,
+        const TExprPtrOf<TAssignExpr>& assign,
         TScopeId scopeId)
     {
         bool changed = false;
@@ -638,9 +638,9 @@ private:
         if (!owned) {
             return std::unexpected(owned.error());
         }
-        auto target = std::make_shared<TIdentExpr>(assign->Location, assign->Name);
+        auto target = MakeIntrusive<TIdentExpr>(assign->Location, assign->Name);
         target->Type = declaration->Type;
-        expr = std::make_shared<TReplaceExpr>(
+        expr = MakeIntrusive<TReplaceExpr>(
             assign->Location,
             std::move(target),
             std::move(owned.value()));
@@ -649,7 +649,7 @@ private:
 
     std::expected<bool, TError> RewriteArrayAssign(
         TExprPtr& expr,
-        const std::shared_ptr<TArrayAssignExpr>& assign,
+        const TExprPtrOf<TArrayAssignExpr>& assign,
         TScopeId scopeId)
     {
         bool changed = false;
@@ -686,16 +686,16 @@ private:
             return changed;
         }
 
-        auto collection = std::make_shared<TIdentExpr>(assign->Location, assign->Name);
+        auto collection = MakeIntrusive<TIdentExpr>(assign->Location, assign->Name);
         collection->Type = declaration->Type;
         TExprPtr target;
         if (assign->Indices.size() == 1) {
-            target = std::make_shared<TIndexExpr>(
+            target = MakeIntrusive<TIndexExpr>(
                 assign->Location,
                 std::move(collection),
                 std::move(assign->Indices.front()));
         } else {
-            target = std::make_shared<TMultiIndexExpr>(
+            target = MakeIntrusive<TMultiIndexExpr>(
                 assign->Location,
                 std::move(collection),
                 std::move(assign->Indices));
@@ -705,7 +705,7 @@ private:
         if (!owned) {
             return std::unexpected(owned.error());
         }
-        expr = std::make_shared<TReplaceExpr>(
+        expr = MakeIntrusive<TReplaceExpr>(
             assign->Location,
             std::move(target),
             std::move(owned.value()));
@@ -714,7 +714,7 @@ private:
 
     std::expected<bool, TError> RewriteFieldAssign(
         TExprPtr& expr,
-        const std::shared_ptr<TFieldAssignExpr>& assign,
+        const TExprPtrOf<TFieldAssignExpr>& assign,
         TScopeId scopeId)
     {
         bool changed = false;
@@ -741,7 +741,7 @@ private:
         if (!IsString(fieldType)) {
             return changed;
         }
-        auto target = std::make_shared<TFieldAccessExpr>(
+        auto target = MakeIntrusive<TFieldAccessExpr>(
             assign->Location,
             std::move(assign->Object),
             assign->FieldName);
@@ -751,7 +751,7 @@ private:
         if (!owned) {
             return std::unexpected(owned.error());
         }
-        expr = std::make_shared<TReplaceExpr>(
+        expr = MakeIntrusive<TReplaceExpr>(
             assign->Location,
             std::move(target),
             std::move(owned.value()));
@@ -764,7 +764,7 @@ private:
     // the future, is the value of the block - see RewriteAwaitedCall.
     std::expected<bool, TError> RewriteCall(
         TExprPtr& expr,
-        const std::shared_ptr<TCallExpr>& call,
+        const TExprPtrOf<TCallExpr>& call,
         TScopeId scopeId,
         TExprPtr valueNode = nullptr)
     {
@@ -820,7 +820,7 @@ private:
             if (*ownership == EValueOwnership::Borrowed) {
                 if (!TMaybeNode<TBorrowExpr>(argument)) {
                     auto loc = argument->Location;
-                    argument = std::make_shared<TBorrowExpr>(
+                    argument = MakeIntrusive<TBorrowExpr>(
                         loc,
                         std::move(argument));
                     changed = true;
@@ -844,26 +844,26 @@ private:
                 return std::unexpected(owned.error());
             }
             const auto name = SyntheticNames_.Next();
-            auto temporary = std::make_shared<TVarStmt>(
+            auto temporary = MakeIntrusive<TVarStmt>(
                 call->Location,
                 name,
                 std::make_shared<TStringType>());
             temporary->Init = std::move(owned.value());
             prefix.push_back(temporary);
 
-            auto borrowedStorage = std::make_shared<TIdentExpr>(
+            auto borrowedStorage = MakeIntrusive<TIdentExpr>(
                 call->Location,
                 name);
             borrowedStorage->Type = parameterType;
-            argument = std::make_shared<TBorrowExpr>(
+            argument = MakeIntrusive<TBorrowExpr>(
                 call->Location,
                 std::move(borrowedStorage));
 
-            auto ownedStorage = std::make_shared<TIdentExpr>(
+            auto ownedStorage = MakeIntrusive<TIdentExpr>(
                 call->Location,
                 name);
             ownedStorage->Type = parameterType;
-            cleanups.push_back(std::make_shared<TDestroyExpr>(
+            cleanups.push_back(MakeIntrusive<TDestroyExpr>(
                 call->Location,
                 std::move(ownedStorage)));
             changed = true;
@@ -877,7 +877,7 @@ private:
         const bool returnsValue = !TMaybeType<TVoidType>(valueNode->Type);
         if (returnsValue) {
             const auto resultName = SyntheticNames_.Next();
-            auto result = std::make_shared<TVarStmt>(
+            auto result = MakeIntrusive<TVarStmt>(
                 call->Location,
                 resultName,
                 valueNode->Type);
@@ -886,12 +886,12 @@ private:
             for (auto it = cleanups.rbegin(); it != cleanups.rend(); ++it) {
                 statements.push_back(*it);
             }
-            auto resultStorage = std::make_shared<TIdentExpr>(
+            auto resultStorage = MakeIntrusive<TIdentExpr>(
                 call->Location,
                 resultName);
             resultStorage->Type = valueNode->Type;
             if (IsString(valueNode->Type)) {
-                statements.push_back(std::make_shared<TMoveExpr>(
+                statements.push_back(MakeIntrusive<TMoveExpr>(
                     call->Location,
                     std::move(resultStorage)));
             } else {
@@ -904,7 +904,7 @@ private:
             }
         }
 
-        auto wrapper = std::make_shared<TBlockExpr>(
+        auto wrapper = MakeIntrusive<TBlockExpr>(
             call->Location,
             std::move(statements));
         wrapper->Type = valueNode->Type;
@@ -930,7 +930,7 @@ private:
     // with a Future return type.
     std::expected<bool, TError> RewriteAwaitedCall(
         TExprPtr& expr,
-        const std::shared_ptr<TAwaitExpr>& await,
+        const TExprPtrOf<TAwaitExpr>& await,
         TScopeId scopeId)
     {
         auto call = TMaybeNode<TCallExpr>(await->Operand);
@@ -980,7 +980,7 @@ private:
                 FunctionBoundary_ = previousFunctionBoundary;
                 return result;
             }
-            function.Cast()->Body = std::static_pointer_cast<TBlockExpr>(body);
+            function.Cast()->Body = StaticPointerCast<TBlockExpr>(body);
             bool changed = result.value();
             if (function.Cast()->LastAssert) {
                 auto assertResult = RewriteExpr(

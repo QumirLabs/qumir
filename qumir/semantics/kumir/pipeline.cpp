@@ -21,9 +21,9 @@ std::expected<bool, TError> PowerTransform(
             if (NAst::TMaybeType<NAst::TIntegerType>(rightType)) {
                 functionName = "fpow";
             }
-            return std::make_shared<NAst::TCallExpr>(
+            return MakeIntrusive<NAst::TCallExpr>(
                 binary.Cast()->Location,
-                std::make_shared<NAst::TIdentExpr>(
+                MakeIntrusive<NAst::TIdentExpr>(
                     binary.Cast()->Location,
                     std::move(functionName)),
                 std::vector<NAst::TExprPtr>{

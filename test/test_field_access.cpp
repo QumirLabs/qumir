@@ -57,14 +57,14 @@ TRunResult RunWithInjection(
     ast = std::move(composed->Ast);
     resolver.ApplyPragmas(composed->Pragmas);
 
-    auto* topBlock = dynamic_cast<TBlockExpr*>(ast.get());
+    auto* topBlock = dynamic_cast<TBlockExpr*>(ast.Get());
     if (!topBlock) return {{}, "expected TBlockExpr at top level"};
 
     // Find the function body (алг нач...кон) inside the top-level block
     TBlockExpr* funcBody = nullptr;
     for (auto& stmt : topBlock->Stmts) {
-        if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.get())) {
-            funcBody = funDecl->Body.get();
+        if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.Get())) {
+            funcBody = funDecl->Body.Get();
             break;
         }
     }
@@ -121,17 +121,17 @@ TEST(FieldAccess, ReadWriteFirstField) {
     auto loc = TLocation{};
 
     std::vector<TExprPtr> injected = {
-        std::make_shared<TFieldAssignExpr>(
+        MakeIntrusive<TFieldAssignExpr>(
             loc,
-            std::make_shared<TIdentExpr>(loc, "c"),
+            MakeIntrusive<TIdentExpr>(loc, "c"),
             "re",
-            std::make_shared<TNumberExpr>(loc, 3.5)),
-        std::make_shared<TAssignExpr>(
+            MakeIntrusive<TNumberExpr>(loc, 3.5)),
+        MakeIntrusive<TAssignExpr>(
             loc,
             "x",
-            std::make_shared<TFieldAccessExpr>(
+            MakeIntrusive<TFieldAccessExpr>(
                 loc,
-                std::make_shared<TIdentExpr>(loc, "c"),
+                MakeIntrusive<TIdentExpr>(loc, "c"),
                 "re")),
     };
 
@@ -147,17 +147,17 @@ TEST(FieldAccess, ReadWriteSecondField) {
     auto loc = TLocation{};
 
     std::vector<TExprPtr> injected = {
-        std::make_shared<TFieldAssignExpr>(
+        MakeIntrusive<TFieldAssignExpr>(
             loc,
-            std::make_shared<TIdentExpr>(loc, "c"),
+            MakeIntrusive<TIdentExpr>(loc, "c"),
             "im",
-            std::make_shared<TNumberExpr>(loc, 7.25)),
-        std::make_shared<TAssignExpr>(
+            MakeIntrusive<TNumberExpr>(loc, 7.25)),
+        MakeIntrusive<TAssignExpr>(
             loc,
             "x",
-            std::make_shared<TFieldAccessExpr>(
+            MakeIntrusive<TFieldAccessExpr>(
                 loc,
-                std::make_shared<TIdentExpr>(loc, "c"),
+                MakeIntrusive<TIdentExpr>(loc, "c"),
                 "im")),
     };
 
@@ -173,17 +173,17 @@ TEST(FieldAccess, UnwrittenFieldIsZero) {
 
     // Only write re; read im
     std::vector<TExprPtr> injected = {
-        std::make_shared<TFieldAssignExpr>(
+        MakeIntrusive<TFieldAssignExpr>(
             loc,
-            std::make_shared<TIdentExpr>(loc, "c"),
+            MakeIntrusive<TIdentExpr>(loc, "c"),
             "re",
-            std::make_shared<TNumberExpr>(loc, 5.0)),
-        std::make_shared<TAssignExpr>(
+            MakeIntrusive<TNumberExpr>(loc, 5.0)),
+        MakeIntrusive<TAssignExpr>(
             loc,
             "x",
-            std::make_shared<TFieldAccessExpr>(
+            MakeIntrusive<TFieldAccessExpr>(
                 loc,
-                std::make_shared<TIdentExpr>(loc, "c"),
+                MakeIntrusive<TIdentExpr>(loc, "c"),
                 "im")),
     };
 
@@ -198,12 +198,12 @@ TEST(FieldAccess, UnknownFieldError) {
     auto loc = TLocation{};
 
     std::vector<TExprPtr> injected = {
-        std::make_shared<TAssignExpr>(
+        MakeIntrusive<TAssignExpr>(
             loc,
             "x",
-            std::make_shared<TFieldAccessExpr>(
+            MakeIntrusive<TFieldAccessExpr>(
                 loc,
-                std::make_shared<TIdentExpr>(loc, "c"),
+                MakeIntrusive<TIdentExpr>(loc, "c"),
                 "nonexistent")),
     };
 

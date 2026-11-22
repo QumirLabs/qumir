@@ -39,7 +39,7 @@ struct TGenericBindings {
 };
 
 using TTask = TExpectedTask<TExprPtr, TError, TLocation>;
-using TFunDeclTask = TExpectedTask<std::shared_ptr<TFunDecl>, TError, TLocation>;
+using TFunDeclTask = TExpectedTask<TExprPtrOf<TFunDecl>, TError, TLocation>;
 using TGenericBindingsTask = TExpectedTask<TGenericBindings, TError, TLocation>;
 using TGenericBoolTask = TExpectedTask<bool, TError, TLocation>;
 using TRegisteredOpTask = TExpectedTask<std::optional<NSemantics::TNameResolver::TRegisteredOp>, TError, TLocation>;
@@ -120,16 +120,16 @@ std::optional<TError> ValidateVectorTypes(const TTypePtr& type, const TLocation&
 }
 
 TTask AnnotateIdent(
-    std::shared_ptr<TIdentExpr> ident,
+    const TExprPtrOf<TIdentExpr>& ident,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId,
     bool pathThrough);
 TTask AnnotateStructConstruct(
-    std::shared_ptr<TStructConstructExpr> structure,
+    const TExprPtrOf<TStructConstructExpr>& structure,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId);
 TFunDeclTask InstantiateGenericFunction(
-    std::shared_ptr<TFunDecl> genericDecl,
+    const TExprPtrOf<TFunDecl>& genericDecl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
@@ -395,7 +395,7 @@ bool CanImplicit(TTypePtr S, TTypePtr D, NSemantics::TNameResolver* ctx) {
 
 // Returns the inline replacement if the function has an InlineFactory, nullptr otherwise.
 // The replacement has no Type set - callers that are coroutines must DoAnnotate it.
-TExprPtr TryApplyInlineFactory(const std::shared_ptr<TFunDecl>& funDecl, std::vector<TExprPtr> args) {
+TExprPtr TryApplyInlineFactory(const TExprPtrOf<TFunDecl>& funDecl, std::vector<TExprPtr> args) {
     if (funDecl->InlineFactory) {
         return (*funDecl->InlineFactory)(std::move(args));
     }
@@ -431,7 +431,7 @@ TExprPtr InsertImplicitCastIfNeeded(TExprPtr expr, TTypePtr toType, NSemantics::
             if (num->IsFloat()) {
                 // float to int
                 int64_t intVal = static_cast<int64_t>(num->FloatValue);
-                auto newNum = std::make_shared<TNumberExpr>(num->Location, intVal);
+                auto newNum = MakeIntrusive<TNumberExpr>(num->Location, intVal);
                 newNum->Type = toType;
                 return newNum;
             } else {
@@ -448,7 +448,7 @@ TExprPtr InsertImplicitCastIfNeeded(TExprPtr expr, TTypePtr toType, NSemantics::
             } else {
                 // int to float
                 double floatVal = static_cast<double>(num->IntValue);
-                auto newNum = std::make_shared<TNumberExpr>(num->Location, floatVal);
+                auto newNum = MakeIntrusive<TNumberExpr>(num->Location, floatVal);
                 newNum->Type = toType;
                 return newNum;
             }
@@ -456,10 +456,10 @@ TExprPtr InsertImplicitCastIfNeeded(TExprPtr expr, TTypePtr toType, NSemantics::
     }
 
     if (auto synthName = ctx->GetCast(expr->Type, toType)) {
-        auto callee = std::make_shared<TIdentExpr>(expr->Location, *synthName);
+        auto callee = MakeIntrusive<TIdentExpr>(expr->Location, *synthName);
         callee->Type = std::make_shared<TFunctionType>(
             std::vector<TTypePtr>{expr->Type}, toType);
-        auto call = std::make_shared<TCallExpr>(expr->Location, callee,
+        auto call = MakeIntrusive<TCallExpr>(expr->Location, callee,
             std::vector<TExprPtr>{expr});
         call->Type = toType;
         return call;
@@ -477,11 +477,11 @@ TTask AnnotateIfNeeded(TExprPtr expr, NSemantics::TNameResolver& ctx, NSemantics
 TExprPtr MakeModuleOpCall(const std::string& synthName, std::vector<TExprPtr> args,
     TTypePtr returnType, TLocation loc, NSemantics::TNameResolver& ctx)
 {
-    auto callee = std::make_shared<TIdentExpr>(loc, synthName);
+    auto callee = MakeIntrusive<TIdentExpr>(loc, synthName);
     std::vector<TTypePtr> argTypes;
     for (auto& a : args) argTypes.push_back(a->Type);
     callee->Type = std::make_shared<TFunctionType>(std::move(argTypes), returnType);
-    auto call = std::make_shared<TCallExpr>(loc, callee, std::move(args));
+    auto call = MakeIntrusive<TCallExpr>(loc, callee, std::move(args));
     call->Type = returnType;
     return call;
 }
@@ -532,7 +532,7 @@ TTypePtr CommonValueType(TTypePtr a, TTypePtr b, NSemantics::TNameResolver& ctx)
     return {};
 }
 
-TExprPtr AnnotateNumber(std::shared_ptr<TNumberExpr> num) {
+TExprPtr AnnotateNumber(const TExprPtrOf<TNumberExpr>& num) {
     if (num->Type) {
         return num;
     }
@@ -637,7 +637,7 @@ bool ApplyStructConstructContext(TExprPtr expr, TTypePtr targetType) {
     return false;
 }
 
-void BackfillStructFieldTypes(const std::shared_ptr<TStructConstructExpr>& structure) {
+void BackfillStructFieldTypes(const TExprPtrOf<TStructConstructExpr>& structure) {
     auto structType = TMaybeType<TStructType>(UnwrapNamedType(structure->Type)).Cast();
     if (!structType) {
         return;
@@ -647,7 +647,7 @@ void BackfillStructFieldTypes(const std::shared_ptr<TStructConstructExpr>& struc
     }
 }
 
-TTask AnnotateStructConstruct(std::shared_ptr<TStructConstructExpr> structure, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateStructConstruct(const TExprPtrOf<TStructConstructExpr>& structure, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto targetStruct = TMaybeType<TStructType>(UnwrapNamedType(UnwrapReferenceType(structure->Type))).Cast();
     if (!targetStruct || !HasConcreteStructFieldTypes(*targetStruct)) {
         for (auto& field : structure->Fields) {
@@ -706,7 +706,7 @@ TTask AnnotateStructConstruct(std::shared_ptr<TStructConstructExpr> structure, N
     co_return structure;
 }
 
-TTask AnnotateCast(std::shared_ptr<TCastExpr> cast, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateCast(const TExprPtrOf<TCastExpr>& cast, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     bool contextualStructConstruct = ApplyStructConstructContext(cast->Operand, cast->Type);
     cast->Operand = co_await DoAnnotate(cast->Operand, context, scopeId);
     if (cast->Operand->Type) {
@@ -718,10 +718,10 @@ TTask AnnotateCast(std::shared_ptr<TCastExpr> cast, NSemantics::TNameResolver& c
         auto sourceStructType = UnwrapNamedType(sourceType);
         auto targetStructType = UnwrapNamedType(targetType);
         if (auto synthName = context.GetCast(cast->Operand->Type, cast->Type)) {
-            auto callee = std::make_shared<TIdentExpr>(cast->Location, *synthName);
+            auto callee = MakeIntrusive<TIdentExpr>(cast->Location, *synthName);
             callee->Type = std::make_shared<TFunctionType>(
                 std::vector<TTypePtr>{cast->Operand->Type}, cast->Type);
-            auto call = std::make_shared<TCallExpr>(cast->Location, callee,
+            auto call = MakeIntrusive<TCallExpr>(cast->Location, callee,
                 std::vector<TExprPtr>{cast->Operand});
             call->Type = cast->Type;
             co_return call;
@@ -751,7 +751,7 @@ TTask AnnotateCast(std::shared_ptr<TCastExpr> cast, NSemantics::TNameResolver& c
     co_return cast;
 }
 
-TTask AnnotateUnary(std::shared_ptr<TUnaryExpr> unary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateUnary(const TExprPtrOf<TUnaryExpr>& unary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     unary->Operand = co_await DoAnnotate(unary->Operand, context, scopeId);
     unary->Type = unary->Operand->Type;
     if (auto vector = TMaybeType<TVectorType>(UnwrapNamedType(UnwrapReferenceType(unary->Type))).Cast()) {
@@ -827,7 +827,7 @@ TTask AnnotateUnary(std::shared_ptr<TUnaryExpr> unary, NSemantics::TNameResolver
     co_return unary;
 }
 
-TTask AnnotateFunDecl(std::shared_ptr<TFunDecl> funDecl, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFunDecl(const TExprPtrOf<TFunDecl>& funDecl, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     std::vector<TTypePtr> params;
     for (auto& p : funDecl->Params) {
         co_await DoAnnotate(p, context, NSemantics::TScopeId{funDecl->Body->Scope});
@@ -901,7 +901,7 @@ TTask AnnotateFunDecl(std::shared_ptr<TFunDecl> funDecl, NSemantics::TNameResolv
     co_return funDecl;
 }
 
-TTask AnnotateReturn(std::shared_ptr<TReturnExpr> ret, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateReturn(const TExprPtrOf<TReturnExpr>& ret, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto scope = context.GetScope(scopeId);
     auto funcScope = scope->FuncScope;
     if (!funcScope || !funcScope->RetType) {
@@ -939,7 +939,7 @@ TTask AnnotateReturn(std::shared_ptr<TReturnExpr> ret, NSemantics::TNameResolver
 
 template<typename T>
 TTask AnnotateLifetimeValue(
-    std::shared_ptr<T> expr,
+    const TExprPtrOf<T>& expr,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -952,7 +952,7 @@ TTask AnnotateLifetimeValue(
 }
 
 TTask AnnotateDestroy(
-    std::shared_ptr<TDestroyExpr> destroy,
+    const TExprPtrOf<TDestroyExpr>& destroy,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -965,7 +965,7 @@ TTask AnnotateDestroy(
 }
 
 TTask AnnotateReplace(
-    std::shared_ptr<TReplaceExpr> replace,
+    const TExprPtrOf<TReplaceExpr>& replace,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -994,7 +994,7 @@ TTask AnnotateReplace(
 }
 
 TTask AnnotateCleanupExit(
-    std::shared_ptr<TCleanupExitExpr> exit,
+    const TExprPtrOf<TCleanupExitExpr>& exit,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -1039,7 +1039,7 @@ TTask AnnotateCleanupExit(
 }
 
 TTask AnnotateGlobalCleanup(
-    std::shared_ptr<TGlobalCleanupExpr> cleanup,
+    const TExprPtrOf<TGlobalCleanupExpr>& cleanup,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -1102,7 +1102,7 @@ struct TBinaryOpTypes {
 using TBinaryOpTypesResult = std::expected<TBinaryOpTypes, TError>;
 
 TTask AnnotateVector(
-    std::shared_ptr<TVectorExpr> vector,
+    const TExprPtrOf<TVectorExpr>& vector,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
@@ -1165,7 +1165,7 @@ bool IsStringType(const TTypePtr& type) {
 }
 
 TBinaryOpTypesResult AnnotateNumericBinaryOp(
-    const std::shared_ptr<TBinaryExpr>& binary,
+    const TExprPtrOf<TBinaryExpr>& binary,
     TTypePtr left,
     TTypePtr right,
     NSemantics::TNameResolver& context)
@@ -1250,7 +1250,7 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
 }
 
 TBinaryOpTypesResult AnnotateStringBinaryOp(
-    const std::shared_ptr<TBinaryExpr>& binary,
+    const TExprPtrOf<TBinaryExpr>& binary,
     const TTypePtr& left,
     const TTypePtr& right)
 {
@@ -1277,7 +1277,7 @@ TBinaryOpTypesResult AnnotateStringBinaryOp(
 }
 
 TBinaryOpTypesResult AnnotateVecBinaryOp(
-    const std::shared_ptr<TBinaryExpr>& binary,
+    const TExprPtrOf<TBinaryExpr>& binary,
     const TTypePtr& left,
     const TTypePtr& right,
     NSemantics::TNameResolver& context)
@@ -1345,7 +1345,7 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
     return types;
 }
 
-TTask AnnotateBinary(std::shared_ptr<TBinaryExpr> binary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateBinary(const TExprPtrOf<TBinaryExpr>& binary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto explicitType = binary->Type;
     binary->Left = co_await DoAnnotate(binary->Left, context, scopeId);
     binary->Right = co_await DoAnnotate(binary->Right, context, scopeId);
@@ -1384,7 +1384,7 @@ TTask AnnotateBinary(std::shared_ptr<TBinaryExpr> binary, NSemantics::TNameResol
     co_return binary;
 }
 
-TTask AnnotateBlock(std::shared_ptr<TBlockExpr> block, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateBlock(const TExprPtrOf<TBlockExpr>& block, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     for (auto& s : block->Stmts) {
         s = co_await DoAnnotate(s, context, NSemantics::TScopeId{block->Scope});
         if (!s->Type) {
@@ -1410,7 +1410,7 @@ TTask AnnotateBlock(std::shared_ptr<TBlockExpr> block, NSemantics::TNameResolver
     co_return block;
 }
 
-TTask AnnotateAssign(std::shared_ptr<TAssignExpr> assign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateAssign(const TExprPtrOf<TAssignExpr>& assign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     assign->Value = co_await DoAnnotate(assign->Value, context, scopeId);
     if (!assign->Value->Type) {
         co_return TError(assign->Location, "Нельзя присвоить значение с неопределённым типом переменной: " + assign->Name);
@@ -1446,7 +1446,7 @@ TTask AnnotateAssign(std::shared_ptr<TAssignExpr> assign, NSemantics::TNameResol
     co_return assign;
 }
 
-TTask AnnotateArrayAssign(std::shared_ptr<TArrayAssignExpr> arrayAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateArrayAssign(const TExprPtrOf<TArrayAssignExpr>& arrayAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     arrayAssign->Value = co_await DoAnnotate(arrayAssign->Value, context, scopeId);
     if (!arrayAssign->Value->Type) {
         co_return TError(arrayAssign->Location, "Нельзя присвоить значение без типа элементу массива '" + arrayAssign->Name + "'.");
@@ -1540,7 +1540,7 @@ TTask AnnotateArrayAssign(std::shared_ptr<TArrayAssignExpr> arrayAssign, NSemant
     }
 }
 
-TTask AnnotateVar(std::shared_ptr<TVarStmt> var, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateVar(const TExprPtrOf<TVarStmt>& var, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     if (!var->Type) {
         // (var name = expr): type inferred from init expression
         if (!var->Init) {
@@ -1583,7 +1583,7 @@ TTask AnnotateVar(std::shared_ptr<TVarStmt> var, NSemantics::TNameResolver& cont
     co_return var;
 }
 
-TTask AnnotateIdent(std::shared_ptr<TIdentExpr> ident, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId, bool pathThrough = false) {
+TTask AnnotateIdent(const TExprPtrOf<TIdentExpr>& ident, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId, bool pathThrough = false) {
     auto symbolId = context.Lookup(ident->Name, scopeId);
     if (!symbolId) {
         co_return TError(ident->Location, "Идентификатор '" + ident->Name + "' не определён. Проверьте правильность написания имени или объявите переменную перед использованием.");
@@ -2115,7 +2115,7 @@ TExprPtr CloneAndSubstituteExpr(
             const int64_t value = it->second.starts_with('-')
                 ? std::stoll(it->second)
                 : std::bit_cast<int64_t>(static_cast<uint64_t>(std::stoull(it->second)));
-            auto number = std::make_shared<TNumberExpr>(clone->Location, value);
+            auto number = MakeIntrusive<TNumberExpr>(clone->Location, value);
             number->Type = genericParams.ValueTypes.at(ident.Cast()->Name);
             return number;
         }
@@ -2247,7 +2247,7 @@ TGenericBoolTask InferGenericBindingsFromReturnContext(
     NSemantics::TScopeId scopeId);
 
 TGenericBoolTask InferGenericBindingsFromStructConstruct(
-    std::shared_ptr<TStructConstructExpr> structure,
+    const TExprPtrOf<TStructConstructExpr>& structure,
     TTypePtr targetType,
     const TGenericParamSets& genericParams,
     TGenericBindings& bindings,
@@ -2420,7 +2420,7 @@ TGenericBoolTask InferGenericBindingsFromExplicitReturns(
 }
 
 TGenericBoolTask InferGenericBindingsFromReturnBody(
-    const std::shared_ptr<TFunDecl>& genericDecl,
+    const TExprPtrOf<TFunDecl>& genericDecl,
     const TGenericParamSets& genericParams,
     TGenericBindings& bindings,
     NSemantics::TNameResolver& context,
@@ -2433,7 +2433,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
     std::vector<TParam> params;
     params.reserve(genericDecl->Params.size());
     for (auto& param : genericDecl->Params) {
-        auto clonedParam = std::make_shared<TVarStmt>(*param);
+        auto clonedParam = MakeIntrusive<TVarStmt>(*param);
         clonedParam->Type = SubstituteGenericType(param->Type, genericParams, bindings);
         for (auto& bound : clonedParam->Bounds) {
             bound.first = CloneAndSubstituteExpr(bound.first, genericParams, bindings);
@@ -2444,7 +2444,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
 
     auto retType = SubstituteGenericType(genericDecl->RetType, genericParams, bindings);
     auto body = TMaybeNode<TBlockExpr>(CloneAndSubstituteExpr(genericDecl->Body, genericParams, bindings)).Cast();
-    auto probe = std::make_shared<TFunDecl>(
+    auto probe = MakeIntrusive<TFunDecl>(
         genericDecl->Location,
         genericDecl->Name + "$return_infer",
         UnboundGenericParams(*genericDecl, bindings),
@@ -2498,7 +2498,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
 }
 
 TGenericBindingsTask InferCompleteGenericBindings(
-    const std::shared_ptr<TFunDecl>& genericDecl,
+    const TExprPtrOf<TFunDecl>& genericDecl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
@@ -2543,7 +2543,7 @@ TGenericBindingsTask InferCompleteGenericBindings(
 // look-up-able before its body gets annotated, so a recursive call resolves
 // to the already-registered (in-progress) clone instead of re-entering.
 TFunDeclTask InstantiateGenericFunction(
-    std::shared_ptr<TFunDecl> genericDecl,
+    const TExprPtrOf<TFunDecl>& genericDecl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
@@ -2567,7 +2567,7 @@ TFunDeclTask InstantiateGenericFunction(
     std::vector<TTypePtr> paramTypes;
     paramTypes.reserve(genericDecl->Params.size());
     for (auto& param : genericDecl->Params) {
-        auto clonedParam = std::make_shared<TVarStmt>(*param);
+        auto clonedParam = MakeIntrusive<TVarStmt>(*param);
         clonedParam->Type = SubstituteGenericType(param->Type, genericParams, bindings);
         for (auto& bound : clonedParam->Bounds) {
             bound.first = CloneAndSubstituteExpr(bound.first, genericParams, bindings);
@@ -2595,7 +2595,7 @@ TFunDeclTask InstantiateGenericFunction(
 
     auto body = TMaybeNode<TBlockExpr>(CloneAndSubstituteExpr(genericDecl->Body, genericParams, bindings)).Cast();
 
-    auto cloned = std::make_shared<TFunDecl>(genericDecl->Location, mangledName, std::vector<TGenericParam>{}, std::move(params), body, retType);
+    auto cloned = MakeIntrusive<TFunDecl>(genericDecl->Location, mangledName, std::vector<TGenericParam>{}, std::move(params), body, retType);
     cloned->OriginalName = genericDecl->OriginalName.empty()
         ? genericDecl->Name
         : genericDecl->OriginalName;
@@ -2645,7 +2645,7 @@ TFunDeclTask InstantiateGenericFunction(
 }
 
 std::optional<TTypePtr> SubstituteGenericOperatorReturnType(
-    const std::shared_ptr<TFunDecl>& decl,
+    const TExprPtrOf<TFunDecl>& decl,
     const std::vector<TExprPtr>& args,
     NSemantics::TNameResolver& context,
     TTypePtr expectedReturnType,
@@ -2676,7 +2676,7 @@ TRegisteredOpTask InstantiateGenericOperator(
     TLocation callLoc)
 {
     std::optional<TArgCost> bestCost;
-    std::shared_ptr<TFunDecl> bestDecl;
+    TExprPtrOf<TFunDecl> bestDecl;
     bool ambiguous = false;
     std::optional<TError> delayedError;
 
@@ -2784,7 +2784,7 @@ TTask TryGenericBinaryOp(TExprPtr left, TExprPtr right,
 }
 
 TTask AnnotateOverloadedCall(
-    std::shared_ptr<TCallExpr> call,
+    const TExprPtrOf<TCallExpr>& call,
     const std::vector<NSemantics::TSymbolId>& overloads,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
@@ -2797,7 +2797,7 @@ TTask AnnotateOverloadedCall(
     }
 
     std::optional<TArgCost> bestCost;
-    std::shared_ptr<TFunDecl> bestDecl;
+    TExprPtrOf<TFunDecl> bestDecl;
     bool ambiguous = false;
 
     for (const auto& symId : overloads) {
@@ -2860,7 +2860,7 @@ TTask AnnotateOverloadedCall(
         call->Args[i] = InsertImplicitCastIfNeeded(call->Args[i], bestDecl->Params[i]->Type, &context);
     }
 
-    auto callee = std::make_shared<TIdentExpr>(call->Callee->Location, bestDecl->Name);
+    auto callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, bestDecl->Name);
     callee->Type = bestDecl->Type;
     call->Callee = callee;
     call->Type = bestDecl->RetType;
@@ -2939,7 +2939,7 @@ std::expected<TTypePtr, TError> VectorIntrinsicResult(
 }
 
 TTask AnnotateVectorIntrinsic(
-    std::shared_ptr<TCallExpr> call,
+    const TExprPtrOf<TCallExpr>& call,
     std::string_view op,
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
@@ -2974,22 +2974,22 @@ TTask AnnotateVectorIntrinsic(
     if (!context.Lookup(name, root)) {
         std::vector<TParam> params;
         for (size_t i = 0; i < argTypes.size(); ++i) {
-            params.push_back(std::make_shared<TVarStmt>(call->Args[i]->Location, "$arg" + std::to_string(i), argTypes[i]));
+            params.push_back(MakeIntrusive<TVarStmt>(call->Args[i]->Location, "$arg" + std::to_string(i), argTypes[i]));
         }
         // Typed declarations keep ordinary call validation and lifetime handling.
-        auto function = std::make_shared<TFunDecl>(call->Location, name, std::vector<TGenericParam>{},
+        auto function = MakeIntrusive<TFunDecl>(call->Location, name, std::vector<TGenericParam>{},
             std::move(params), nullptr, result);
         function->MangledName = builtin;
         function->Type = std::make_shared<TFunctionType>(argTypes, result);
         context.DeclareFunction(name, function);
     }
-    call->Callee = std::make_shared<TIdentExpr>(call->Callee->Location, name);
+    call->Callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, name);
     call->Callee->Type = std::make_shared<TFunctionType>(std::move(argTypes), result);
     call->Type = result;
     co_return call;
 }
 
-TTask AnnotateCall(std::shared_ptr<TCallExpr> call, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateCall(const TExprPtrOf<TCallExpr>& call, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     if (auto maybeIdent = TMaybeNode<TIdentExpr>(call->Callee)) {
         auto op = NSemantics::VectorIntrinsic(maybeIdent.Cast()->Name);
         if (!op.empty() && !context.Lookup(maybeIdent.Cast()->Name, scopeId)) {
@@ -3024,7 +3024,7 @@ TTask AnnotateCall(std::shared_ptr<TCallExpr> call, NSemantics::TNameResolver& c
                         "': ожидается " + std::to_string(genericDecl->Params.size()) + ", передано " + std::to_string(call->Args.size()) + ".");
                 }
                 auto instantiated = co_await InstantiateGenericFunction(genericDecl, call->Args, context, call->Location);
-                call->Callee = std::make_shared<TIdentExpr>(call->Callee->Location, instantiated->Name);
+                call->Callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, instantiated->Name);
             }
         }
     }
@@ -3105,7 +3105,7 @@ TTask AnnotateCall(std::shared_ptr<TCallExpr> call, NSemantics::TNameResolver& c
     co_return call;
 }
 
-TTask AnnotateAwait(std::shared_ptr<TAwaitExpr> awaitExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateAwait(const TExprPtrOf<TAwaitExpr>& awaitExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     awaitExpr->Operand = co_await DoAnnotate(awaitExpr->Operand, context, scopeId);
     if (!awaitExpr->Operand->Type) {
         co_return TError(awaitExpr->Location, "Нельзя ожидать выражение без типа.");
@@ -3140,7 +3140,7 @@ TTypePtr SettledBranchType(const TTypePtr& type) {
     return unwrapped;
 }
 
-TTask AnnotateIfExpr(std::shared_ptr<TIfExpr> ifExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateIfExpr(const TExprPtrOf<TIfExpr>& ifExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     ifExpr->Cond = co_await DoAnnotate(ifExpr->Cond, context, scopeId);
     if (!ifExpr->Cond->Type) {
         co_return TError(ifExpr->Cond->Location, "Условие в `если' не имеет типа. Проверьте корректность выражения в условии.");
@@ -3200,7 +3200,7 @@ TTask AnnotateIfExpr(std::shared_ptr<TIfExpr> ifExpr, NSemantics::TNameResolver&
     co_return ifExpr;
 }
 
-TTask AnnotateWhile(std::shared_ptr<TWhileStmtExpr> loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateWhile(const TExprPtrOf<TWhileStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
     loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, std::make_shared<TBoolType>(), &context);
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
@@ -3208,7 +3208,7 @@ TTask AnnotateWhile(std::shared_ptr<TWhileStmtExpr> loop, NSemantics::TNameResol
     co_return loop;
 }
 
-TTask AnnotateRepeat(std::shared_ptr<TRepeatStmtExpr> loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateRepeat(const TExprPtrOf<TRepeatStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
     loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
     loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, std::make_shared<TBoolType>(), &context);
@@ -3216,7 +3216,7 @@ TTask AnnotateRepeat(std::shared_ptr<TRepeatStmtExpr> loop, NSemantics::TNameRes
     co_return loop;
 }
 
-TTask AnnotateFor(std::shared_ptr<TForStmtExpr> loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFor(const TExprPtrOf<TForStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto intType = std::make_shared<TIntegerType>();
 
     auto symbolId = context.Lookup(loop->VarName, scopeId);
@@ -3241,7 +3241,7 @@ TTask AnnotateFor(std::shared_ptr<TForStmtExpr> loop, NSemantics::TNameResolver&
     co_return loop;
 }
 
-TTask AnnotateTimes(std::shared_ptr<TTimesStmtExpr> loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateTimes(const TExprPtrOf<TTimesStmtExpr>& loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     loop->Count = co_await DoAnnotate(loop->Count, context, scopeId);
     loop->Count = InsertImplicitCastIfNeeded(loop->Count, std::make_shared<TIntegerType>(), &context);
     loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
@@ -3249,7 +3249,7 @@ TTask AnnotateTimes(std::shared_ptr<TTimesStmtExpr> loop, NSemantics::TNameResol
     co_return loop;
 }
 
-TTask AnnotateMultiIndex(std::shared_ptr<TMultiIndexExpr> indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateMultiIndex(const TExprPtrOf<TMultiIndexExpr>& indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     indexExpr->Collection = co_await DoAnnotate(indexExpr->Collection, context, scopeId);
     if (!indexExpr->Collection->Type) {
         co_return TError(indexExpr->Location, "В выражении многомерного индекса не удалось определить тип коллекции (массив). Проверьте корректность выражения.");
@@ -3279,7 +3279,7 @@ TTask AnnotateMultiIndex(std::shared_ptr<TMultiIndexExpr> indexExpr, NSemantics:
     co_return indexExpr;
 }
 
-TTask AnnotateIndex(std::shared_ptr<TIndexExpr> indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateIndex(const TExprPtrOf<TIndexExpr>& indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     indexExpr->Collection = co_await DoAnnotate(indexExpr->Collection, context, scopeId);
     if (!indexExpr->Collection->Type) {
         co_return TError(indexExpr->Location, "В выражении индексации не удалось определить тип коллекции (массива или строки). Проверьте корректность выражения.");
@@ -3315,7 +3315,7 @@ TTask AnnotateIndex(std::shared_ptr<TIndexExpr> indexExpr, NSemantics::TNameReso
     co_return indexExpr;
 }
 
-TTask AnnotateSlice(std::shared_ptr<TSliceExpr> sliceExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateSlice(const TExprPtrOf<TSliceExpr>& sliceExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     sliceExpr->Collection = co_await DoAnnotate(sliceExpr->Collection, context, scopeId);
     if (!sliceExpr->Collection->Type) {
         co_return TError(sliceExpr->Location, "В выражении среза не удалось определить тип коллекции. Проверьте корректность выражения.");
@@ -3358,7 +3358,7 @@ TTask AnnotateSlice(std::shared_ptr<TSliceExpr> sliceExpr, NSemantics::TNameReso
     co_return sliceExpr;
 }
 
-TTask AnnotateFieldAccess(std::shared_ptr<TFieldAccessExpr> fieldAccess, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFieldAccess(const TExprPtrOf<TFieldAccessExpr>& fieldAccess, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     fieldAccess->Object = co_await DoAnnotate(fieldAccess->Object, context, scopeId);
     if (!fieldAccess->Object->Type) {
         co_return TError(fieldAccess->Location, "Не удалось определить тип объекта в выражении обращения к полю '" + fieldAccess->FieldName + "'.");
@@ -3409,7 +3409,7 @@ ResolveStructField(TTypePtr objType, const std::string& fieldName, int& outIndex
     return {nullptr, available};
 }
 
-TTask AnnotateFieldAssign(std::shared_ptr<TFieldAssignExpr> fieldAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
+TTask AnnotateFieldAssign(const TExprPtrOf<TFieldAssignExpr>& fieldAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     fieldAssign->Object = co_await DoAnnotate(fieldAssign->Object, context, scopeId);
     if (!fieldAssign->Object->Type) {
         co_return TError(fieldAssign->Location, "Не удалось определить тип объекта при присваивании полю '" + fieldAssign->FieldName + "'.");

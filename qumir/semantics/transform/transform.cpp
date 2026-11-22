@@ -45,10 +45,10 @@ std::expected<bool, TError> PreNameResolutionTransform(NAst::TExprPtr& expr)
                 oss << " @ " << assertStmt->Location.ToString();
                 std::vector<NAst::TExprPtr> args;
                 args.push_back(assertStmt->Expr);
-                args.push_back(std::make_shared<NAst::TStringLiteralExpr>(assertStmt->Location, oss.str()));
-                return std::make_shared<NAst::TCallExpr>(
+                args.push_back(MakeIntrusive<NAst::TStringLiteralExpr>(assertStmt->Location, oss.str()));
+                return MakeIntrusive<NAst::TCallExpr>(
                     assertStmt->Location,
-                    std::make_shared<NAst::TIdentExpr>(assertStmt->Location, "__ensure"),
+                    MakeIntrusive<NAst::TIdentExpr>(assertStmt->Location, "__ensure"),
                     std::move(args));
             }
             return node;
@@ -130,14 +130,14 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                     errors.push_back(TError(arrayAssign->Location, "string element assignment must have exactly one index"));
                     return node;
                 }
-                auto call = std::make_shared<NAst::TCallExpr>(arrayAssign->Location,
-                    std::make_shared<NAst::TIdentExpr>(arrayAssign->Location, "str_replace_sym"),
+                auto call = MakeIntrusive<NAst::TCallExpr>(arrayAssign->Location,
+                    MakeIntrusive<NAst::TIdentExpr>(arrayAssign->Location, "str_replace_sym"),
                     std::vector<NAst::TExprPtr>{
-                        std::make_shared<NAst::TIdentExpr>(arrayAssign->Location, arrayAssign->Name),
+                        MakeIntrusive<NAst::TIdentExpr>(arrayAssign->Location, arrayAssign->Name),
                         arrayAssign->Value,
                         arrayAssign->Indices[0]});
 
-                auto assign = std::make_shared<NAst::TAssignExpr>(arrayAssign->Location,
+                auto assign = MakeIntrusive<NAst::TAssignExpr>(arrayAssign->Location,
                     arrayAssign->Name,
                     call);
                 return assign;
@@ -153,19 +153,19 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 if (leftStr || rightStr) {
                     // string + string (string + symbol handled with implicit cast)
                     if (binary->Operator == NAst::TOperator("+")) {
-                        auto call = std::make_shared<NAst::TCallExpr>(binary->Location,
-                            std::make_shared<NAst::TIdentExpr>(binary->Location, "str_concat"),
+                        auto call = MakeIntrusive<NAst::TCallExpr>(binary->Location,
+                            MakeIntrusive<NAst::TIdentExpr>(binary->Location, "str_concat"),
                             std::vector<NAst::TExprPtr>{binary->Left, binary->Right});
                         return call;
                     }
                     if ((binary->Operator == "==" || binary->Operator == "!=" || binary->Operator == "<=" || binary->Operator == ">=" || binary->Operator == "<" || binary->Operator == ">")) {
-                        auto call = std::make_shared<NAst::TCallExpr>(binary->Location,
-                            std::make_shared<NAst::TIdentExpr>(binary->Location, "str_compare"),
+                        auto call = MakeIntrusive<NAst::TCallExpr>(binary->Location,
+                            MakeIntrusive<NAst::TIdentExpr>(binary->Location, "str_compare"),
                             std::vector<NAst::TExprPtr>{binary->Left, binary->Right});
                         std::vector<NAst::TExprPtr> args;
                         args.push_back(call);
-                        args.push_back(std::make_shared<NAst::TNumberExpr>(binary->Location, (int64_t)0));
-                        return std::make_shared<NAst::TBinaryExpr>(binary->Location, binary->Operator, args[0], args[1]);
+                        args.push_back(MakeIntrusive<NAst::TNumberExpr>(binary->Location, (int64_t)0));
+                        return MakeIntrusive<NAst::TBinaryExpr>(binary->Location, binary->Operator, args[0], args[1]);
                     }
                 }
 
@@ -182,9 +182,9 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 bool hasFileArg = false;
                 if (IsFileType(arg0.Expr->Type)) {
                     // first argument is a file, set output file
-                    auto call = std::make_shared<NAst::TCallExpr>(
+                    auto call = MakeIntrusive<NAst::TCallExpr>(
                         output->Location,
-                        std::make_shared<NAst::TIdentExpr>(output->Location, "output_set_file"),
+                        MakeIntrusive<NAst::TIdentExpr>(output->Location, "output_set_file"),
                         std::vector<NAst::TExprPtr>{ arg0.Expr });
                     stmts.push_back(call);
                     hasFileArg = true;
@@ -218,16 +218,16 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         if (width) {
                             args.push_back(width);
                         } else {
-                            args.push_back(std::make_shared<NAst::TNumberExpr>(output->Location, (int64_t)0));
+                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)0));
                         }
                         if (prec) {
                             args.push_back(prec);
                         } else {
-                            args.push_back(std::make_shared<NAst::TNumberExpr>(output->Location, (int64_t)-1));
+                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)-1));
                         }
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             output->Location,
-                            std::make_shared<NAst::TIdentExpr>(output->Location, "output_double"),
+                            MakeIntrusive<NAst::TIdentExpr>(output->Location, "output_double"),
                             std::move(args));
                     } else if (NAst::TMaybeType<NAst::TIntegerType>(type)) {
                         std::vector<NAst::TExprPtr> args;
@@ -235,15 +235,15 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         if (width) {
                             args.push_back(width);
                         } else {
-                            args.push_back(std::make_shared<NAst::TNumberExpr>(output->Location, (int64_t)0));
+                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)0));
                         }
                         if (prec) {
                             errors.push_back(TError(prec->Location, "precision argument is not applicable for integer output"));
                             return node;
                         }
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             output->Location,
-                            std::make_shared<NAst::TIdentExpr>(output->Location, "output_int64"),
+                            MakeIntrusive<NAst::TIdentExpr>(output->Location, "output_int64"),
                             std::move(args));
                     } else if (NAst::TMaybeType<NAst::TBoolType>(type)) {
                         if (width || prec) {
@@ -252,9 +252,9 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         }
                         std::vector<NAst::TExprPtr> args;
                         args.push_back(arg.Expr);
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             output->Location,
-                            std::make_shared<NAst::TIdentExpr>(output->Location, "output_bool"),
+                            MakeIntrusive<NAst::TIdentExpr>(output->Location, "output_bool"),
                             std::move(args));
                     } else if (NAst::TMaybeType<NAst::TStringType>(type)) {
                         if (width || prec) {
@@ -263,9 +263,9 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         }
                         std::vector<NAst::TExprPtr> args;
                         args.push_back(arg.Expr);
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             output->Location,
-                            std::make_shared<NAst::TIdentExpr>(output->Location, "output_string"),
+                            MakeIntrusive<NAst::TIdentExpr>(output->Location, "output_string"),
                             std::move(args));
                     } else if (NAst::TMaybeType<NAst::TSymbolType>(type)) {
                         if (width || prec) {
@@ -274,9 +274,9 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         }
                         std::vector<NAst::TExprPtr> args;
                         args.push_back(arg.Expr);
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             output->Location,
-                            std::make_shared<NAst::TIdentExpr>(output->Location, "output_symbol"),
+                            MakeIntrusive<NAst::TIdentExpr>(output->Location, "output_symbol"),
                             std::move(args));
                     } else if (NAst::TMaybeType<NAst::TNamedType>(type) || NAst::TMaybeType<NAst::TVectorType>(type)) {
                         if (width || prec) {
@@ -288,9 +288,9 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                             errors.push_back(TError(arg.Expr->Location, "тип '" + NAst::TypeDiagnosticName(type) + "' не поддерживает вывод"));
                             return node;
                         }
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             output->Location,
-                            std::make_shared<NAst::TIdentExpr>(output->Location, op->SynthName),
+                            MakeIntrusive<NAst::TIdentExpr>(output->Location, op->SynthName),
                             std::vector<NAst::TExprPtr>{ arg.Expr });
                     } else {
                         // need annotation pass to know types
@@ -301,14 +301,14 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
 
                 if (hasFileArg) {
                     // reset file after output
-                    auto resetFileCall = std::make_shared<NAst::TCallExpr>(
+                    auto resetFileCall = MakeIntrusive<NAst::TCallExpr>(
                         output->Location,
-                        std::make_shared<NAst::TIdentExpr>(output->Location, "output_reset_file"),
+                        MakeIntrusive<NAst::TIdentExpr>(output->Location, "output_reset_file"),
                         std::vector<NAst::TExprPtr>{});
                     stmts.push_back(resetFileCall);
                 }
 
-                return std::make_shared<NAst::TBlockExpr>(output->Location, std::move(stmts));
+                return MakeIntrusive<NAst::TBlockExpr>(output->Location, std::move(stmts));
             } else if (auto maybeInput = NAst::TMaybeNode<NAst::TInputExpr>(node)) {
                 auto input = maybeInput.Cast();
                 if (input->Args.size() == 0) {
@@ -321,9 +321,9 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 const auto& arg0 = input->Args[0];
                 bool hasFileArg = false;
                 if (IsFileType(arg0->Type)) {
-                    auto call = std::make_shared<NAst::TCallExpr>(
+                    auto call = MakeIntrusive<NAst::TCallExpr>(
                         input->Location,
-                        std::make_shared<NAst::TIdentExpr>(input->Location, "input_set_file"),
+                        MakeIntrusive<NAst::TIdentExpr>(input->Location, "input_set_file"),
                         std::vector<NAst::TExprPtr>{arg0});
                     stmts.push_back(call);
                     hasFileArg = true;
@@ -335,19 +335,19 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                     NAst::TExprPtr call;
                     auto type = arg->Type;
                     if (NAst::TMaybeType<NAst::TFloatType>(type)) {
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             input->Location,
-                            std::make_shared<NAst::TIdentExpr>(input->Location, "input_double"),
+                            MakeIntrusive<NAst::TIdentExpr>(input->Location, "input_double"),
                             std::vector<NAst::TExprPtr>{});
                     } else if (NAst::TMaybeType<NAst::TIntegerType>(type)) {
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             input->Location,
-                            std::make_shared<NAst::TIdentExpr>(input->Location, "input_int64"),
+                            MakeIntrusive<NAst::TIdentExpr>(input->Location, "input_int64"),
                             std::vector<NAst::TExprPtr>{});
                     } else if (NAst::TMaybeType<NAst::TStringType>(type)) {
-                        call = std::make_shared<NAst::TCallExpr>(
+                        call = MakeIntrusive<NAst::TCallExpr>(
                             input->Location,
-                            std::make_shared<NAst::TIdentExpr>(input->Location, "str_input"),
+                            MakeIntrusive<NAst::TIdentExpr>(input->Location, "str_input"),
                             std::vector<NAst::TExprPtr>{});
                     } else {
                         errors.push_back(TError(arg->Location, "input argument must be float or int64, got: " + type->ToString()));
@@ -356,7 +356,7 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                     if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(arg)) {
                         auto ident = maybeIdent.Cast();
                         // assign to ident
-                        call = std::make_shared<NAst::TAssignExpr>(
+                        call = MakeIntrusive<NAst::TAssignExpr>(
                             input->Location,
                             ident->Name,
                             call);
@@ -369,7 +369,7 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         }
                         auto ident = maybeIdent.Cast();
                         // assign to index
-                        call = std::make_shared<NAst::TArrayAssignExpr>(
+                        call = MakeIntrusive<NAst::TArrayAssignExpr>(
                             input->Location,
                             ident->Name,
                             std::vector<NAst::TExprPtr>{index->Index},
@@ -383,10 +383,10 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         }
                         auto ident = maybeIdent.Cast();
                         // assign to multi-index
-                        call = std::make_shared<NAst::TArrayAssignExpr>(
+                        call = MakeIntrusive<NAst::TArrayAssignExpr>(
                             input->Location,
                             ident->Name,
-                            multiIndex->Indices,
+                            auto(multiIndex->Indices),
                             call);
                     } else {
                         errors.push_back(TError(arg->Location, "input argument must be an identifier or an index expression"));
@@ -396,21 +396,21 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 }
                 if (hasFileArg) {
                     // reset file after input
-                    auto resetFileCall = std::make_shared<NAst::TCallExpr>(
+                    auto resetFileCall = MakeIntrusive<NAst::TCallExpr>(
                         input->Location,
-                        std::make_shared<NAst::TIdentExpr>(input->Location, "input_reset_file"),
+                        MakeIntrusive<NAst::TIdentExpr>(input->Location, "input_reset_file"),
                         std::vector<NAst::TExprPtr>{});
                     stmts.push_back(resetFileCall);
                 }
 
-                return std::make_shared<NAst::TBlockExpr>(input->Location, std::move(stmts));
+                return MakeIntrusive<NAst::TBlockExpr>(input->Location, std::move(stmts));
             } else if (auto maybeIndex = NAst::TMaybeNode<NAst::TIndexExpr>(node)) {
                 auto index = maybeIndex.Cast();
                 auto collectionType = UnwrapReferenceType(index->Collection->Type);
                 if (NAst::TMaybeType<NAst::TStringType>(collectionType)) {
                     // rewrite to str_symbol_at(collection, index)
-                    auto funcNameIdent = std::make_shared<NAst::TIdentExpr>(index->Location, "str_symbol_at");
-                    auto symbolAt = std::make_shared<NAst::TCallExpr>(index->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
+                    auto funcNameIdent = MakeIntrusive<NAst::TIdentExpr>(index->Location, "str_symbol_at");
+                    auto symbolAt = MakeIntrusive<NAst::TCallExpr>(index->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
                         index->Collection,
                         index->Index,
                     });
@@ -422,8 +422,8 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 auto collectionType = UnwrapReferenceType(slice->Collection->Type);
                 if (NAst::TMaybeType<NAst::TStringType>(collectionType)) {
                     // rewrite to str_slice(collection, start, end)
-                    auto funcNameIdent = std::make_shared<NAst::TIdentExpr>(slice->Location, "str_slice");
-                    auto sliceCall = std::make_shared<NAst::TCallExpr>(slice->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
+                    auto funcNameIdent = MakeIntrusive<NAst::TIdentExpr>(slice->Location, "str_slice");
+                    auto sliceCall = MakeIntrusive<NAst::TCallExpr>(slice->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
                         slice->Collection,
                         slice->Start,
                         slice->End
@@ -435,8 +435,8 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 auto cast = maybeCast.Cast();
                 if (NAst::TMaybeType<NAst::TStringType>(cast->Type) && NAst::TMaybeType<NAst::TSymbolType>(cast->Operand->Type)) {
                     // symbol -> string cast
-                    auto funcNameIdent = std::make_shared<NAst::TIdentExpr>(cast->Location, "str_from_unicode");
-                    auto castCall = std::make_shared<NAst::TCallExpr>(cast->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
+                    auto funcNameIdent = MakeIntrusive<NAst::TIdentExpr>(cast->Location, "str_from_unicode");
+                    auto castCall = MakeIntrusive<NAst::TCallExpr>(cast->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
                         cast->Operand
                     });
                     castCall->Type = cast->Type;
@@ -498,7 +498,7 @@ std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NS
         if (auto maybeCall = NAst::TMaybeNode<NAst::TCallExpr>(node)) {
             auto call = maybeCall.Cast();
             if (call->Callee) {
-                callCallees.insert(call->Callee.get());
+                callCallees.insert(call->Callee.Get());
             }
         }
         for (const auto& child : node->Children()) {
@@ -517,7 +517,7 @@ std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NS
                 auto ident = maybeIdent.Cast();
                 auto symbolId = context.Lookup(ident->Name, NSemantics::TScopeId{scopeId});
                 if (!symbolId) {
-                    if (callCallees.contains(node.get()) && !NSemantics::VectorIntrinsic(ident->Name).empty()) {
+                    if (callCallees.contains(node.Get()) && !NSemantics::VectorIntrinsic(ident->Name).empty()) {
                         return node;
                     }
                     if (!context.LookupOverloads(ident->Name, NSemantics::TScopeId{scopeId}).empty()) {
@@ -535,9 +535,9 @@ std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NS
                 }
                 if (auto maybeFun = NAst::TMaybeNode<NAst::TFunDecl>(sym)) {
                     auto fun = maybeFun.Cast();
-                    if (fun->Params.empty() && !callCallees.contains(node.get())) {
+                    if (fun->Params.empty() && !callCallees.contains(node.Get())) {
                         // function call without brackets
-                        auto call = std::make_shared<NAst::TCallExpr>(ident->Location, ident, std::vector<NAst::TExprPtr>{});
+                        auto call = MakeIntrusive<NAst::TCallExpr>(ident->Location, ident, std::vector<NAst::TExprPtr>{});
                         call->Type = fun->RetType;
                         return call;
                     }
@@ -561,7 +561,7 @@ std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NS
 
 namespace {
 
-void RefreshFunctionType(const std::shared_ptr<NAst::TFunDecl>& funDecl)
+void RefreshFunctionType(const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl)
 {
     std::vector<NAst::TTypePtr> params;
     params.reserve(funDecl->Params.size());
@@ -574,9 +574,9 @@ void RefreshFunctionType(const std::shared_ptr<NAst::TFunDecl>& funDecl)
 struct TCoroutineAnalysis {
     NSemantics::TNameResolver& Context;
     bool Changed = false;
-    std::vector<std::shared_ptr<NAst::TFunDecl>> Functions;
+    std::vector<NAst::TExprPtrOf<NAst::TFunDecl>> Functions;
     std::unordered_set<NAst::TFunDecl*> UserFunctions;
-    std::unordered_map<NAst::TFunDecl*, std::shared_ptr<NAst::TFunDecl>> FunctionPtrs;
+    std::unordered_map<NAst::TFunDecl*, NAst::TExprPtrOf<NAst::TFunDecl>> FunctionPtrs;
     std::unordered_set<NAst::TFunDecl*> DirectCoroutineFunctions;
     std::unordered_set<NAst::TFunDecl*> CoroutineFunctions;
     std::unordered_map<NAst::TFunDecl*, std::unordered_set<NAst::TFunDecl*>> Calls;
@@ -590,8 +590,8 @@ struct TCoroutineAnalysis {
             auto fun = maybeFun.Cast();
             if (fun->Body) {
                 Functions.push_back(fun);
-                UserFunctions.insert(fun.get());
-                FunctionPtrs[fun.get()] = fun;
+                UserFunctions.insert(fun.Get());
+                FunctionPtrs[fun.Get()] = fun;
             }
             return;
         }
@@ -600,7 +600,7 @@ struct TCoroutineAnalysis {
         }
     }
 
-    bool EnsureFutureReturn(const std::shared_ptr<NAst::TFunDecl>& funDecl)
+    bool EnsureFutureReturn(const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl)
     {
         if (!funDecl || NAst::IsFutureType(funDecl->RetType)) {
             return false;
@@ -610,7 +610,7 @@ struct TCoroutineAnalysis {
         return true;
     }
 
-    std::shared_ptr<NAst::TFunDecl> LookupFunction(const std::shared_ptr<NAst::TIdentExpr>& ident, NSemantics::TScopeId scopeId)
+    NAst::TExprPtrOf<NAst::TFunDecl> LookupFunction(const NAst::TExprPtrOf<NAst::TIdentExpr>& ident, NSemantics::TScopeId scopeId)
     {
         auto symbolId = Context.Lookup(ident->Name, scopeId);
         if (!symbolId) {
@@ -620,12 +620,12 @@ struct TCoroutineAnalysis {
         return NAst::TMaybeNode<NAst::TFunDecl>(symbolNode).Cast();
     }
 
-    void AnalyzeFunction(const std::shared_ptr<NAst::TFunDecl>& funDecl)
+    void AnalyzeFunction(const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl)
     {
         if (!funDecl->Body) {
             return;
         }
-        AnalyzeExpr(funDecl->Body, funDecl.get(), NSemantics::TScopeId{funDecl->Body->Scope});
+        AnalyzeExpr(funDecl->Body, funDecl.Get(), NSemantics::TScopeId{funDecl->Body->Scope});
     }
 
     void AnalyzeExpr(const NAst::TExprPtr& expr, NAst::TFunDecl* currentFunction, NSemantics::TScopeId scopeId)
@@ -634,7 +634,7 @@ struct TCoroutineAnalysis {
             return;
         }
         if (auto maybeFun = NAst::TMaybeNode<NAst::TFunDecl>(expr)) {
-            if (maybeFun.Cast().get() != currentFunction) {
+            if (maybeFun.Cast().Get() != currentFunction) {
                 return;
             }
         }
@@ -651,7 +651,7 @@ struct TCoroutineAnalysis {
                         DirectCoroutineFunctions.insert(currentFunction);
                     }
                     if (callee->Body) {
-                        Calls[currentFunction].insert(callee.get());
+                        Calls[currentFunction].insert(callee.Get());
                     }
                 }
             }
@@ -684,7 +684,7 @@ struct TCoroutineAnalysis {
 
     void ApplyFunctionTypes()
     {
-        for (auto* rawFun : CoroutineFunctions) {
+        for (const auto& rawFun : CoroutineFunctions) {
             if (!UserFunctions.contains(rawFun)) {
                 continue;
             }
@@ -696,7 +696,7 @@ struct TCoroutineAnalysis {
         }
     }
 
-    bool IsSuspendCall(const std::shared_ptr<NAst::TCallExpr>& call, NSemantics::TScopeId scopeId)
+    bool IsSuspendCall(const NAst::TExprPtrOf<NAst::TCallExpr>& call, NSemantics::TScopeId scopeId)
     {
         if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(call->Callee)) {
             if (auto callee = LookupFunction(maybeIdent.Cast(), scopeId)) {
@@ -735,7 +735,7 @@ struct TCoroutineAnalysis {
                 MarkAwaitCalls(*child, scopeId);
             }
             if (IsSuspendCall(call, scopeId)) {
-                expr = std::make_shared<NAst::TAwaitExpr>(call->Location, expr);
+                expr = MakeIntrusive<NAst::TAwaitExpr>(call->Location, expr);
                 Changed = true;
             }
             return;

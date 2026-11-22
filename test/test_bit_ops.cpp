@@ -54,13 +54,13 @@ TRunResult RunWithInjection(
     if (!parsed) return {{}, parsed.error().ToString()};
     auto ast = std::move(parsed.value());
 
-    auto* topBlock = dynamic_cast<TBlockExpr*>(ast.get());
+    auto* topBlock = dynamic_cast<TBlockExpr*>(ast.Get());
     if (!topBlock) return {{}, "expected TBlockExpr at top level"};
 
     TBlockExpr* funcBody = nullptr;
     for (auto& stmt : topBlock->Stmts) {
-        if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.get())) {
-            funcBody = funDecl->Body.get();
+        if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.Get())) {
+            funcBody = funDecl->Body.Get();
             break;
         }
     }
@@ -124,23 +124,23 @@ TRunResult RunWithInjection(
 }
 
 TExprPtr num(int64_t value) {
-    return std::make_shared<TNumberExpr>(TLocation{}, value);
+    return MakeIntrusive<TNumberExpr>(TLocation{}, value);
 }
 
 TExprPtr ident(const std::string& name) {
-    return std::make_shared<TIdentExpr>(TLocation{}, name);
+    return MakeIntrusive<TIdentExpr>(TLocation{}, name);
 }
 
 TExprPtr binary(const std::string& op, TExprPtr left, TExprPtr right) {
-    return std::make_shared<TBinaryExpr>(TLocation{}, TOperator(op), std::move(left), std::move(right));
+    return MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator(op), std::move(left), std::move(right));
 }
 
 TExprPtr unary(const std::string& op, TExprPtr operand) {
-    return std::make_shared<TUnaryExpr>(TLocation{}, TOperator(op), std::move(operand));
+    return MakeIntrusive<TUnaryExpr>(TLocation{}, TOperator(op), std::move(operand));
 }
 
 TExprPtr assignX(TExprPtr value) {
-    return std::make_shared<TAssignExpr>(TLocation{}, "x", std::move(value));
+    return MakeIntrusive<TAssignExpr>(TLocation{}, "x", std::move(value));
 }
 
 TRunResult RunBitExpr(TExprPtr expr, EBackend backend = EBackend::VM, bool optimizeIr = false) {
@@ -230,7 +230,7 @@ TEST(BitOps, ConstFoldWrapsIntegerOverflow) {
 TEST(BitOps, TypeRejectsNonIntegerOperands) {
     const std::string src = "алг\nнач\n  цел x\n  вывод x, нс\nкон\n";
     auto result = RunWithInjection(src, 1, {
-        assignX(binary("&", std::make_shared<TNumberExpr>(TLocation{}, 1.5), num(1))),
+        assignX(binary("&", MakeIntrusive<TNumberExpr>(TLocation{}, 1.5), num(1))),
     });
 
     EXPECT_FALSE(result.ok());
@@ -240,7 +240,7 @@ TEST(BitOps, TypeRejectsNonIntegerOperands) {
 TEST(BitOps, XorRejectsNonIntegerOperands) {
     const std::string src = "алг\nнач\n  цел x\n  вывод x, нс\nкон\n";
     auto result = RunWithInjection(src, 1, {
-        assignX(binary("^", std::make_shared<TNumberExpr>(TLocation{}, 1.5), num(1))),
+        assignX(binary("^", MakeIntrusive<TNumberExpr>(TLocation{}, 1.5), num(1))),
     });
 
     EXPECT_FALSE(result.ok());

@@ -24,53 +24,53 @@ private:
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckBlock(
-        const std::shared_ptr<NAst::TBlockExpr>& block,
+        const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckIfExpr(
-        const std::shared_ptr<NAst::TIfExpr>& ifExpr,
+        const NAst::TExprPtrOf<NAst::TIfExpr>& ifExpr,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckWhile(
-        const std::shared_ptr<NAst::TWhileStmtExpr>& loop,
+        const NAst::TExprPtrOf<NAst::TWhileStmtExpr>& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckRepeat(
-        const std::shared_ptr<NAst::TRepeatStmtExpr>& loop,
+        const NAst::TExprPtrOf<NAst::TRepeatStmtExpr>& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckFor(
-        const std::shared_ptr<NAst::TForStmtExpr>& loop,
+        const NAst::TExprPtrOf<NAst::TForStmtExpr>& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
     std::expected<TAssignedSet, TError> CheckTimes(
-        const std::shared_ptr<NAst::TTimesStmtExpr>& loop,
+        const NAst::TExprPtrOf<NAst::TTimesStmtExpr>& loop,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckAssign(
-        const std::shared_ptr<NAst::TAssignExpr>& assign,
+        const NAst::TExprPtrOf<NAst::TAssignExpr>& assign,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckVar(
-        const std::shared_ptr<NAst::TVarStmt>& var,
+        const NAst::TExprPtrOf<NAst::TVarStmt>& var,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckIdent(
-        const std::shared_ptr<NAst::TIdentExpr>& ident,
+        const NAst::TExprPtrOf<NAst::TIdentExpr>& ident,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckFunDecl(
-        const std::shared_ptr<NAst::TFunDecl>& funDecl,
+        const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 
     std::expected<TAssignedSet, TError> CheckCall(
-        const std::shared_ptr<NAst::TCallExpr>& call,
+        const NAst::TExprPtrOf<NAst::TCallExpr>& call,
         TScopeId scopeId,
         const TAssignedSet& inAssigned);
 

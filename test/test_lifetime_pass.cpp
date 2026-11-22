@@ -15,39 +15,39 @@ using namespace NQumir::NAst;
 
 namespace {
 
-std::shared_ptr<TBlockExpr> Block(std::vector<TExprPtr> statements) {
-    return std::make_shared<TBlockExpr>(TLocation{}, std::move(statements));
+TIntrusivePtr<TBlockExpr> Block(std::vector<TExprPtr> statements) {
+    return MakeIntrusive<TBlockExpr>(TLocation{}, std::move(statements));
 }
 
-std::shared_ptr<TVarStmt> Variable(std::string name, TTypePtr type) {
-    return std::make_shared<TVarStmt>(TLocation{}, std::move(name), std::move(type));
+TIntrusivePtr<TVarStmt> Variable(std::string name, TTypePtr type) {
+    return MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), std::move(type));
 }
 
-std::shared_ptr<TIdentExpr> Ident(std::string name) {
-    return std::make_shared<TIdentExpr>(TLocation{}, std::move(name));
+TIntrusivePtr<TIdentExpr> Ident(std::string name) {
+    return MakeIntrusive<TIdentExpr>(TLocation{}, std::move(name));
 }
 
-std::shared_ptr<TStringLiteralExpr> Literal(std::string value) {
-    return std::make_shared<TStringLiteralExpr>(TLocation{}, std::move(value));
+TIntrusivePtr<TStringLiteralExpr> Literal(std::string value) {
+    return MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value));
 }
 
-std::shared_ptr<TCallExpr> Call(
+TIntrusivePtr<TCallExpr> Call(
     std::string name,
     std::vector<TExprPtr> arguments = {})
 {
-    return std::make_shared<TCallExpr>(
+    return MakeIntrusive<TCallExpr>(
         TLocation{},
         Ident(std::move(name)),
         std::move(arguments));
 }
 
-std::shared_ptr<TFunDecl> Function(
+TIntrusivePtr<TFunDecl> Function(
     std::string name,
     std::vector<TParam> parameters,
-    std::shared_ptr<TBlockExpr> body,
+    TIntrusivePtr<TBlockExpr> body,
     TTypePtr returnType = std::make_shared<TVoidType>())
 {
-    return std::make_shared<TFunDecl>(
+    return MakeIntrusive<TFunDecl>(
         TLocation{},
         std::move(name),
         std::vector<TGenericParam>{},
@@ -69,7 +69,7 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
     auto make = Function(
         "make",
         {},
-        Block({std::make_shared<TReturnExpr>(TLocation{}, Literal("owned"))}),
+        Block({MakeIntrusive<TReturnExpr>(TLocation{}, Literal("owned"))}),
         stringType);
 
     auto a = Variable("a", stringType);
@@ -84,23 +84,23 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
     auto body = Block({
         a,
         b,
-        std::make_shared<TAssignExpr>(TLocation{}, "a", Literal("literal")),
-        std::make_shared<TAssignExpr>(TLocation{}, "a", Ident("b")),
-        std::make_shared<TAssignExpr>(TLocation{}, "a", Ident("a")),
-        std::make_shared<TAssignExpr>(
+        MakeIntrusive<TAssignExpr>(TLocation{}, "a", Literal("literal")),
+        MakeIntrusive<TAssignExpr>(TLocation{}, "a", Ident("b")),
+        MakeIntrusive<TAssignExpr>(TLocation{}, "a", Ident("a")),
+        MakeIntrusive<TAssignExpr>(
             TLocation{},
             "a",
-            std::make_shared<TCallExpr>(TLocation{}, Ident("make"), std::vector<TExprPtr>{})),
+            MakeIntrusive<TCallExpr>(TLocation{}, Ident("make"), std::vector<TExprPtr>{})),
         items,
-        std::make_shared<TArrayAssignExpr>(
+        MakeIntrusive<TArrayAssignExpr>(
             TLocation{},
             "items",
             std::vector<TExprPtr>{
-                std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
+                MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
             },
             Literal("element")),
         object,
-        std::make_shared<TFieldAssignExpr>(
+        MakeIntrusive<TFieldAssignExpr>(
             TLocation{},
             Ident("object"),
             "text",
@@ -112,7 +112,7 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
         "result",
         std::make_shared<TReferenceType>(stringType));
     auto refBody = Block({
-        std::make_shared<TAssignExpr>(TLocation{}, "result", Literal("reference")),
+        MakeIntrusive<TAssignExpr>(TLocation{}, "result", Literal("reference")),
     });
     auto writeRef = Function("write_ref", {refParam}, refBody);
 
@@ -165,17 +165,17 @@ TEST(LifetimePass, DestroysTwoOwnedCallArgumentsInReverseOrder) {
     auto makeFirst = Function(
         "make_first",
         {},
-        Block({std::make_shared<TReturnExpr>(TLocation{}, Literal("first"))}),
+        Block({MakeIntrusive<TReturnExpr>(TLocation{}, Literal("first"))}),
         stringType);
     auto makeSecond = Function(
         "make_second",
         {},
-        Block({std::make_shared<TReturnExpr>(TLocation{}, Literal("second"))}),
+        Block({MakeIntrusive<TReturnExpr>(TLocation{}, Literal("second"))}),
         stringType);
     auto consume = Function(
         "consume",
         {Variable("first", stringType), Variable("second", stringType)},
-        Block({std::make_shared<TReturnExpr>(TLocation{}, nullptr)}));
+        Block({MakeIntrusive<TReturnExpr>(TLocation{}, nullptr)}));
     auto body = Block({Call("consume", {
         Call("make_first"),
         Call("make_second"),
@@ -207,17 +207,17 @@ TEST(LifetimePass, PreservesNestedCallResultPastArgumentCleanup) {
     auto make = Function(
         "make",
         {},
-        Block({std::make_shared<TReturnExpr>(TLocation{}, Literal("value"))}),
+        Block({MakeIntrusive<TReturnExpr>(TLocation{}, Literal("value"))}),
         stringType);
     auto wrap = Function(
         "wrap",
         {Variable("value", stringType)},
-        Block({std::make_shared<TReturnExpr>(TLocation{}, Ident("value"))}),
+        Block({MakeIntrusive<TReturnExpr>(TLocation{}, Ident("value"))}),
         stringType);
     auto result = Variable("result", stringType);
     auto body = Block({
         result,
-        std::make_shared<TAssignExpr>(
+        MakeIntrusive<TAssignExpr>(
             TLocation{},
             "result",
             Call("wrap", {Call("make")})),
@@ -262,7 +262,7 @@ TEST(LifetimePass, MaterializesLiteralOnlyWhenCallAbiRequiresIt) {
     auto makeUnused = Function(
         "make_unused",
         {},
-        Block({std::make_shared<TReturnExpr>(TLocation{}, Literal("unused"))}),
+        Block({MakeIntrusive<TReturnExpr>(TLocation{}, Literal("unused"))}),
         stringType);
     TExprPtr root = Block({
         raw,
@@ -296,7 +296,7 @@ TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
     second->Init = Literal("second");
     auto nested = Block({
         second,
-        std::make_shared<TReturnExpr>(TLocation{}, Ident("first")),
+        MakeIntrusive<TReturnExpr>(TLocation{}, Ident("first")),
     });
     auto body = Block({first, nested});
     TExprPtr root = Block({Function("value", {}, body, stringType)});
@@ -316,9 +316,9 @@ TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
 }
 
 TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
-    auto condition = std::make_shared<TNumberExpr>(TLocation{}, int64_t{1});
+    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
     condition->Type = std::make_shared<TBoolType>();
-    auto loopCondition = std::make_shared<TNumberExpr>(TLocation{}, int64_t{1});
+    auto loopCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
     loopCondition->Type = std::make_shared<TBoolType>();
     auto value = Variable("value", std::make_shared<TStringType>());
     value->Init = Literal("iteration");
@@ -326,21 +326,21 @@ TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
         "items",
         std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1));
     items->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
     });
-    auto earlyBreak = Block({std::make_shared<TBreakStmt>(TLocation{})});
+    auto earlyBreak = Block({MakeIntrusive<TBreakStmt>(TLocation{})});
     auto loopBody = Block({
-        std::make_shared<TIfExpr>(
+        MakeIntrusive<TIfExpr>(
             TLocation{},
             condition,
             earlyBreak,
             Block({})),
         value,
         items,
-        std::make_shared<TContinueStmt>(TLocation{}),
+        MakeIntrusive<TContinueStmt>(TLocation{}),
     });
-    auto loop = std::make_shared<TWhileStmtExpr>(
+    auto loop = MakeIntrusive<TWhileStmtExpr>(
         TLocation{},
         loopCondition,
         loopBody);
@@ -364,25 +364,25 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
     auto i64 = std::make_shared<TIntegerType>();
     auto plain = Variable("plain", std::make_shared<TArrayType>(i64, 1));
     plain->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{3}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}),
     });
     auto marker = Variable("marker", i64);
     auto nested = Block({
         plain,
         marker,
-        std::make_shared<TAssignExpr>(
+        MakeIntrusive<TAssignExpr>(
             TLocation{},
             "marker",
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{0})),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0})),
     });
 
     auto strings = Variable(
         "strings",
         std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1));
     strings->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{4}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}),
     });
     auto body = Block({nested, strings});
     TExprPtr root = Block({Function("main", {}, body)});
@@ -406,25 +406,25 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
 TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
     auto i64 = std::make_shared<TIntegerType>();
     auto lower = Variable("lower", i64);
-    lower->Init = std::make_shared<TNumberExpr>(TLocation{}, int64_t{1});
+    lower->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
     auto upper = Variable("upper", i64);
-    upper->Init = std::make_shared<TNumberExpr>(TLocation{}, int64_t{2});
+    upper->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2});
     auto grid = Variable(
         "grid",
         std::make_shared<TArrayType>(std::make_shared<TStringType>(), 2));
     grid->Bounds.push_back({Ident("lower"), Ident("upper")});
     grid->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{0}),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
     });
     auto body = Block({
         lower,
         upper,
         grid,
-        std::make_shared<TAssignExpr>(
+        MakeIntrusive<TAssignExpr>(
             TLocation{},
             "upper",
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{100})),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{100})),
     });
     TExprPtr root = Block({Function("main", {}, body)});
     NSemantics::TNameResolver resolver;
@@ -449,8 +449,8 @@ TEST(LifetimePass, DoesNotDestroyArrayParameter) {
         1);
     auto parameter = Variable("items", arrayType);
     parameter->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
     });
     auto body = Block({});
     TExprPtr root = Block({Function("consume", {parameter}, body)});
@@ -468,15 +468,15 @@ TEST(LifetimePass, EvaluatesEffectfulStringArrayBoundOnce) {
     auto bound = Function(
         "bound",
         {},
-        Block({std::make_shared<TReturnExpr>(
+        Block({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}))}),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}))}),
         std::make_shared<TIntegerType>());
     auto items = Variable(
         "items",
         std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1));
     items->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
         Call("bound"),
     });
     auto body = Block({items});
@@ -507,15 +507,15 @@ TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
         "plain",
         std::make_shared<TArrayType>(std::make_shared<TIntegerType>(), 1));
     plain->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
     });
     auto words = Variable(
         "words",
         std::make_shared<TArrayType>(std::make_shared<TStringType>(), 1));
     words->Bounds.push_back({
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{1}),
-        std::make_shared<TNumberExpr>(TLocation{}, int64_t{3}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}),
     });
     TExprPtr root = Block({
         first,
@@ -532,7 +532,7 @@ TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
 
     auto rootBlock = TMaybeNode<TBlockExpr>(root).Cast();
     size_t cleanupCount = 0;
-    std::shared_ptr<TGlobalCleanupExpr> cleanup;
+    TIntrusivePtr<TGlobalCleanupExpr> cleanup;
     for (const auto& statement : rootBlock->Stmts) {
         if (auto candidate = TMaybeNode<TGlobalCleanupExpr>(statement)) {
             ++cleanupCount;

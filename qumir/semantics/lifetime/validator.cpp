@@ -139,7 +139,7 @@ private:
             return Fail(expr, "Unresolved synthetic lifetime variable '" + std::string(name) + "'.");
         }
         if (declaration
-            && Context_.GetSymbolNode(TSymbolId{symbol->Id}).get() != expr.get())
+            && Context_.GetSymbolNode(TSymbolId{symbol->Id}) != expr)
         {
             return Fail(expr, "Synthetic lifetime variable resolves to a different declaration.");
         }
@@ -159,7 +159,7 @@ private:
         if (!TMaybeNode<TVarStmt>(declaration)) {
             return false;
         }
-        return !Parameters_.contains(declaration.get());
+        return !Parameters_.contains(declaration.Get());
     }
 
     std::expected<void, TError> ValidateNode(
@@ -189,14 +189,14 @@ private:
         }
         if (auto function = TMaybeNode<TFunDecl>(expr)) {
             for (const auto& parameter : function.Cast()->Params) {
-                Parameters_.insert(parameter.get());
+                Parameters_.insert(parameter.Get());
             }
             auto result = ValidateNode(
                 function.Cast()->Body,
                 TScopeId{function.Cast()->Scope},
                 false);
             for (const auto& parameter : function.Cast()->Params) {
-                Parameters_.erase(parameter.get());
+                Parameters_.erase(parameter.Get());
             }
             return result;
         }
