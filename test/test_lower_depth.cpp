@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/ir/builder.h>
 #include <qumir/ir/eval.h>
@@ -44,14 +45,14 @@ void RunOnStack(size_t bytes, TFunc& func) {
 
 // if 1 then (... + 1) else 0, `depth` times around 0: evaluates to `depth`.
 TExprPtr NestedIf(int depth) {
-    TExprPtr expr = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0});
+    TExprPtr expr = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}, NQumir::NTest::TestTypes());
     for (int i = 0; i < depth; ++i) {
         auto sum = MakeIntrusive<TBinaryExpr>(TLocation{}, TOperator("+"),
-            std::move(expr), MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}));
+            std::move(expr), MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()));
         expr = MakeIntrusive<TIfExpr>(TLocation{},
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
             std::move(sum),
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}));
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}, NQumir::NTest::TestTypes()));
     }
     return expr;
 }
@@ -59,14 +60,14 @@ TExprPtr NestedIf(int depth) {
 } // namespace
 
 TEST(LowerDepth, DeepExpressionFitsSmallStack) {
-    NSemantics::TNameResolver resolver;
-    auto sysMod = std::make_shared<NRegistry::SystemModule>();
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+    auto sysMod = std::make_shared<NRegistry::SystemModule>(NQumir::NTest::TestTypes());
     resolver.RegisterModule(sysMod.get());
     resolver.ImportModule(sysMod->Name());
 
     std::istringstream in("алг\nнач\n  цел x\n  вывод x, нс\nкон\n");
     TTokenStream tokens(in);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.parse(tokens, &resolver);
     ASSERT_TRUE(parsed) << parsed.error().ToString();
     auto ast = std::move(parsed.value());

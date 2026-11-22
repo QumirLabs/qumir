@@ -38,15 +38,15 @@ TIRRunner::TIRRunner(
     , Options(std::move(options))
     , Interpreter(Module, Compiler, out, in, Options.Debugger)
 {
-    RegisteredModules.push_back(std::make_shared<NRegistry::SystemModule>());
+    RegisteredModules.push_back(std::make_shared<NRegistry::SystemModule>(Types));
     // TODO: register other modules
 
-    AvailableModules.push_back(std::make_shared<NRegistry::TurtleModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::RobotModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::DrawerModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::PainterModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::ColorsModule>());
-    AvailableModules.push_back(std::make_shared<NRegistry::KeyboardModule>());
+    AvailableModules.push_back(std::make_shared<NRegistry::TurtleModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::RobotModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::DrawerModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::PainterModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::ColorsModule>(Types));
+    AvailableModules.push_back(std::make_shared<NRegistry::KeyboardModule>(Types));
 
     for (const auto& mod : RegisteredModules) {
         Resolver.RegisterModule(mod.get());
@@ -57,7 +57,7 @@ TIRRunner::TIRRunner(
 
     // Byte primitives (memcpy/memmove/memcmp) every host needs; always
     // imported, independent of CoreInput/Prelude (qumir/modules/builtins).
-    auto builtins = std::make_shared<NRegistry::BuiltinsModule>();
+    auto builtins = std::make_shared<NRegistry::BuiltinsModule>(Types);
     Resolver.RegisterModule(builtins.get());
     (void)Resolver.ImportModule(builtins->Name());
     RegisteredModules.push_back(std::move(builtins));
@@ -79,7 +79,7 @@ TIRRunner::TIRRunner(
 }
 
 std::expected<std::optional<std::string>, TError> TIRRunner::Run(std::istream& input) {
-    NFrontend::TSourceModuleLoader loader;
+    NFrontend::TSourceModuleLoader loader(Types);
     for (const auto& dir : Options.ModuleSearchPaths) {
         loader.AddSearchPath(dir);
     }
@@ -93,14 +93,14 @@ std::expected<std::optional<std::string>, TError> TIRRunner::Run(std::istream& i
     std::vector<NAst::TPragma> mainPragmas;
     if (Options.CoreInput) {
         NCore::TTokenStream ts(input);
-        NCore::TParser p;
+        NCore::TParser p(Types);
         parsed = p.Parse(ts);
         if (parsed) {
             mainPragmas = std::move(p.Pragmas);
         }
     } else {
         TTokenStream ts(input);
-        TParser p;
+        TParser p(Types);
         parsed = p.parse(ts, &Resolver, &loader);
         if (parsed) {
             mainPragmas = ts.GetContext()->GetPragmas();

@@ -61,11 +61,13 @@ private:
     TFrontendOptions Options_;
 
 protected:
+    // Owns every interned type of this session; must outlive and precede the resolver.
+    NAst::TTypeFactory Types;
     NIR::TModule Module;
     NIR::TBuilder Builder;
     NIR::TAstLowerer Lowerer;
 
-    NSemantics::TNameResolver Resolver;
+    NSemantics::TNameResolver Resolver{Types};
 
     // IR functions already printed: a REPL session prints each one once.
     std::unordered_set<int> PrintedChunks;

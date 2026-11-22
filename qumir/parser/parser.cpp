@@ -19,6 +19,7 @@ namespace {
 
 struct TParserContext {
     TWrappedTokenStream& Stream;
+    TTypeFactory& Types;
     IModuleManager* ModuleManager;
     ILexerContext* LexerContext;
     NFrontend::TSourceModuleLoader* Loader;
@@ -28,9 +29,10 @@ struct TParserContext {
     // true (void) for `выход` encountered outside any function.
     bool CurrentFunctionReturnsVoid = true;
 
-    TParserContext(TWrappedTokenStream& stream, IModuleManager* mm, ILexerContext* lc,
+    TParserContext(TWrappedTokenStream& stream, TTypeFactory& types, IModuleManager* mm, ILexerContext* lc,
         NFrontend::TSourceModuleLoader* loader = nullptr)
         : Stream(stream)
+        , Types(types)
         , ModuleManager(mm)
         , LexerContext(lc)
         , Loader(loader)
@@ -49,24 +51,24 @@ inline TExprPtr binary(TLocation loc, TOperator op, const TExprPtr& left, const 
     return MakeIntrusive<TBinaryExpr>(std::move(loc), op, left, right);
 }
 
-inline TExprPtr num(TLocation loc, int64_t v) {
-    return MakeIntrusive<TNumberExpr>(std::move(loc), v);
+inline TExprPtr num(TTypeFactory& types, TLocation loc, int64_t v) {
+    return MakeIntrusive<TNumberExpr>(std::move(loc), v, types);
 }
 
-inline TExprPtr num(TLocation loc, double v) {
-    return MakeIntrusive<TNumberExpr>(std::move(loc), v);
+inline TExprPtr num(TTypeFactory& types, TLocation loc, double v) {
+    return MakeIntrusive<TNumberExpr>(std::move(loc), v, types);
 }
 
-inline TExprPtr num(TLocation loc, bool v) {
+inline TExprPtr num(TTypeFactory& types, TLocation loc, bool v) {
     return MakeIntrusive<TCastExpr>(loc,
-        MakeIntrusive<TNumberExpr>(loc, v),
-        MakeIntrusive<TBoolType>());
+        MakeIntrusive<TNumberExpr>(loc, v, types),
+        types.Make<TBoolType>());
 }
 
-inline TExprPtr sym(TLocation loc, int64_t v) {
+inline TExprPtr sym(TTypeFactory& types, TLocation loc, int64_t v) {
     return MakeIntrusive<TCastExpr>(loc,
-        MakeIntrusive<TNumberExpr>(loc, v),
-        MakeIntrusive<TSymbolType>());
+        MakeIntrusive<TNumberExpr>(loc, v, types),
+        types.Make<TSymbolType>());
 }
 
 inline TExprPtr ident(TLocation loc, std::string n) {
@@ -315,7 +317,7 @@ TExpectedTask<TExprPtrOf<TVarStmt>, TError, TLocation> var_decl(TParserContext& 
         // flat index = i * (dim1_size * dim2_size) + j * dim2_size + k, where
         // dimN_size = right_bound_N - left_bound_N + 1
         // precompute sizes during variable initialization?
-        varType = MakeIntrusive<TArrayType>(scalarType, bounds.size());
+        varType = context.Types.MakeArray(scalarType, bounds.size());
     } else {
         // скобки после имени запрещены для скалярного типа
         auto t = stream.Next();
@@ -326,49 +328,49 @@ TExpectedTask<TExprPtrOf<TVarStmt>, TError, TLocation> var_decl(TParserContext& 
     }
 
     if (isPointer) {
-        varType = MakeIntrusive<TPointerType>(varType);
+        varType = context.Types.MakePointer(varType);
     } else if (isReference) {
-        varType = MakeIntrusive<TReferenceType>(varType);
+        varType = context.Types.MakeReference(varType);
     }
 
     auto var = MakeIntrusive<TVarStmt>(nameTok.Location, name, varType, std::move(bounds));
     co_return var;
 }
 
-TTypePtr getScalarType(EKeyword kw, bool& isArray, const std::string& typeName, IModuleManager* nameResolver) {
+TTypePtr getScalarType(TTypeFactory& types, EKeyword kw, bool& isArray, const std::string& typeName, IModuleManager* nameResolver) {
     isArray = false;
     switch (kw) {
         case EKeyword::Int:
-            return MakeIntrusive<TIntegerType>();
+            return types.MakeInteger();
         case EKeyword::Float:
-            return MakeIntrusive<TFloatType>();
+            return types.MakeFloat();
         case EKeyword::Bool:
-            return MakeIntrusive<TBoolType>();
+            return types.Make<TBoolType>();
         case EKeyword::String:
-            return MakeIntrusive<TStringType>();
+            return types.Make<TStringType>();
         case EKeyword::Char:
-            return MakeIntrusive<TSymbolType>();
+            return types.Make<TSymbolType>();
 
         case EKeyword::IntTab:
             isArray = true;
-            return MakeIntrusive<TIntegerType>();
+            return types.MakeInteger();
         case EKeyword::FloatTab:
             isArray = true;
-            return MakeIntrusive<TFloatType>();
+            return types.MakeFloat();
         case EKeyword::BoolTab:
             isArray = true;
-            return MakeIntrusive<TBoolType>();
+            return types.Make<TBoolType>();
         case EKeyword::StringTab:
             isArray = true;
-            return MakeIntrusive<TStringType>();
+            return types.Make<TStringType>();
         case EKeyword::CharTab:
             isArray = true;
-            return MakeIntrusive<TSymbolType>();
+            return types.Make<TSymbolType>();
 
         case EKeyword::File:
-            return MakeIntrusive<TNamedType>("file", nameResolver->LookupType("file"));
+            return types.MakeNamed("file", nameResolver->LookupType("file"));
         case EKeyword::NamedType:
-            return MakeIntrusive<TNamedType>(typeName, nameResolver->LookupType(typeName));
+            return types.MakeNamed(typeName, nameResolver->LookupType(typeName));
         default:
             return nullptr;
     }
@@ -415,7 +417,7 @@ TExpectedTask<std::vector<TExprPtr>, TError, TLocation> var_decl_list(TParserCon
     std::vector<TExprPtr> decls;
     bool isArray = false;
 
-    TTypePtr scalarType = getScalarType(static_cast<EKeyword>(first.Value.i64), isArray, first.Name, nameResolver);
+    TTypePtr scalarType = getScalarType(context.Types, static_cast<EKeyword>(first.Value.i64), isArray, first.Name, nameResolver);
     if (!scalarType) {
         co_return TError(first.Location, "неизвестный тип переменной");
     }
@@ -511,7 +513,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     auto& stream = context.Stream;
     auto* mm = context.ModuleManager;
     auto next = stream.Next();
-    TTypePtr returnType = MakeIntrusive<TVoidType>();
+    TTypePtr returnType = context.Types.Make<TVoidType>();
     std::vector<TExprPtrOf<TVarStmt>> args;
     std::string name = "<main>";
 
@@ -528,7 +530,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
     if (next.Type == TToken::Keyword && IsTypeKeyword(static_cast<EKeyword>(next.Value.i64))) {
         // function return type
         bool isArray = false;
-        returnType = getScalarType(static_cast<EKeyword>(next.Value.i64), isArray, next.Name, mm);
+        returnType = getScalarType(context.Types, static_cast<EKeyword>(next.Value.i64), isArray, next.Name, mm);
         if (isArray) {
             co_return TError(next.Location, "функция не может возвращать табличный тип");
         }
@@ -663,7 +665,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
         for (auto& a : funDecl->Params) {
             paramTypes.push_back(a->Type);
         }
-        funDecl->Type = MakeIntrusive<TFunctionType>(std::move(paramTypes), returnType);
+        funDecl->Type = context.Types.MakeFunction(std::move(paramTypes), returnType);
 
         co_return funDecl;
     } else {
@@ -703,7 +705,7 @@ TAstTask for_loop(TParserContext& context, TLocation location) {
     if (isKeyword(stepTok, EKeyword::Step)) {
         stepExpr = co_await expr(context);
     } else {
-        stepExpr = num(stream.GetLocation(), (int64_t)1); // default step = 1
+        stepExpr = num(context.Types, stream.GetLocation(), (int64_t)1); // default step = 1
         stream.Unget(stepTok);
     }
 
@@ -805,7 +807,7 @@ TAstTask repeat_until_loop(TParserContext& context, TLocation location) {
         } else {
             // plain 'кц' => infinite loop, push back look token for next parser stage
             stream.Unget(look);
-            condExpr = num(location, true);
+            condExpr = num(context.Types, location, true);
             invert = false;
         }
     } else { // 'кц_при'
@@ -1074,15 +1076,15 @@ TAstTask factor(TParserContext& context) {
     };
 
     if (token.Type == TToken::Integer) {
-        co_return withSuffix(num(token.Location, token.Value.i64));
+        co_return withSuffix(num(context.Types, token.Location, token.Value.i64));
     } else if (token.Type == TToken::Float) {
-        co_return withSuffix(num(token.Location, token.Value.f64));
+        co_return withSuffix(num(context.Types, token.Location, token.Value.f64));
     } else if (token.Type == TToken::Char) {
-        co_return sym(token.Location, token.Value.i64);
+        co_return sym(context.Types, token.Location, token.Value.i64);
     } else if (token.Type == TToken::Keyword && static_cast<EKeyword>(token.Value.i64) == EKeyword::NewLine) {
-        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, "\n");
+        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, "\n", context.Types);
     } else if (token.Type == TToken::String) {
-        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, token.Name);
+        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, token.Name, context.Types);
     } else if (token.Type == TToken::Identifier) {
         co_return ident(token.Location, token.Name);
     } else if (token.Type == TToken::Keyword && static_cast<EKeyword>(token.Value.i64) == EKeyword::Return) {
@@ -1100,7 +1102,7 @@ TAstTask factor(TParserContext& context) {
         }
     } else if (token.Type == TToken::Keyword && ((EKeyword)token.Value.i64 == EKeyword::True || (EKeyword)token.Value.i64 == EKeyword::False)) {
         bool v = (EKeyword)token.Value.i64 == EKeyword::True;
-        co_return num(token.Location, v);
+        co_return num(context.Types, token.Location, v);
     } else {
         co_return TError(token.Location, std::string("ожидалось число или '('"));
     }
@@ -1720,10 +1722,10 @@ TAstTask stmt(TParserContext& context) {
         co_return co_await switch_expr(context, first.Location);
     } else if (isKeyword(first, EKeyword::Input)) {
         auto args = co_await parse_io_arg_list_opt<TExprPtr>(context);
-        co_return MakeIntrusive<TInputExpr>(first.Location, std::move(args));
+        co_return MakeIntrusive<TInputExpr>(first.Location, std::move(args), context.Types);
     } else if (isKeyword(first, EKeyword::Output)) {
         auto args = co_await parse_io_arg_list_opt<TOutputArg>(context);
-        co_return MakeIntrusive<TOutputExpr>(first.Location, std::move(args));
+        co_return MakeIntrusive<TOutputExpr>(first.Location, std::move(args), context.Types);
     } else if (isKeyword(first, EKeyword::Break)) {
         if (context.LoopDepth > 0) {
             co_return MakeIntrusive<TBreakStmt>(first.Location);
@@ -1841,7 +1843,7 @@ std::expected<TExprPtr, TError> TParser::parse(
     TTokenStream& stream, IModuleManager* mm, NFrontend::TSourceModuleLoader* loader)
 {
     TWrappedTokenStream wrappedStream(stream, /*windowSize = */ 10);
-    TParserContext context(wrappedStream, mm, stream.GetContext(), loader);
+    TParserContext context(wrappedStream, Types, mm, stream.GetContext(), loader);
     auto task = stmt_list(context, {}, context.Stream.GetLocation());
     auto result = task.result();
     if (result && mm) {

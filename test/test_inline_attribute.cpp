@@ -1,4 +1,5 @@
 #include <qumir/codegen/llvm/llvm_codegen.h>
+#include "test_types.h"
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/ir/builder.h>
 #include <qumir/parser/ast.h>
@@ -20,7 +21,7 @@ namespace {
 auto Parse(const std::string& source) {
     std::istringstream input(source);
     NAst::NCore::TTokenStream tokens(input);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     return parser.Parse(tokens);
 }
 

@@ -9,38 +9,38 @@ namespace NRegistry {
 
 using namespace NRuntime;
 
-ColorsModule::ColorsModule() {
-    auto integerType  = MakeIntrusive<NAst::TIntegerType>();
-    auto colorStorageType = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::EKind::U32);
-    auto floatType    = MakeIntrusive<NAst::TFloatType>();
-    auto boolType     = MakeIntrusive<NAst::TBoolType>();
-    auto voidType     = MakeIntrusive<NAst::TVoidType>();
-    auto stringType   = MakeIntrusive<NAst::TStringType>();
-    auto intArrayType = MakeIntrusive<NAst::TArrayType>(integerType, 1);
+ColorsModule::ColorsModule(NAst::TTypeFactory& types) {
+    auto integerType  = types.MakeInteger();
+    auto colorStorageType = types.MakeInteger(NAst::TIntegerType::EKind::U32);
+    auto floatType    = types.MakeFloat();
+    auto boolType     = types.Make<NAst::TBoolType>();
+    auto voidType     = types.Make<NAst::TVoidType>();
+    auto stringType   = types.Make<NAst::TStringType>();
+    auto intArrayType = types.MakeArray(integerType, 1);
 
-    auto colorType = MakeIntrusive<NAst::TNamedType>("цвет", colorStorageType);
+    auto colorType = types.MakeNamed("цвет", colorStorageType);
 
-    auto colorConst = [colorType](int64_t value) {
-        return [colorType, value](std::vector<NAst::TExprPtr>) -> NAst::TExprPtr {
-            auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
+    auto colorConst = [colorType, &types](int64_t value) {
+        return [colorType, value, &types](std::vector<NAst::TExprPtr>) -> NAst::TExprPtr {
+            auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value, types);
             expr->Type = colorType;
             return expr;
         };
     };
 
-    auto intLiteral = [integerType](TLocation loc, int64_t value) -> NAst::TExprPtr {
-        auto expr = MakeIntrusive<NAst::TNumberExpr>(std::move(loc), value);
+    auto intLiteral = [integerType, &types](TLocation loc, int64_t value) -> NAst::TExprPtr {
+        auto expr = MakeIntrusive<NAst::TNumberExpr>(std::move(loc), value, types);
         expr->Type = integerType;
         return expr;
     };
 
-    auto floatLiteral = [floatType](TLocation loc, double value) -> NAst::TExprPtr {
-        auto expr = MakeIntrusive<NAst::TNumberExpr>(std::move(loc), value);
+    auto floatLiteral = [floatType, &types](TLocation loc, double value) -> NAst::TExprPtr {
+        auto expr = MakeIntrusive<NAst::TNumberExpr>(std::move(loc), value, types);
         expr->Type = floatType;
         return expr;
     };
 
-    auto binary = [](const char* op, const NAst::TExprPtr& left, const NAst::TExprPtr& right, const NAst::TTypePtr& type) -> NAst::TExprPtr {
+    auto binary = [&types](const char* op, const NAst::TExprPtr& left, const NAst::TExprPtr& right, const NAst::TTypePtr& type) -> NAst::TExprPtr {
         auto loc = left->Location;
         auto expr = MakeIntrusive<NAst::TBinaryExpr>(std::move(loc), NAst::TOperator(op),
             left, right);
@@ -48,26 +48,26 @@ ColorsModule::ColorsModule() {
         return expr;
     };
 
-    auto cast = [](const NAst::TExprPtr& value, const NAst::TTypePtr& type) -> NAst::TExprPtr {
+    auto cast = [&types](const NAst::TExprPtr& value, const NAst::TTypePtr& type) -> NAst::TExprPtr {
         auto loc = value->Location;
         auto expr = MakeIntrusive<NAst::TCastExpr>(std::move(loc), value, type);
         return expr;
     };
 
-    auto ident = [](TLocation loc, const std::string& name, const NAst::TTypePtr& type) -> NAst::TExprPtr {
+    auto ident = [&types](TLocation loc, const std::string& name, const NAst::TTypePtr& type) -> NAst::TExprPtr {
         auto expr = MakeIntrusive<NAst::TIdentExpr>(std::move(loc), name);
         expr->Type = type;
         return expr;
     };
 
-    auto ifExpr = [](const NAst::TExprPtr& cond, const NAst::TExprPtr& thenExpr, const NAst::TExprPtr& elseExpr, const NAst::TTypePtr& type) -> NAst::TExprPtr {
+    auto ifExpr = [&types](const NAst::TExprPtr& cond, const NAst::TExprPtr& thenExpr, const NAst::TExprPtr& elseExpr, const NAst::TTypePtr& type) -> NAst::TExprPtr {
         auto loc = cond->Location;
         auto expr = MakeIntrusive<NAst::TIfExpr>(std::move(loc), cond, thenExpr, elseExpr);
         expr->Type = type;
         return expr;
     };
 
-    auto colorPack = [integerType, colorType, intLiteral, binary](const NAst::TExprPtr& r, const NAst::TExprPtr& g,
+    auto colorPack = [integerType, colorType, intLiteral, binary, &types](const NAst::TExprPtr& r, const NAst::TExprPtr& g,
                                                           const NAst::TExprPtr& b, const NAst::TExprPtr& a) -> NAst::TExprPtr {
         auto mask = [&](const NAst::TExprPtr& value) {
             auto loc = value->Location;
@@ -93,8 +93,8 @@ ColorsModule::ColorsModule() {
         return expr;
     };
 
-    auto inlineCmyk = [integerType, colorPack, intLiteral, binary, cast](bool withAlpha) {
-        return [integerType, colorPack, intLiteral, binary, cast, withAlpha](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+    auto inlineCmyk = [integerType, colorPack, intLiteral, binary, cast, &types](bool withAlpha) {
+        return [integerType, colorPack, intLiteral, binary, cast, withAlpha, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto loc = args[0]->Location;
             auto hundred = [&](TLocation l) { return intLiteral(l, 100); };
             auto roundedComponent = [&](const std::string& channelName) -> NAst::TExprPtr {
@@ -111,9 +111,9 @@ ColorsModule::ColorsModule() {
                     integerType);
                 return cast(
                     binary("+",
-                        binary("/", std::move(value), intLiteral(loc, 10000), MakeIntrusive<NAst::TFloatType>()),
-                        MakeIntrusive<NAst::TNumberExpr>(loc, 0.5),
-                        MakeIntrusive<NAst::TFloatType>()),
+                        binary("/", std::move(value), intLiteral(loc, 10000), types.MakeFloat()),
+                        MakeIntrusive<NAst::TNumberExpr>(loc, 0.5, types),
+                        types.MakeFloat()),
                     integerType);
             };
 
@@ -147,8 +147,8 @@ ColorsModule::ColorsModule() {
         };
     };
 
-    auto inlineHsl = [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr](bool withAlpha) {
-        return [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr, withAlpha](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+    auto inlineHsl = [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr, &types](bool withAlpha) {
+        return [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr, withAlpha, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto loc = args[0]->Location;
             auto f = [&](double value) { return floatLiteral(loc, value); };
             auto idf = [&](const std::string& name) { return ident(loc, name, floatType); };
@@ -244,8 +244,8 @@ ColorsModule::ColorsModule() {
         };
     };
 
-    auto inlineHsv = [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr](bool withAlpha) {
-        return [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr, withAlpha](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+    auto inlineHsv = [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr, &types](bool withAlpha) {
+        return [integerType, floatType, boolType, colorType, colorPack, intLiteral, floatLiteral, ident, binary, cast, ifExpr, withAlpha, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto loc = args[0]->Location;
             auto f = [&](double value) { return floatLiteral(loc, value); };
             auto idf = [&](const std::string& name) { return ident(loc, name, floatType); };
@@ -318,7 +318,7 @@ ColorsModule::ColorsModule() {
     };
 
     auto decomposeRgbTempId = std::make_shared<size_t>(0);
-    auto decomposeRgb = [integerType, colorType, voidType, intLiteral, decomposeRgbTempId, ident, binary](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+    auto decomposeRgb = [integerType, colorType, voidType, intLiteral, decomposeRgbTempId, ident, binary, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
         const auto colorName = "$$color_decompose_rgb_" + std::to_string((*decomposeRgbTempId)++);
 
         auto component = [&](int64_t shift) -> NAst::TExprPtr {
@@ -381,7 +381,7 @@ ColorsModule::ColorsModule() {
 
     auto decomposeColorTempId = std::make_shared<size_t>(0);
     auto makeColorDecomposeBlock =
-        [integerType, floatType, boolType, voidType, intLiteral, floatLiteral, ident, binary, cast, ifExpr, decomposeColorTempId]
+        [integerType, floatType, boolType, voidType, intLiteral, floatLiteral, ident, binary, cast, ifExpr, decomposeColorTempId, &types]
         (const char* suffix, const auto& emitBody) {
             return [=](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 auto loc = args[0]->Location;
@@ -471,7 +471,7 @@ ColorsModule::ColorsModule() {
         };
 
     auto decomposeCmyk = makeColorDecomposeBlock("cmyk",
-        [integerType, floatType, boolType, voidType, intLiteral, binary]
+        [integerType, floatType, boolType, voidType, intLiteral, binary, &types]
         (TLocation loc, const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
          const auto& idi, const auto& idf, const auto& f, const auto& assignLocal,
          const auto& assignTarget, const auto& roundToInt, const std::vector<NAst::TExprPtr>& args) {
@@ -504,7 +504,7 @@ ColorsModule::ColorsModule() {
         });
 
     auto decomposeHsl = makeColorDecomposeBlock("hsl",
-        [integerType, floatType, boolType, voidType, binary, ifExpr]
+        [integerType, floatType, boolType, voidType, binary, ifExpr, &types]
         (TLocation loc, const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
          const auto& idi, const auto& idf, const auto& f, const auto& assignLocal,
          const auto& assignTarget, const auto& roundToInt, const std::vector<NAst::TExprPtr>& args) {
@@ -545,7 +545,7 @@ ColorsModule::ColorsModule() {
         });
 
     auto decomposeHsv = makeColorDecomposeBlock("hsv",
-        [integerType, floatType, boolType, voidType, binary, ifExpr]
+        [integerType, floatType, boolType, voidType, binary, ifExpr, &types]
         (TLocation loc, const NAst::TExprPtrOf<NAst::TBlockExpr>& block,
          const auto& idi, const auto& idf, const auto& f, const auto& assignLocal,
          const auto& assignTarget, const auto& roundToInt, const std::vector<NAst::TExprPtr>& args) {
@@ -584,8 +584,8 @@ ColorsModule::ColorsModule() {
         });
 
     auto makeOutInt = [&]() -> NAst::TTypePtr {
-        auto t = MakeIntrusive<NAst::TIntegerType>();
-        return MakeIntrusive<NAst::TReferenceType>(t);
+        auto t = types.MakeInteger();
+        return types.MakeReference(t);
     };
 
     ExternalTypes_ = {
@@ -703,9 +703,9 @@ ColorsModule::ColorsModule() {
             .MangledName = "color_rgb",
             .ArgTypes = { integerType, integerType, integerType },
             .ReturnType = colorType,
-            .Inline = [colorPack](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+            .Inline = [colorPack, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 return colorPack(args[0], args[1], args[2],
-                    MakeIntrusive<NAst::TNumberExpr>(args[0]->Location, int64_t{255}));
+                    MakeIntrusive<NAst::TNumberExpr>(args[0]->Location, int64_t{255}, types));
             },
         },
         {
@@ -713,7 +713,7 @@ ColorsModule::ColorsModule() {
             .MangledName = "color_rgba",
             .ArgTypes = { integerType, integerType, integerType, integerType },
             .ReturnType = colorType,
-            .Inline = [colorPack](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+            .Inline = [colorPack, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
                 return colorPack(args[0], args[1], args[2], args[3]);
             },
         },

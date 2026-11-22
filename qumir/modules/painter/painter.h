@@ -7,7 +7,7 @@ namespace NRegistry {
 
 class PainterModule : public IModule {
 public:
-    PainterModule();
+    explicit PainterModule(NAst::TTypeFactory& types);
 
     const std::string& Name() const override {
         static const std::string name = "Рисователь";

@@ -1,4 +1,5 @@
 #include <qumir/parser/core/lexer.h>
+#include "test_types.h"
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/core/printer.h>
 #include <qumir/semantics/type_annotation/type_annotation.h>
@@ -15,12 +16,12 @@ namespace {
 std::expected<TExprPtr, TError> Annotate(const std::string& source) {
     std::istringstream input(source);
     NCore::TTokenStream tokens(input);
-    NCore::TParser parser;
+    NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     if (!parsed) {
         return std::unexpected(parsed.error());
     }
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.ApplyPragmas(parser.Pragmas);
     if (auto error = resolver.Resolve(*parsed)) {
         return std::unexpected(*error);
@@ -303,9 +304,9 @@ TEST(VectorTypeAnnotation, RejectsUnsupportedSizesDuringAnnotation) {
         auto source = "(block (var v <vec i64 " + std::to_string(size) + ">))";
         std::istringstream input(source);
         NCore::TTokenStream tokens(input);
-        auto parsed = NCore::TParser{}.Parse(tokens);
+        auto parsed = NCore::TParser{NQumir::NTest::TestTypes()}.Parse(tokens);
         ASSERT_TRUE(parsed) << parsed.error().ToString();
-        NSemantics::TNameResolver resolver;
+        NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
         ASSERT_FALSE(resolver.Resolve(*parsed));
         auto result = NTypeAnnotation::TTypeAnnotator(resolver).Annotate(*parsed);
         ASSERT_FALSE(result);
@@ -361,9 +362,9 @@ TEST(VectorTypeAnnotation, Rejects128BitElementsDuringAnnotation) {
             SCOPED_TRACE(source);
             std::istringstream input(source);
             NCore::TTokenStream tokens(input);
-            auto parsed = NCore::TParser{}.Parse(tokens);
+            auto parsed = NCore::TParser{NQumir::NTest::TestTypes()}.Parse(tokens);
             ASSERT_TRUE(parsed) << parsed.error().ToString();
-            NSemantics::TNameResolver resolver;
+            NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
             ASSERT_FALSE(resolver.Resolve(*parsed));
             auto result = NTypeAnnotation::TTypeAnnotator(resolver).Annotate(*parsed);
             ASSERT_FALSE(result);

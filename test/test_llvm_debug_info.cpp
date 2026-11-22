@@ -1,4 +1,5 @@
 #include <qumir/codegen/llvm/llvm_codegen.h>
+#include "test_types.h"
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/frontend/compose.h>
 #include <qumir/frontend/source_module_loader.h>
@@ -37,7 +38,7 @@ namespace {
 void BuildModule(TModule& module, bool withDebugInfo = true) {
     module.DebugOptions.EmitDebugInfo = withDebugInfo;
     TBuilder builder(module);
-    auto integer = MakeIntrusive<NAst::TIntegerType>();
+    auto integer = NQumir::NTest::TestTypes().MakeInteger();
     const int i64 = FromAstType(integer, module.Types);
     const int f64 = module.Types.I(EKind::F64);
     builder.NewFunction("mangled_divide", {TLocal{0}, TLocal{2}}, 1);
@@ -49,8 +50,8 @@ void BuildModule(TModule& module, bool withDebugInfo = true) {
         auto& function = module.Functions.front();
         function.DebugInfo = TFunctionDebugInfo{
             "divide", {2, 1, 1}, 10,
-            MakeIntrusive<NAst::TFunctionType>(
-                std::vector<NAst::TTypePtr>{integer, integer}, MakeIntrusive<NAst::TFloatType>())};
+            NQumir::NTest::TestTypes().MakeFunction(
+                std::vector<NAst::TTypePtr>{integer, integer}, NQumir::NTest::TestTypes().MakeFloat())};
         function.LocalDebugInfo = {
             {"x", {2, 1, 1}, 10, integer},
             {"x", {4, 1, 1}, 11, integer},
@@ -182,17 +183,17 @@ TEST(LLVMDebugInfo, PrimitiveTypesReferencesAndOpaqueFallback) {
         TIntegerType::I64, TIntegerType::I128, TIntegerType::U8, TIntegerType::U16,
         TIntegerType::U32, TIntegerType::U64, TIntegerType::U128})
     {
-        astTypes.push_back(MakeIntrusive<TIntegerType>(kind));
+        astTypes.push_back(NQumir::NTest::TestTypes().MakeInteger(kind));
     }
-    auto integer = MakeIntrusive<TIntegerType>();
-    auto structure = MakeIntrusive<TStructType>(
+    auto integer = NQumir::NTest::TestTypes().MakeInteger();
+    auto structure = NQumir::NTest::TestTypes().MakeStruct(
         std::vector<std::pair<std::string, TTypePtr>>{{"field", integer}});
     astTypes.insert(astTypes.end(), {
-        MakeIntrusive<TFloatType>(), MakeIntrusive<TBoolType>(),
-        MakeIntrusive<TSymbolType>(), MakeIntrusive<TStringType>(),
-        MakeIntrusive<TPointerType>(MakeIntrusive<TIntegerType>(TIntegerType::I8)),
-        MakeIntrusive<TReferenceType>(integer), MakeIntrusive<TArrayType>(integer, 1),
-        structure, MakeIntrusive<TNamedType>("alias", integer),
+        NQumir::NTest::TestTypes().MakeFloat(), NQumir::NTest::TestTypes().Make<TBoolType>(),
+        NQumir::NTest::TestTypes().Make<TSymbolType>(), NQumir::NTest::TestTypes().Make<TStringType>(),
+        NQumir::NTest::TestTypes().MakePointer(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I8)),
+        NQumir::NTest::TestTypes().MakeReference(integer), NQumir::NTest::TestTypes().MakeArray(integer, 1),
+        structure, NQumir::NTest::TestTypes().MakeNamed("alias", integer),
     });
     for (unsigned pointerBits : {32, 64}) {
         TModule source;
@@ -265,12 +266,12 @@ TEST(LLVMDebugInfo, DebugPointsAndNativeInfoAreIndependent) {
             std::istringstream input(
                 "алг цел main\nнач\n  знач := add(21, 23)\nкон\n"
                 "алг цел add(цел x, цел y)\nнач\n  лог positive\n  positive := (x > 0) и (y > 0)\n  знач := x + y\nкон\n");
-            NSemantics::TNameResolver resolver;
-            NRegistry::SystemModule system;
+            NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+            NRegistry::SystemModule system(NQumir::NTest::TestTypes());
             resolver.RegisterModule(&system);
             ASSERT_TRUE(resolver.ImportModule(system.Name()));
             NAst::TTokenStream tokens(input);
-            NAst::TParser parser;
+            NAst::TParser parser(NQumir::NTest::TestTypes());
             auto parsed = parser.parse(tokens, &resolver);
             ASSERT_TRUE(parsed);
             auto ast = *parsed;
@@ -357,10 +358,10 @@ namespace {
 
 // Compiles a Kumir program for wasm the way qumirc does, with and without debug points.
 void EmitKumirProgram(const std::string& code, bool points, int optLevel) {
-    NSemantics::TNameResolver resolver;
-    NRegistry::BuiltinsModule builtins;
-    NRegistry::SystemModule system;
-    NRegistry::TurtleModule turtle;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
+    NRegistry::BuiltinsModule builtins(NQumir::NTest::TestTypes());
+    NRegistry::SystemModule system(NQumir::NTest::TestTypes());
+    NRegistry::TurtleModule turtle(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&builtins);
     resolver.RegisterModule(&system);
     resolver.RegisterModule(&turtle);
@@ -368,8 +369,8 @@ void EmitKumirProgram(const std::string& code, bool points, int optLevel) {
     ASSERT_TRUE(resolver.ImportModule(system.Name()));
     std::istringstream input(code);
     NAst::TTokenStream tokens(input);
-    NAst::TParser parser;
-    NFrontend::TSourceModuleLoader loader;
+    NAst::TParser parser(NQumir::NTest::TestTypes());
+    NFrontend::TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     auto parsed = parser.parse(tokens, &resolver, &loader);
     ASSERT_TRUE(parsed);
     if (points) {
@@ -435,12 +436,12 @@ TEST(LLVMDebugInfo, LoweringRetainsSourceModulePresence) {
         "(block (fun <main> () -> i64 (block (return (call helper))))"
         " (fun helper () -> i64 (block (return (: 7 i64)))))");
     NAst::NCore::TTokenStream tokens(input);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed);
     auto ast = *parsed;
     NAst::TMaybeNode<NAst::TBlockExpr>(ast).Cast()->Stmts[1]->Origin = "imported";
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
     ASSERT_TRUE(NTransform::Pipeline(ast, resolver));
     TModule source;
     TBuilder builder(source);

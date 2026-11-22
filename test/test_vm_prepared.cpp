@@ -1,4 +1,5 @@
 #include <qumir/ir/eval.h>
+#include "test_types.h"
 #include <qumir/ir/lowering/lower_ast.h>
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
@@ -46,9 +47,9 @@ struct TProgram {
     explicit TProgram(const std::string& source) {
         std::istringstream input(source);
         NAst::NCore::TTokenStream tokens(input);
-        auto parsed = NAst::NCore::TParser{}.Parse(tokens);
+        auto parsed = NAst::NCore::TParser{NQumir::NTest::TestTypes()}.Parse(tokens);
         EXPECT_TRUE(parsed) << parsed.error().ToString();
-        NSemantics::TNameResolver resolver;
+        NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
         auto annotated = NTransform::Pipeline(*parsed, resolver);
         EXPECT_TRUE(annotated) << annotated.error().ToString();
         TAstLowerer lowerer(Module, Builder, resolver, {});

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 #include <qumir/parser/core/lexer.h>
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/core/printer.h>
@@ -75,7 +76,7 @@ namespace {
 NQumir::NAst::TExprPtrOf<TVarStmt> ParseVar(const std::string& type) {
     std::istringstream input("(var value " + type + ")");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     if (!parsed) {
         ADD_FAILURE() << parsed.error().ToString();
@@ -159,18 +160,18 @@ TEST(CoreWrappedTokenStreamTest, Window) {
 }
 
 TEST(CoreTypeTest, FutureTypesPrintAndParse) {
-    auto voidFuture = MakeIntrusive<TFutureType>(MakeIntrusive<TVoidType>());
+    auto voidFuture = NQumir::NTest::TestTypes().MakeFuture(NQumir::NTest::TestTypes().Make<TVoidType>());
     EXPECT_EQ(PrintType(voidFuture), "<future void>");
     EXPECT_EQ(TypeKey(voidFuture), "Future::Void");
 
-    auto namedFuture = MakeIntrusive<TFutureType>(
-        MakeIntrusive<TNamedType>("color", MakeIntrusive<TIntegerType>()));
+    auto namedFuture = NQumir::NTest::TestTypes().MakeFuture(
+        NQumir::NTest::TestTypes().MakeNamed("color", NQumir::NTest::TestTypes().MakeInteger()));
     EXPECT_EQ(PrintType(namedFuture), "<future <named color i64>>");
     EXPECT_EQ(TypeKey(namedFuture), "Future::Named::color");
 
     std::istringstream input("(fun f () -> <future i64> (block))");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
@@ -222,27 +223,27 @@ TEST(CoreTypeTest, ParametricNamedTypeValueArgsPrintAndParse) {
 }
 
 TEST(CoreTypeTest, TypeMangleKeyUsesPlainNamedAndStructLayout) {
-    auto structure = MakeIntrusive<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
-        {"Value", MakeIntrusive<TIntegerType>(TIntegerType::I32)},
-        {"Valid", MakeIntrusive<TNamedType>("n", nullptr)},
-        {"Bytes", MakeIntrusive<TPointerType>(MakeIntrusive<TIntegerType>(TIntegerType::U8))},
+    auto structure = NQumir::NTest::TestTypes().MakeStruct(std::vector<std::pair<std::string, TTypePtr>>{
+        {"Value", NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I32)},
+        {"Valid", NQumir::NTest::TestTypes().MakeNamed("n", nullptr)},
+        {"Bytes", NQumir::NTest::TestTypes().MakePointer(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::U8))},
     });
-    auto named = MakeIntrusive<TNamedType>("AggKey_i32_n", structure);
+    auto named = NQumir::NTest::TestTypes().MakeNamed("AggKey_i32_n", structure);
 
     EXPECT_EQ(TypeMangleKey(named), "AggKey_i32_n");
     EXPECT_EQ(TypeMangleKey(structure), "Struct_i32_n_Ptr_u8");
     EXPECT_EQ(
         MangleFunctionSignature(
             "__overload_key_clone_owned",
-            MakeIntrusive<TVoidType>(),
-            {named, MakeIntrusive<TPointerType>(MakeIntrusive<TIntegerType>(TIntegerType::U8))}),
+            NQumir::NTest::TestTypes().Make<TVoidType>(),
+            {named, NQumir::NTest::TestTypes().MakePointer(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::U8))}),
         "__overload_key_clone_owned$void__$AggKey_i32_n$Ptr_u8");
 }
 
 TEST(CoreTypeTest, ParametricTypeDeclPrintsAndParses) {
     std::istringstream input("(block (type Nullable [T] <struct (Value T) (Valid i8)>))");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
@@ -277,7 +278,7 @@ TEST(CoreTypeTest, ParametricTypeDeclPrintsAndParses) {
 TEST(CoreTypeTest, ParametricTypeDeclConstParamsPrintAndParse) {
     std::istringstream input("(block (type Decimal [(const Scale i32) (const Precision i32)] <struct (Lo i64) (Hi i64)>))");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
@@ -304,7 +305,7 @@ TEST(CoreTypeTest, ParametricTypeDeclConstParamsPrintAndParse) {
 TEST(CoreTypeTest, ParametricTypeDeclRejectsDuplicateParams) {
     std::istringstream input("(block (type Box [T T] <struct (Value T)>))");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.Parse(tokens);
     ASSERT_FALSE(parsed.has_value());
@@ -312,20 +313,20 @@ TEST(CoreTypeTest, ParametricTypeDeclRejectsDuplicateParams) {
 }
 
 TEST(CoreTypeTest, IntegerWidthsPrintAndParse) {
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I8)), "i8");
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I16)), "i16");
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I32)), "i32");
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::I64)), "i64");
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U8)), "u8");
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U16)), "u16");
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U32)), "u32");
-    EXPECT_EQ(PrintType(MakeIntrusive<TIntegerType>(TIntegerType::U64)), "u64");
-    EXPECT_EQ(PrintType(MakeIntrusive<TFloatType>(TFloatType::F32)), "f32");
-    EXPECT_EQ(PrintType(MakeIntrusive<TFloatType>()), "f64");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I8)), "i8");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I16)), "i16");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I32)), "i32");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64)), "i64");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::U8)), "u8");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::U16)), "u16");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::U32)), "u32");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::U64)), "u64");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeFloat(TFloatType::F32)), "f32");
+    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeFloat()), "f64");
 
     std::istringstream input("(var x u32)");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
@@ -351,7 +352,7 @@ TEST(CoreParseTypeTest, ParsesStandaloneType) {
         std::istringstream input(text);
         TTokenStream tokens(input);
 
-        auto type = ParseType(tokens);
+        auto type = ParseType(tokens, NQumir::NTest::TestTypes());
         ASSERT_TRUE(type.has_value()) << type.error().ToString();
         EXPECT_EQ(PrintType(*type), text);
     }
@@ -361,7 +362,7 @@ TEST(CoreParseTypeTest, ParsesGenericNamedType) {
     std::istringstream input("<named Pair [i64 42 <ptr f64>]>");
     TTokenStream tokens(input);
 
-    auto type = ParseType(tokens);
+    auto type = ParseType(tokens, NQumir::NTest::TestTypes());
     ASSERT_TRUE(type.has_value()) << type.error().ToString();
 
     auto named = TMaybeType<TNamedType>(*type).Cast();
@@ -385,7 +386,7 @@ TEST(CoreParseTypeTest, ReportsMalformedType) {
     std::istringstream input("<array i64>");
     TTokenStream tokens(input);
 
-    auto type = ParseType(tokens);
+    auto type = ParseType(tokens, NQumir::NTest::TestTypes());
     ASSERT_FALSE(type.has_value());
     EXPECT_NE(type.error().ToString().find("expected array arity"), std::string::npos);
 }
@@ -394,11 +395,11 @@ TEST(CoreParseTypeTest, LeavesTrailingTokensInTheStream) {
     std::istringstream input("i64 f64");
     TTokenStream tokens(input);
 
-    auto first = ParseType(tokens);
+    auto first = ParseType(tokens, NQumir::NTest::TestTypes());
     ASSERT_TRUE(first.has_value()) << first.error().ToString();
     EXPECT_EQ(PrintType(*first), "i64");
 
-    auto second = ParseType(tokens);
+    auto second = ParseType(tokens, NQumir::NTest::TestTypes());
     ASSERT_TRUE(second.has_value()) << second.error().ToString();
     EXPECT_EQ(PrintType(*second), "f64");
 }
@@ -448,7 +449,7 @@ TEST(CoreVarAttrs, RejectsDuplicateConflictingAndMisplacedAttributes) {
         SCOPED_TRACE(type);
         std::istringstream input("(var value " + type + ")");
         TTokenStream tokens(input);
-        TParser parser;
+        TParser parser(NQumir::NTest::TestTypes());
         EXPECT_FALSE(parser.Parse(tokens).has_value());
     }
 }
@@ -456,7 +457,7 @@ TEST(CoreVarAttrs, RejectsDuplicateConflictingAndMisplacedAttributes) {
 TEST(CoreParserTest, NonDefaultIntegerLiteralKeepsTypeAnnotation) {
     std::istringstream input("(output (: 42 u32))");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
@@ -467,7 +468,7 @@ TEST(CoreParserTest, NonDefaultIntegerLiteralKeepsTypeAnnotation) {
 TEST(CoreParserTest, AwaitPrintAndParse) {
     std::istringstream input("(await (call f))");
     TTokenStream tokens(input);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
 
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
@@ -497,7 +498,7 @@ TEST(CoreParserTest, LifetimeFormsPrintAndParse) {
         SCOPED_TRACE(form);
         std::istringstream input(form);
         TTokenStream tokens(input);
-        TParser parser;
+        TParser parser(NQumir::NTest::TestTypes());
 
         auto parsed = parser.Parse(tokens);
         ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
@@ -529,7 +530,7 @@ TEST(CoreIdentifierQuotingTest, PlainNamesStayBare) {
     for (const auto* name : {"foo", "my_var", "$x", "x1", "+", "-", "->", "a:b", "<main>"}) {
         SCOPED_TRACE(name);
         auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
-            NQumir::TLocation{}, name, MakeIntrusive<NQumir::NAst::TBoolType>());
+            NQumir::TLocation{}, name, NQumir::NTest::TestTypes().Make<NQumir::NAst::TBoolType>());
         EXPECT_EQ(PrintAst(var, TPrintOptions{.Pretty = false}), std::string("(var ") + name + " bool)");
     }
 }
@@ -561,15 +562,15 @@ TEST(CoreIdentifierQuotingTest, PlainIdentifiersMatchTheLexer) {
 TEST(CoreIdentifierQuotingTest, StructFieldNamesRoundTrip) {
     for (const auto& name : TrickyIdentifiers()) {
         SCOPED_TRACE(name);
-        auto type = MakeIntrusive<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
-            {name, MakeIntrusive<NQumir::NAst::TBoolType>()},
-            {"z", MakeIntrusive<NQumir::NAst::TBoolType>()},
+        auto type = NQumir::NTest::TestTypes().MakeStruct(std::vector<std::pair<std::string, TTypePtr>>{
+            {name, NQumir::NTest::TestTypes().Make<NQumir::NAst::TBoolType>()},
+            {"z", NQumir::NTest::TestTypes().Make<NQumir::NAst::TBoolType>()},
         });
         const auto text = PrintType(type);
 
         std::istringstream input(text);
         TTokenStream tokens(input);
-        auto parsed = ParseType(tokens);
+        auto parsed = ParseType(tokens, NQumir::NTest::TestTypes());
         ASSERT_TRUE(parsed.has_value()) << text << ": " << parsed.error().ToString();
         auto st = TMaybeType<TStructType>(*parsed).Cast();
         ASSERT_TRUE(st) << text;
@@ -583,12 +584,12 @@ TEST(CoreIdentifierQuotingTest, VariableNamesRoundTrip) {
     for (const auto& name : TrickyIdentifiers()) {
         SCOPED_TRACE(name);
         auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
-            NQumir::TLocation{}, name, MakeIntrusive<NQumir::NAst::TBoolType>());
+            NQumir::TLocation{}, name, NQumir::NTest::TestTypes().Make<NQumir::NAst::TBoolType>());
         const auto text = PrintAst(var, TPrintOptions{.Pretty = false});
 
         std::istringstream input(text);
         TTokenStream tokens(input);
-        TParser parser;
+        TParser parser(NQumir::NTest::TestTypes());
         auto parsed = parser.Parse(tokens);
         ASSERT_TRUE(parsed.has_value()) << text << ": " << parsed.error().ToString();
         auto parsedVar = NQumir::NAst::TMaybeNode<NQumir::NAst::TVarStmt>(*parsed).Cast();
@@ -621,6 +622,6 @@ TEST(CoreIdentifierQuotingTest, EscapesInBars) {
 
 TEST(CoreIdentifierQuotingTest, EmptyNameIsRejected) {
     auto var = MakeIntrusive<NQumir::NAst::TVarStmt>(
-        NQumir::TLocation{}, "", MakeIntrusive<NQumir::NAst::TBoolType>());
+        NQumir::TLocation{}, "", NQumir::NTest::TestTypes().Make<NQumir::NAst::TBoolType>());
     EXPECT_THROW(PrintAst(var, TPrintOptions{.Pretty = false}), std::invalid_argument);
 }

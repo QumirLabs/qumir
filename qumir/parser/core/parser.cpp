@@ -36,35 +36,36 @@ using TListHandlerMap = std::unordered_map<std::string, TListHandler>;
 
 struct TParserContext {
     TWrappedTokenStream& Stream;
+    TTypeFactory& Types;
     TListHandlerMap Handlers;
     std::vector<TPragma> Pragmas;
     int BlockDepth = 0;
     const TTypeParserMap* TypeParsers = nullptr;
 };
 
-TConcreteTypePtr<TIntegerType> IntegerTypeByName(const std::string& name) {
+TConcreteTypePtr<TIntegerType> IntegerTypeByName(TTypeFactory& types, const std::string& name) {
     using K = TIntegerType::EKind;
-    if (name == "i8") return MakeIntrusive<TIntegerType>(K::I8);
-    if (name == "i16") return MakeIntrusive<TIntegerType>(K::I16);
-    if (name == "i32") return MakeIntrusive<TIntegerType>(K::I32);
-    if (name == "i64") return MakeIntrusive<TIntegerType>(K::I64);
-    if (name == "i128") return MakeIntrusive<TIntegerType>(K::I128);
-    if (name == "u8") return MakeIntrusive<TIntegerType>(K::U8);
-    if (name == "u16") return MakeIntrusive<TIntegerType>(K::U16);
-    if (name == "u32") return MakeIntrusive<TIntegerType>(K::U32);
-    if (name == "u64") return MakeIntrusive<TIntegerType>(K::U64);
-    if (name == "u128") return MakeIntrusive<TIntegerType>(K::U128);
+    if (name == "i8") return types.MakeInteger(K::I8);
+    if (name == "i16") return types.MakeInteger(K::I16);
+    if (name == "i32") return types.MakeInteger(K::I32);
+    if (name == "i64") return types.MakeInteger(K::I64);
+    if (name == "i128") return types.MakeInteger(K::I128);
+    if (name == "u8") return types.MakeInteger(K::U8);
+    if (name == "u16") return types.MakeInteger(K::U16);
+    if (name == "u32") return types.MakeInteger(K::U32);
+    if (name == "u64") return types.MakeInteger(K::U64);
+    if (name == "u128") return types.MakeInteger(K::U128);
     return nullptr;
 }
 
-TTypePtr ScalarTypeByName(const std::string& name) {
-    if (auto integerType = IntegerTypeByName(name)) return integerType;
-    if (name == "f32") return MakeIntrusive<TFloatType>(TFloatType::F32);
-    if (name == "f64") return MakeIntrusive<TFloatType>(TFloatType::F64);
-    if (name == "bool") return MakeIntrusive<TBoolType>();
-    if (name == "string") return MakeIntrusive<TStringType>();
-    if (name == "char") return MakeIntrusive<TSymbolType>();
-    if (name == "void") return MakeIntrusive<TVoidType>();
+TTypePtr ScalarTypeByName(TTypeFactory& types, const std::string& name) {
+    if (auto integerType = IntegerTypeByName(types, name)) return integerType;
+    if (name == "f32") return types.MakeFloat(TFloatType::F32);
+    if (name == "f64") return types.MakeFloat(TFloatType::F64);
+    if (name == "bool") return types.Make<TBoolType>();
+    if (name == "string") return types.Make<TStringType>();
+    if (name == "char") return types.Make<TSymbolType>();
+    if (name == "void") return types.Make<TVoidType>();
     return nullptr;
 }
 
@@ -127,17 +128,17 @@ TExpectedTask<std::monostate, TError, TLocation> Expect(TParserContext& context,
 TAstTask ParseExpr(TParserContext& context);
 TTypeTask ParseType(TParserContext& context);
 
-TExprPtr ApplyTypeAnnotation(TExprPtr expr, const TTypePtr& type) {
+TExprPtr ApplyTypeAnnotation(TTypeFactory& types, TExprPtr expr, const TTypePtr& type) {
     if (auto maybeNum = TMaybeNode<TNumberExpr>(expr)) {
         auto num = maybeNum.Cast();
         if (TMaybeType<TFloatType>(type) && !num->IsFloat()) {
-            expr = MakeIntrusive<TNumberExpr>(expr->Location, static_cast<double>(num->IntValue));
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, static_cast<double>(num->IntValue), types);
         } else if (TMaybeType<TIntegerType>(type) && num->IsFloat()) {
-            expr = MakeIntrusive<TNumberExpr>(expr->Location, static_cast<int64_t>(num->FloatValue));
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, static_cast<int64_t>(num->FloatValue), types);
         } else if (TMaybeType<TBoolType>(type)) {
-            expr = MakeIntrusive<TNumberExpr>(expr->Location, num->IsFloat() ? num->FloatValue != 0.0 : num->IntValue != 0);
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, num->IsFloat() ? num->FloatValue != 0.0 : num->IntValue != 0, types);
         } else if (TMaybeType<TSymbolType>(type)) {
-            expr = MakeIntrusive<TNumberExpr>(expr->Location, num->IntValue);
+            expr = MakeIntrusive<TNumberExpr>(expr->Location, num->IntValue, types);
         }
     }
     expr->Type = type;
@@ -439,21 +440,21 @@ TAstTask ParseExpr(TParserContext& context) {
         co_return TExprPtr{};
     }
     if (token.Type == TToken::Integer) {
-        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64);
+        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64, context.Types);
     }
     if (token.Type == TToken::Float) {
-        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.f64);
+        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.f64, context.Types);
     }
     if (token.Type == TToken::Boolean) {
-        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64 != 0);
+        co_return MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64 != 0, context.Types);
     }
     if (token.Type == TToken::Char) {
-        auto expr = MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64);
+        auto expr = MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64, context.Types);
         expr->Type = TConcreteTypePtr<TSymbolType>();
         co_return expr;
     }
     if (token.Type == TToken::String) {
-        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, token.Name);
+        co_return MakeIntrusive<TStringLiteralExpr>(token.Location, token.Name, context.Types);
     }
     if (token.Type == TToken::Identifier) {
         if (token.Name == "break") co_return MakeIntrusive<TBreakStmt>(token.Location);
@@ -508,7 +509,7 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     auto head = co_await ParseName(context);
 
     // Scalar types wrapped in angle brackets: <i64 (mutable)> etc.
-    if (auto scalar = ScalarTypeByName(head)) {
+    if (auto scalar = ScalarTypeByName(context.Types, head)) {
         co_await Expect(context, '>');
         co_return scalar;
     }
@@ -516,7 +517,7 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     if (head == "vec") {
         auto elementType = co_await ParseType(context);
         auto sizeToken = context.Stream.Next();
-        auto vector = MakeIntrusive<TVectorType>(std::move(elementType), 0);
+        auto vector = context.Types.MakeUnboundVector(elementType);
         if (sizeToken.Type == TToken::Integer) {
             vector->BindSize(std::to_string(sizeToken.Value.i64));
         } else if (sizeToken.Type == TToken::Identifier) {
@@ -542,7 +543,7 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
         if (shape.empty()) {
             co_return TError(location, "tensor must have at least one dimension");
         }
-        co_return MakeIntrusive<TTensorType>(std::move(elementType), std::move(shape));
+        co_return context.Types.MakeTensor(std::move(elementType), std::move(shape));
     }
 
     if (head == "fun") {
@@ -553,11 +554,11 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
             if (IsOp(token, '>')) break;
             if (token.IsEof()) co_return Error(token, "expected '>'");
         }
-        co_return MakeIntrusive<TFunctionType>(std::move(params), std::move(returnType));
+        co_return context.Types.MakeFunction(std::move(params), std::move(returnType));
     }
     if (head == "future") {
         auto resultType = co_await ParseType(context);
-        auto type = MakeIntrusive<TFutureType>(std::move(resultType));
+        auto type = context.Types.MakeFuture(std::move(resultType));
         co_await Expect(context, '>');
         co_return type;
     }
@@ -566,24 +567,24 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
         auto arity = context.Stream.Next();
         if (arity.Type != TToken::Integer) co_return Error(arity, "expected array arity");
         co_await Expect(context, '>');
-        co_return MakeIntrusive<TArrayType>(std::move(elementType), static_cast<int>(arity.Value.i64));
+        co_return context.Types.MakeArray(std::move(elementType), static_cast<int>(arity.Value.i64));
     }
     if (head == "ptr") {
         auto pointee = co_await ParseType(context);
-        auto type = MakeIntrusive<TPointerType>(std::move(pointee));
+        auto type = context.Types.MakePointer(std::move(pointee));
         co_await Expect(context, '>');
         co_return type;
     }
     if (head == "ref") {
         auto referenced = co_await ParseType(context);
-        auto type = MakeIntrusive<TReferenceType>(std::move(referenced));
+        auto type = context.Types.MakeReference(std::move(referenced));
         co_await Expect(context, '>');
         co_return type;
     }
     if (head == "named") {
         auto name = co_await ParseName(context);
         auto typeArgs = co_await ParseGenericTypeArgs(context);
-        auto type = MakeIntrusive<TNamedType>(std::move(name), nullptr, std::move(typeArgs));
+        auto type = context.Types.MakeNamed(std::move(name), nullptr, std::move(typeArgs));
         auto tok = context.Stream.Next();
         if (IsOp(tok, '>')) {
             if (context.TypeParsers) {
@@ -620,7 +621,7 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
             co_await Expect(context, ')');
             fields.emplace_back(std::move(name), std::move(type));
         }
-        co_return MakeIntrusive<TStructType>(std::move(fields));
+        co_return context.Types.MakeStruct(std::move(fields));
     }
     co_return TError(location, "unknown composite type: " + head);
 }
@@ -629,7 +630,7 @@ TTypeTask ParseType(TParserContext& context) {
     auto token = context.Stream.Next();
     if (IsNil(token)) co_return TTypePtr{};
     if (token.Type == TToken::Identifier) {
-        if (auto scalar = ScalarTypeByName(token.Name)) co_return scalar;
+        if (auto scalar = ScalarTypeByName(context.Types, token.Name)) co_return scalar;
         if (context.TypeParsers) {
             if (auto it = context.TypeParsers->find(token.Name); it != context.TypeParsers->end()) {
                 auto custom = it->second({});
@@ -639,7 +640,7 @@ TTypeTask ParseType(TParserContext& context) {
                 co_return std::move(*custom);
             }
         }
-        co_return MakeIntrusive<TNamedType>(token.Name, nullptr);
+        co_return context.Types.MakeNamed(token.Name, nullptr);
     }
     if (IsOp(token, '<')) {
         co_return co_await ParseCompositeType(context, token.Location);
@@ -652,7 +653,7 @@ TListHandlerMap MakeDefaultHandlers() {
         {":", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto expr = co_await ParseExpr(ctx);
             auto type = co_await ParseType(ctx);
-            expr = ApplyTypeAnnotation(std::move(expr), std::move(type));
+            expr = ApplyTypeAnnotation(ctx.Types, std::move(expr), std::move(type));
             co_await Expect(ctx, ')');
             co_return expr;
         }},
@@ -701,7 +702,7 @@ TListHandlerMap MakeDefaultHandlers() {
             }
             co_return MakeIntrusive<TDestroyExpr>(
                 loc,
-                std::move(value),
+                std::move(value), ctx.Types,
                 std::move(aux));
         }},
         {"replace", [](TParserContext& ctx, TLocation loc) -> TAstTask {
@@ -711,7 +712,7 @@ TListHandlerMap MakeDefaultHandlers() {
             co_return MakeIntrusive<TReplaceExpr>(
                 loc,
                 std::move(target),
-                std::move(value));
+                std::move(value), ctx.Types);
         }},
         {"cleanup", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto dash = co_await ParseName(ctx);
@@ -722,7 +723,7 @@ TListHandlerMap MakeDefaultHandlers() {
             if (suffix == "global") {
                 co_return MakeIntrusive<TGlobalCleanupExpr>(
                     loc,
-                    co_await ParseExprsUntil(ctx, ')'));
+                    co_await ParseExprsUntil(ctx, ')'), ctx.Types);
             }
             if (suffix != "exit") {
                 co_return TError(loc, "unknown core form: cleanup-" + suffix);
@@ -753,7 +754,7 @@ TListHandlerMap MakeDefaultHandlers() {
                 loc,
                 kind,
                 std::move(value),
-                co_await ParseExprsUntil(ctx, ')'));
+                co_await ParseExprsUntil(ctx, ')'), ctx.Types);
         }},
         {"=", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto name = co_await ParseName(ctx);
@@ -801,7 +802,7 @@ TListHandlerMap MakeDefaultHandlers() {
             co_return MakeIntrusive<TVarsBlockExpr>(loc, co_await ParseExprsUntil(ctx, ')'));
         }},
         {"input", [](TParserContext& ctx, TLocation loc) -> TAstTask {
-            co_return MakeIntrusive<TInputExpr>(loc, co_await ParseExprsUntil(ctx, ')'));
+            co_return MakeIntrusive<TInputExpr>(loc, co_await ParseExprsUntil(ctx, ')'), ctx.Types);
         }},
         {"cond", [](TParserContext&, TLocation loc) -> TAstTask {
             co_return TError(loc, "форма (cond ...) устарела, используйте (if ...)");
@@ -882,7 +883,7 @@ TListHandlerMap MakeDefaultHandlers() {
             auto params = co_await ParseParams(ctx);
 
             // optional return type introduced by '->'
-            TTypePtr returnType = MakeIntrusive<TVoidType>();
+            TTypePtr returnType = ctx.Types.Make<TVoidType>();
             auto tok = ctx.Stream.Next();
             if (tok.Type == TToken::Identifier && tok.Name == "->") {
                 returnType = co_await ParseType(ctx);
@@ -984,7 +985,7 @@ TListHandlerMap MakeDefaultHandlers() {
             for (const auto& param : funDecl->Params) {
                 paramTypes.push_back(param->Type);
             }
-            funDecl->Type = MakeIntrusive<TFunctionType>(std::move(paramTypes), funDecl->RetType);
+            funDecl->Type = ctx.Types.MakeFunction(std::move(paramTypes), funDecl->RetType);
             co_return funDecl;
         }},
         {"call", [](TParserContext& ctx, TLocation loc) -> TAstTask {
@@ -999,7 +1000,7 @@ TListHandlerMap MakeDefaultHandlers() {
         }},
         {"output", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto args = co_await ParseOutputArgs(ctx);
-            co_return MakeIntrusive<TOutputExpr>(loc, std::move(args));
+            co_return MakeIntrusive<TOutputExpr>(loc, std::move(args), ctx.Types);
         }},
         {"cast", [](TParserContext& ctx, TLocation loc) -> TAstTask {
             auto operand = co_await ParseExpr(ctx);
@@ -1059,7 +1060,7 @@ TListHandlerMap MakeDefaultHandlers() {
             auto genericParams = co_await ParseGenericParams(ctx);
             auto underlying = co_await ParseType(ctx);
             co_await Expect(ctx, ')');
-            auto namedType = MakeIntrusive<TNamedType>(std::move(name), std::move(underlying));
+            auto namedType = ctx.Types.MakeNamed(std::move(name), std::move(underlying));
             co_return MakeIntrusive<TTypeDeclStmt>(loc, std::move(namedType), std::move(genericParams));
         }},
         {"assert", [](TParserContext& ctx, TLocation loc) -> TAstTask {
@@ -1091,7 +1092,7 @@ TListHandlerMap MakeDefaultHandlers() {
             co_await Expect(ctx, ')');
             co_return MakeIntrusive<TStructConstructExpr>(
                 loc,
-                MakeIntrusive<TStructType>(std::move(fieldTypes)),
+                ctx.Types.MakeStruct(std::move(fieldTypes)),
                 std::move(fields),
                 std::move(fieldNames));
         }},
@@ -1119,6 +1120,9 @@ struct TParseHandleImpl : NQumir::NAst::NCore::IParseHandle {
     TExpectedTask<TTypePtr, TError, TLocation> Type() override {
         co_return co_await ParseType(Ctx);
     }
+    TTypeFactory& Types() override {
+        return Ctx.Types;
+    }
     TToken Next() override {
         return Ctx.Stream.Next();
     }
@@ -1134,7 +1138,7 @@ struct TParseHandleImpl : NQumir::NAst::NCore::IParseHandle {
 
 std::expected<TExprPtr, TError> TParser::Parse(TTokenStream& baseStream) {
     TWrappedTokenStream stream(baseStream, 4);
-    TParserContext context{stream, MakeDefaultHandlers()};
+    TParserContext context{stream, Types, MakeDefaultHandlers()};
     context.TypeParsers = &TypeParsers;
     for (auto& [key, handler] : NodeParsers) {
         context.Handlers[key] = [h = handler](TParserContext& ctx, TLocation loc) -> TAstTask {
@@ -1154,13 +1158,13 @@ std::expected<TExprPtr, TError> TParser::Parse(TTokenStream& baseStream) {
     return result;
 }
 
-std::expected<TTypePtr, TError> ParseType(ITokenStream& baseStream) {
-    return ParseType(baseStream, TTypeParserMap{});
+std::expected<TTypePtr, TError> ParseType(ITokenStream& baseStream, TTypeFactory& types) {
+    return ParseType(baseStream, TTypeParserMap{}, types);
 }
 
-std::expected<TTypePtr, TError> ParseType(ITokenStream& baseStream, const TTypeParserMap& typeParsers) {
+std::expected<TTypePtr, TError> ParseType(ITokenStream& baseStream, const TTypeParserMap& typeParsers, TTypeFactory& types) {
     TWrappedTokenStream stream(baseStream, 4);
-    TParserContext context{stream};
+    TParserContext context{stream, types};
     context.TypeParsers = &typeParsers;
     return ParseType(context).result();
 }

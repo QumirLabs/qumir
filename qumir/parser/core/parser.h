@@ -23,6 +23,8 @@ struct IParseHandle {
 
     virtual TAstTask Expr() = 0;
     virtual TExpectedTask<TTypePtr, TError, TLocation> Type() = 0;
+    // Types are created through the factory shared by the whole compilation.
+    virtual TTypeFactory& Types() = 0;
     virtual TToken Next() = 0;
     virtual void Unget(TToken) = 0;
     virtual TExpectedTask<std::monostate, TError, TLocation> Take(char op) = 0;
@@ -44,6 +46,11 @@ using TTypeParserMap = std::unordered_map<std::string, TTypeParser>;
 
 class TParser {
 public:
+    explicit TParser(TTypeFactory& types)
+        : Types(types)
+    { }
+
+    TTypeFactory& Types;
     TNodeParserMap NodeParsers;
     TTypeParserMap TypeParsers;
     std::vector<TPragma> Pragmas;
@@ -52,8 +59,8 @@ public:
 };
 
 // Reads a single type off the stream, leaving whatever follows it unconsumed.
-std::expected<TTypePtr, TError> ParseType(ITokenStream& stream);
-std::expected<TTypePtr, TError> ParseType(ITokenStream& stream, const TTypeParserMap& typeParsers);
+std::expected<TTypePtr, TError> ParseType(ITokenStream& stream, TTypeFactory& types);
+std::expected<TTypePtr, TError> ParseType(ITokenStream& stream, const TTypeParserMap& typeParsers, TTypeFactory& types);
 
 } // namespace NCore
 } // namespace NAst

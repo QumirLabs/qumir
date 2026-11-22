@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/semantics/lifetime/validator.h>
 #include <qumir/semantics/transform/transform.h>
@@ -21,7 +22,7 @@ TIntrusivePtr<TFunDecl> Function(
     std::string name,
     std::vector<TParam> parameters,
     const TIntrusivePtr<TBlockExpr>& body,
-    const TTypePtr& returnType = MakeIntrusive<TVoidType>())
+    const TTypePtr& returnType = NQumir::NTest::TestTypes().Make<TVoidType>())
 {
     return MakeIntrusive<TFunDecl>(
         TLocation{},
@@ -43,7 +44,7 @@ TIntrusivePtr<TIdentExpr> Ident(std::string name) {
 TIntrusivePtr<TOwnLiteralExpr> OwnedLiteral(std::string value = "value") {
     return MakeIntrusive<TOwnLiteralExpr>(
         TLocation{},
-        MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value)));
+        MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value), NQumir::NTest::TestTypes()));
 }
 
 std::expected<void, TError> Prepare(
@@ -82,7 +83,7 @@ void ExpectErrorContains(
 } // namespace
 
 TEST(LifetimeAnnotation, AnnotatesAllInternalNodesExplicitly) {
-    auto stringType = MakeIntrusive<TStringType>();
+    auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto value = Variable("value", stringType);
     auto borrowed = MakeIntrusive<TBorrowExpr>(TLocation{}, Ident("value"));
     auto retained = MakeIntrusive<TRetainExpr>(TLocation{}, borrowed);
@@ -90,19 +91,19 @@ TEST(LifetimeAnnotation, AnnotatesAllInternalNodesExplicitly) {
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         Ident("value"),
-        OwnedLiteral("replacement"));
-    auto destroyRetained = MakeIntrusive<TDestroyExpr>(TLocation{}, retained);
-    auto destroyMoved = MakeIntrusive<TDestroyExpr>(TLocation{}, moved);
+        OwnedLiteral("replacement"), NQumir::NTest::TestTypes());
+    auto destroyRetained = MakeIntrusive<TDestroyExpr>(TLocation{}, retained, NQumir::NTest::TestTypes());
+    auto destroyMoved = MakeIntrusive<TDestroyExpr>(TLocation{}, moved, NQumir::NTest::TestTypes());
     auto exit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Return,
         nullptr,
         std::vector<TExprPtr>{
-            MakeIntrusive<TDestroyExpr>(TLocation{}, Ident("value")),
-        });
+            MakeIntrusive<TDestroyExpr>(TLocation{}, Ident("value"), NQumir::NTest::TestTypes()),
+        }, NQumir::NTest::TestTypes());
     auto global = MakeIntrusive<TGlobalCleanupExpr>(
         TLocation{},
-        std::vector<TExprPtr>{});
+        std::vector<TExprPtr>{}, NQumir::NTest::TestTypes());
     TExprPtr root = Block({
         Function("main", {}, Block({
             value,
@@ -113,7 +114,7 @@ TEST(LifetimeAnnotation, AnnotatesAllInternalNodesExplicitly) {
         })),
         global,
     });
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = Prepare(root, resolver);
     ASSERT_TRUE(result.has_value()) << result.error().ToString();
@@ -130,33 +131,33 @@ TEST(LifetimeAnnotation, CleanupReturnChecksFunctionReturnType) {
     auto exit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Return,
-        MakeIntrusive<TStringLiteralExpr>(TLocation{}, "wrong"),
-        std::vector<TExprPtr>{});
+        MakeIntrusive<TStringLiteralExpr>(TLocation{}, "wrong", NQumir::NTest::TestTypes()),
+        std::vector<TExprPtr>{}, NQumir::NTest::TestTypes());
     TExprPtr root = Block({
         Function(
             "value",
             {},
             Block({exit}),
-            MakeIntrusive<TIntegerType>()),
+            NQumir::NTest::TestTypes().MakeInteger()),
     });
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = Prepare(root, resolver);
     ExpectErrorContains(result, "возвращаемому типу функции");
 }
 
 TEST(LifetimeValidator, AcceptsValidOwnershipGraph) {
-    auto value = Variable("value", MakeIntrusive<TStringType>());
+    auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
     value->Init = OwnedLiteral("initial");
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         Ident("value"),
         MakeIntrusive<TRetainExpr>(
             TLocation{},
-            MakeIntrusive<TBorrowExpr>(TLocation{}, Ident("value"))));
-    auto destroy = MakeIntrusive<TDestroyExpr>(TLocation{}, Ident("value"));
+            MakeIntrusive<TBorrowExpr>(TLocation{}, Ident("value"))), NQumir::NTest::TestTypes());
+    auto destroy = MakeIntrusive<TDestroyExpr>(TLocation{}, Ident("value"), NQumir::NTest::TestTypes());
     TExprPtr root = Block({Function("main", {}, Block({value, replace, destroy}))});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ASSERT_TRUE(result.has_value()) << result.error().ToString();
@@ -165,23 +166,23 @@ TEST(LifetimeValidator, AcceptsValidOwnershipGraph) {
 TEST(LifetimeValidator, RejectsRetainOfTrivialValue) {
     auto retain = MakeIntrusive<TRetainExpr>(
         TLocation{},
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}));
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()));
     TExprPtr root = Block({retain});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ExpectErrorContains(result, "ref-counted");
 }
 
 TEST(LifetimeValidator, RejectsRetainOfUniqueValue) {
-    auto arrayType = MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1);
+    auto arrayType = NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1);
     auto array = Variable("items", arrayType);
     auto retain = MakeIntrusive<TRetainExpr>(
         TLocation{},
         MakeIntrusive<TBorrowExpr>(TLocation{}, Ident("items")));
-    auto destroy = MakeIntrusive<TDestroyExpr>(TLocation{}, retain);
+    auto destroy = MakeIntrusive<TDestroyExpr>(TLocation{}, retain, NQumir::NTest::TestTypes());
     TExprPtr root = Block({Function("main", {}, Block({array, destroy}))});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ExpectErrorContains(result, "ref-counted");
@@ -190,34 +191,34 @@ TEST(LifetimeValidator, RejectsRetainOfUniqueValue) {
 TEST(LifetimeValidator, RejectsDestroyOfTrivialValue) {
     auto destroy = MakeIntrusive<TDestroyExpr>(
         TLocation{},
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}));
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()), NQumir::NTest::TestTypes());
     TExprPtr root = Block({destroy});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ExpectErrorContains(result, "managed value");
 }
 
 TEST(LifetimeValidator, RejectsDestroyOfBorrowedParameter) {
-    auto parameter = Variable("value", MakeIntrusive<TStringType>());
-    auto destroy = MakeIntrusive<TDestroyExpr>(TLocation{}, Ident("value"));
+    auto parameter = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
+    auto destroy = MakeIntrusive<TDestroyExpr>(TLocation{}, Ident("value"), NQumir::NTest::TestTypes());
     TExprPtr root = Block({Function("main", {parameter}, Block({destroy}))});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ExpectErrorContains(result, "borrowed value");
 }
 
 TEST(LifetimeValidator, RejectsCopyOfUniqueValue) {
-    auto arrayType = MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1);
+    auto arrayType = NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1);
     auto source = Variable("source", arrayType);
     auto target = Variable("target", arrayType);
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         Ident("target"),
-        Ident("source"));
+        Ident("source"), NQumir::NTest::TestTypes());
     TExprPtr root = Block({Function("main", {}, Block({source, target, replace}))});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ExpectErrorContains(result, "Unique value cannot be copied");
@@ -225,22 +226,22 @@ TEST(LifetimeValidator, RejectsCopyOfUniqueValue) {
 
 TEST(LifetimeValidator, RejectsUnresolvedSyntheticVariable) {
     auto ident = Ident("__lifetime_missing");
-    ident->Type = MakeIntrusive<TStringType>();
+    ident->Type = NQumir::NTest::TestTypes().Make<TStringType>();
     TExprPtr root = Block({ident});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = TLifetimeValidator(resolver).Validate(root);
     ExpectErrorContains(result, "Unresolved synthetic lifetime variable");
 }
 
 TEST(LifetimeValidator, RejectsRawLiteralInOwnedStorage) {
-    auto value = Variable("value", MakeIntrusive<TStringType>());
-    value->Init = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "raw");
+    auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
+    value->Init = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "raw", NQumir::NTest::TestTypes());
     auto marker = MakeIntrusive<TGlobalCleanupExpr>(
         TLocation{},
-        std::vector<TExprPtr>{});
+        std::vector<TExprPtr>{}, NQumir::NTest::TestTypes());
     TExprPtr root = Block({value, marker});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ExpectErrorContains(result, "Raw string literal requires own-literal");
@@ -248,7 +249,7 @@ TEST(LifetimeValidator, RejectsRawLiteralInOwnedStorage) {
 
 TEST(LifetimeValidator, RejectsUnconsumedOwnedResult) {
     TExprPtr root = Block({OwnedLiteral("unused")});
-    TNameResolver resolver;
+    TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto result = PrepareAndValidate(root, resolver);
     ExpectErrorContains(result, "Owned result has no move/destroy consumer");

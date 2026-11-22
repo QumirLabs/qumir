@@ -7,7 +7,7 @@ namespace NRegistry {
 
 class ColorsModule : public IModule {
 public:
-    ColorsModule();
+    explicit ColorsModule(NAst::TTypeFactory& types);
 
     const std::string& Name() const override {
         static const std::string name = "Цвета";

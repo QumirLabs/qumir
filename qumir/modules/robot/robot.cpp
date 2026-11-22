@@ -7,12 +7,12 @@ namespace NRegistry {
 
 using namespace NRuntime;
 
-RobotModule::RobotModule()
+RobotModule::RobotModule(NAst::TTypeFactory& types)
 {
-    auto boolType = MakeIntrusive<NAst::TBoolType>();
-    auto floatType = MakeIntrusive<NAst::TFloatType>();
-    auto voidType = MakeIntrusive<NAst::TVoidType>();
-    auto futureVoidType = NAst::WrapFutureType(voidType);
+    auto boolType = types.Make<NAst::TBoolType>();
+    auto floatType = types.MakeFloat();
+    auto voidType = types.Make<NAst::TVoidType>();
+    auto futureVoidType = types.WrapFuture(voidType);
 
     std::vector<TExternalFunction> functions = {
         {

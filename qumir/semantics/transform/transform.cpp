@@ -29,10 +29,10 @@ bool IsFileType(const NAst::TTypePtr& type) {
 
 } // namespace
 
-std::expected<bool, TError> PreNameResolutionTransform(NAst::TExprPtr& expr)
+std::expected<bool, TError> PreNameResolutionTransform(NAst::TTypeFactory& types, NAst::TExprPtr& expr)
 {
     bool changed = TransformAst(expr, expr,
-        [](const NAst::TExprPtr& node) -> NAst::TExprPtr {
+        [&types](const NAst::TExprPtr& node) -> NAst::TExprPtr {
             if (auto maybeAssert = NAst::TMaybeNode<NAst::TAssertStmt>(node)) {
                 // rewrite assert statement into a call: __ensure(condition, "condition_text")
                 auto assertStmt = maybeAssert.Cast();
@@ -45,7 +45,7 @@ std::expected<bool, TError> PreNameResolutionTransform(NAst::TExprPtr& expr)
                 oss << " @ " << assertStmt->Location.ToString();
                 std::vector<NAst::TExprPtr> args;
                 args.push_back(assertStmt->Expr);
-                args.push_back(MakeIntrusive<NAst::TStringLiteralExpr>(assertStmt->Location, oss.str()));
+                args.push_back(MakeIntrusive<NAst::TStringLiteralExpr>(assertStmt->Location, oss.str(), types));
                 return MakeIntrusive<NAst::TCallExpr>(
                     assertStmt->Location,
                     MakeIntrusive<NAst::TIdentExpr>(assertStmt->Location, "__ensure"),
@@ -164,7 +164,7 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                             std::vector<NAst::TExprPtr>{binary->Left, binary->Right});
                         std::vector<NAst::TExprPtr> args;
                         args.push_back(call);
-                        args.push_back(MakeIntrusive<NAst::TNumberExpr>(binary->Location, (int64_t)0));
+                        args.push_back(MakeIntrusive<NAst::TNumberExpr>(binary->Location, (int64_t)0, context.Types()));
                         return MakeIntrusive<NAst::TBinaryExpr>(binary->Location, binary->Operator, args[0], args[1]);
                     }
                 }
@@ -218,12 +218,12 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         if (width) {
                             args.push_back(width);
                         } else {
-                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)0));
+                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)0, context.Types()));
                         }
                         if (prec) {
                             args.push_back(prec);
                         } else {
-                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)-1));
+                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)-1, context.Types()));
                         }
                         call = MakeIntrusive<NAst::TCallExpr>(
                             output->Location,
@@ -235,7 +235,7 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         if (width) {
                             args.push_back(width);
                         } else {
-                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)0));
+                            args.push_back(MakeIntrusive<NAst::TNumberExpr>(output->Location, (int64_t)0, context.Types()));
                         }
                         if (prec) {
                             errors.push_back(TError(prec->Location, "precision argument is not applicable for integer output"));
@@ -561,14 +561,14 @@ std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NS
 
 namespace {
 
-void RefreshFunctionType(const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl)
+void RefreshFunctionType(NAst::TTypeFactory& types, const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl)
 {
     std::vector<NAst::TTypePtr> params;
     params.reserve(funDecl->Params.size());
     for (const auto& param : funDecl->Params) {
         params.push_back(param->Type);
     }
-    funDecl->Type = MakeIntrusive<NAst::TFunctionType>(std::move(params), funDecl->RetType);
+    funDecl->Type = types.MakeFunction(std::move(params), funDecl->RetType);
 }
 
 struct TCoroutineAnalysis {
@@ -605,8 +605,8 @@ struct TCoroutineAnalysis {
         if (!funDecl || NAst::IsFutureType(funDecl->RetType)) {
             return false;
         }
-        funDecl->RetType = NAst::WrapFutureType(funDecl->RetType);
-        RefreshFunctionType(funDecl);
+        funDecl->RetType = Context.Types().WrapFuture(funDecl->RetType);
+        RefreshFunctionType(Context.Types(), funDecl);
         return true;
     }
 
@@ -769,7 +769,7 @@ std::expected<bool, TError> RunSourceNameResolution(
     const TPipelineExtensions& extensions)
 {
     bool changed = false;
-    auto preResult = PreNameResolutionTransform(expr);
+    auto preResult = PreNameResolutionTransform(context.Types(), expr);
     if (!preResult) {
         return std::unexpected(preResult.error());
     }

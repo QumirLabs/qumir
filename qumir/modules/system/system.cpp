@@ -12,14 +12,14 @@ namespace NRegistry {
 
 namespace {
     template<typename T>
-    NAst::TTypePtr outType() {
-        auto underlyingType = MakeIntrusive<T>();
-        auto refType = MakeIntrusive<NAst::TReferenceType>(underlyingType);
+    NAst::TTypePtr outType(NAst::TTypeFactory& types) {
+        auto underlyingType = types.Make<T>();
+        auto refType = types.MakeReference(underlyingType);
         return refType;
     }
 
-    NAst::TExprPtr number(const NAst::TTypePtr& type, int64_t value) {
-        auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value);
+    NAst::TExprPtr number(NAst::TTypeFactory& types, const NAst::TTypePtr& type, int64_t value) {
+        auto expr = MakeIntrusive<NAst::TNumberExpr>(TLocation{}, value, types);
         expr->Type = type;
         return expr;
     }
@@ -43,26 +43,26 @@ namespace {
     }
 }
 
-SystemModule::SystemModule() {
-    auto integerType = MakeIntrusive<NAst::TIntegerType>();
-    auto floatType = MakeIntrusive<NAst::TFloatType>();
-    auto boolType = MakeIntrusive<NAst::TBoolType>();
-    auto voidType = MakeIntrusive<NAst::TVoidType>();
-    auto stringType = MakeIntrusive<NAst::TStringType>();
-    auto voidPtrType = MakeIntrusive<NAst::TPointerType>(voidType);
-    auto fileUnderlying = MakeIntrusive<NAst::TIntegerType>(NAst::TIntegerType::I32);
-    auto fileType = MakeIntrusive<NAst::TNamedType>("file", fileUnderlying);
-    auto symbolType = MakeIntrusive<NAst::TSymbolType>();
+SystemModule::SystemModule(NAst::TTypeFactory& types) {
+    auto integerType = types.MakeInteger();
+    auto floatType = types.MakeFloat();
+    auto boolType = types.Make<NAst::TBoolType>();
+    auto voidType = types.Make<NAst::TVoidType>();
+    auto stringType = types.Make<NAst::TStringType>();
+    auto voidPtrType = types.MakePointer(voidType);
+    auto fileUnderlying = types.MakeInteger(NAst::TIntegerType::I32);
+    auto fileType = types.MakeNamed("file", fileUnderlying);
+    auto symbolType = types.Make<NAst::TSymbolType>();
 
     ExternalTypes_ = {
         { .Name = "file", .Type = fileUnderlying },
     };
 
-    auto ident = [](const std::string& name) {
+    auto ident = [&types](const std::string& name) {
         return MakeIntrusive<NAst::TIdentExpr>(TLocation{}, name);
     };
 
-    auto letBlock = [](std::vector<std::pair<std::string, NAst::TExprPtr>> vars, const NAst::TExprPtr& body) -> NAst::TExprPtr {
+    auto letBlock = [&types](std::vector<std::pair<std::string, NAst::TExprPtr>> vars, const NAst::TExprPtr& body) -> NAst::TExprPtr {
         auto bodyType = body->Type;
         std::vector<NAst::TExprPtr> stmts;
         for (auto& [name, value] : vars) {
@@ -77,7 +77,7 @@ SystemModule::SystemModule() {
     };
 
     auto inlineMin = [&](const NAst::TTypePtr& type) {
-        return [type, boolType, &ident, &letBlock](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+        return [type, boolType, &ident, &letBlock, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto body = ifExpr(
                 binary("<", ident("$$left"), ident("$$right"), boolType),
                 ident("$$left"),
@@ -87,7 +87,7 @@ SystemModule::SystemModule() {
         };
     };
     auto inlineMax = [&](const NAst::TTypePtr& type) {
-        return [type, boolType, &ident, &letBlock](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+        return [type, boolType, &ident, &letBlock, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto body = ifExpr(
                 binary(">", ident("$$left"), ident("$$right"), boolType),
                 ident("$$left"),
@@ -97,9 +97,9 @@ SystemModule::SystemModule() {
         };
     };
     auto inlineAbs = [&](const NAst::TTypePtr& type) {
-        return [type, boolType, &ident, &letBlock](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+        return [type, boolType, &ident, &letBlock, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
             auto body = ifExpr(
-                binary("<", ident("$$value"), number(type, 0), boolType),
+                binary("<", ident("$$value"), number(types, type, 0), boolType),
                 unary("-", ident("$$value"), type),
                 ident("$$value"),
                 type);
@@ -113,15 +113,15 @@ SystemModule::SystemModule() {
             .MangledName = "sign",
             .ArgTypes = { floatType },
             .ReturnType = integerType,
-            .Inline = [integerType, floatType, boolType, &ident, &letBlock](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                auto zero = number(floatType, 0);
+            .Inline = [integerType, floatType, boolType, &ident, &letBlock, &types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+                auto zero = number(types, floatType, 0);
                 auto body = ifExpr(
                     binary(">", ident("$$value"), zero, boolType),
-                    number(integerType, 1),
+                    number(types, integerType, 1),
                     ifExpr(
                         binary("<", ident("$$value"), zero, boolType),
-                        number(integerType, -1),
-                        number(integerType, 0),
+                        number(types, integerType, -1),
+                        number(types, integerType, 0),
                         integerType),
                     integerType);
                 return letBlock({{"$$value", args[0]}}, std::move(body));
@@ -312,7 +312,7 @@ SystemModule::SystemModule() {
                 double result = NRuntime::str_to_double(reinterpret_cast<const char*>(args[0]), reinterpret_cast<int8_t*>(const_cast<void*>(addr)));
                 return std::bit_cast<uint64_t>(result);
             },
-            .ArgTypes = { stringType, outType<NAst::TBoolType>() },
+            .ArgTypes = { stringType, outType<NAst::TBoolType>(types) },
             .ReturnType = floatType,
         },
         {
@@ -322,7 +322,7 @@ SystemModule::SystemModule() {
                 const void* addr = std::bit_cast<const void*>(args[1]);
                 return std::bit_cast<uint64_t>(NRuntime::str_to_int(reinterpret_cast<const char*>(args[0]), reinterpret_cast<int8_t*>(const_cast<void*>(addr))));
             },
-            .ArgTypes = { stringType, outType<NAst::TBoolType>() },
+            .ArgTypes = { stringType, outType<NAst::TBoolType>(types) },
             .ReturnType = integerType,
         },
         {
@@ -465,7 +465,7 @@ SystemModule::SystemModule() {
                 NRuntime::output_symbol(static_cast<int32_t>(std::bit_cast<int64_t>(args[0])));
                 return 0;
             },
-            .ArgTypes = { MakeIntrusive<NAst::TSymbolType>() },
+            .ArgTypes = { types.Make<NAst::TSymbolType>() },
             .ReturnType = voidType,
         },
 
@@ -622,7 +622,7 @@ SystemModule::SystemModule() {
                 NRuntime::str_delete_symbols(reinterpret_cast<char**>(args[0]), std::bit_cast<int64_t>(args[1]), std::bit_cast<int64_t>(args[2]));
                 return 0;
             },
-            .ArgTypes = { outType<NAst::TStringType>(), integerType, integerType },
+            .ArgTypes = { outType<NAst::TStringType>(types), integerType, integerType },
             .ReturnType = voidType,
         },
         { // string module
@@ -632,7 +632,7 @@ SystemModule::SystemModule() {
                 NRuntime::str_insert_symbols(reinterpret_cast<const char*>(args[0]), reinterpret_cast<char**>(args[1]), std::bit_cast<int64_t>(args[2]));
                 return 0;
             },
-            .ArgTypes = { stringType, outType<NAst::TStringType>(), integerType },
+            .ArgTypes = { stringType, outType<NAst::TStringType>(types), integerType },
             .ReturnType = voidType,
             .RequireArgsMaterialization = true
         },
@@ -781,32 +781,32 @@ SystemModule::SystemModule() {
             .Name = "МАКСВЕЩ",
             .ArgTypes = {  },
             .ReturnType = floatType,
-            .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return MakeIntrusive<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<double>::max());
+            .Inline = [&types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+                return MakeIntrusive<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<double>::max(), types);
             },
         },
         {
             .Name = "МАКСЦЕЛ",
             .ArgTypes = {  },
             .ReturnType = integerType,
-            .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return MakeIntrusive<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<int64_t>::max());
+            .Inline = [&types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+                return MakeIntrusive<NAst::TNumberExpr>(TLocation{}, std::numeric_limits<int64_t>::max(), types);
             },
         },
         {
             .Name = "юникод",
             .ArgTypes = { symbolType },
             .ReturnType = integerType,
-            .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], MakeIntrusive<NAst::TIntegerType>());
+            .Inline = [&types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], types.MakeInteger());
             }
         },
         {
             .Name = "юнисимвол",
             .ArgTypes = { integerType },
             .ReturnType = symbolType,
-            .Inline = [](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
-                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], MakeIntrusive<NAst::TSymbolType>());
+            .Inline = [&types](std::vector<NAst::TExprPtr> args) -> NAst::TExprPtr {
+                return MakeIntrusive<NAst::TCastExpr>(args[0]->Location, args[0], types.Make<NAst::TSymbolType>());
             }
         },
 
@@ -818,7 +818,7 @@ SystemModule::SystemModule() {
                 return reinterpret_cast<uint64_t>(future);
             },
             .ArgTypes = { integerType },
-            .ReturnType = NAst::WrapFutureType(voidType),
+            .ReturnType = types.WrapFuture(voidType),
         },
         {
             .Name = "время",

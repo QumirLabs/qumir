@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/frontend/compose.h>
 #include <qumir/parser/core/lexer.h>
@@ -25,7 +26,7 @@ struct Parsed {
 Parsed Parse(const std::string& src) {
     std::istringstream in(src);
     NCore::TTokenStream ts(in);
-    NCore::TParser parser;
+    NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(ts);
     EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());
     return {*parsed, parser.Pragmas};

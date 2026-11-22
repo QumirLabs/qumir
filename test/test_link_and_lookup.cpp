@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/codegen/llvm/llvm_runner.h>
@@ -15,7 +16,7 @@ using namespace NQumir;
 TEST(LinkAndLookup, LoadsPrebuiltObjectAndRuns) {
     std::istringstream in("(block (fun f () -> i64 (block (return (: 42 i64)))))");
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed) << parsed.error().ToString();
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/parser/ast.h>
 
@@ -35,13 +36,13 @@ TEST(AstClone, LifetimeAndHiddenChildrenAreDeeplyCloned) {
     };
 
     auto variable = MakeIntrusive<TVarStmt>(
-        loc, "variable", MakeIntrusive<TIntegerType>());
+        loc, "variable", NQumir::NTest::TestTypes().MakeInteger());
     variable->Init = ident("variable_init");
     auto vars = MakeIntrusive<TVarsBlockExpr>(
         loc, std::vector<TExprPtr>{variable});
 
     auto parameter = MakeIntrusive<TVarStmt>(
-        loc, "parameter", MakeIntrusive<TIntegerType>());
+        loc, "parameter", NQumir::NTest::TestTypes().MakeInteger());
     parameter->Init = ident("parameter_init");
     auto function = MakeIntrusive<TFunDecl>(
         loc,
@@ -50,22 +51,22 @@ TEST(AstClone, LifetimeAndHiddenChildrenAreDeeplyCloned) {
         std::vector<TParam>{parameter},
         MakeIntrusive<TBlockExpr>(
             loc, std::vector<TExprPtr>{ident("function_body")}),
-        MakeIntrusive<TVoidType>());
+        NQumir::NTest::TestTypes().Make<TVoidType>());
 
     auto original = MakeIntrusive<TBlockExpr>(loc, std::vector<TExprPtr>{
         MakeIntrusive<TRetainExpr>(loc, ident("retain")),
         MakeIntrusive<TOwnLiteralExpr>(loc, ident("own")),
         MakeIntrusive<TMoveExpr>(loc, ident("move")),
         MakeIntrusive<TBorrowExpr>(loc, ident("borrow")),
-        MakeIntrusive<TDestroyExpr>(loc, ident("destroy"), ident("aux")),
-        MakeIntrusive<TReplaceExpr>(loc, ident("target"), ident("value")),
+        MakeIntrusive<TDestroyExpr>(loc, ident("destroy"), NQumir::NTest::TestTypes(), ident("aux")),
+        MakeIntrusive<TReplaceExpr>(loc, ident("target"), ident("value"), NQumir::NTest::TestTypes()),
         MakeIntrusive<TCleanupExitExpr>(
             loc,
             ECleanupExitKind::Return,
             ident("return"),
-            std::vector<TExprPtr>{ident("cleanup")}),
+            std::vector<TExprPtr>{ident("cleanup")}, NQumir::NTest::TestTypes()),
         MakeIntrusive<TGlobalCleanupExpr>(
-            loc, std::vector<TExprPtr>{ident("global_cleanup")}),
+            loc, std::vector<TExprPtr>{ident("global_cleanup")}, NQumir::NTest::TestTypes()),
         vars,
         function,
     });

@@ -24,7 +24,7 @@ namespace NFrontend {
 class TSourceModuleLoader {
 public:
     // Seeds search paths with the built-in module dirs relative to the binary.
-    TSourceModuleLoader();
+    explicit TSourceModuleLoader(NAst::TTypeFactory& types);
 
     void AddSearchPath(std::filesystem::path dir);
 
@@ -54,6 +54,8 @@ public:
     const TSourceModule* Find(const std::string& name) const;
 
 private:
+    NAst::TTypeFactory& Types_;
+
     struct TCacheEntry {
         ESourceModuleState State = ESourceModuleState::Loading;
         std::unique_ptr<TSourceModule> Module;

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/parser/core/printer.h>
 #include <qumir/semantics/lifetime/pass.h>
@@ -28,7 +29,7 @@ TIntrusivePtr<TIdentExpr> Ident(std::string name) {
 }
 
 TIntrusivePtr<TStringLiteralExpr> Literal(std::string value) {
-    return MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value));
+    return MakeIntrusive<TStringLiteralExpr>(TLocation{}, std::move(value), NQumir::NTest::TestTypes());
 }
 
 TIntrusivePtr<TCallExpr> Call(
@@ -45,7 +46,7 @@ TIntrusivePtr<TFunDecl> Function(
     std::string name,
     std::vector<TParam> parameters,
     const TIntrusivePtr<TBlockExpr>& body,
-    const TTypePtr& returnType = MakeIntrusive<TVoidType>())
+    const TTypePtr& returnType = NQumir::NTest::TestTypes().Make<TVoidType>())
 {
     return MakeIntrusive<TFunDecl>(
         TLocation{},
@@ -65,7 +66,7 @@ std::string Print(const TExprPtr& expr) {
 } // namespace
 
 TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
-    auto stringType = MakeIntrusive<TStringType>();
+    auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto make = Function(
         "make",
         {},
@@ -74,9 +75,9 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
 
     auto a = Variable("a", stringType);
     auto b = Variable("b", stringType);
-    auto arrayType = MakeIntrusive<TArrayType>(stringType, 1);
+    auto arrayType = NQumir::NTest::TestTypes().MakeArray(stringType, 1);
     auto items = Variable("items", arrayType);
-    auto structType = MakeIntrusive<TStructType>(
+    auto structType = NQumir::NTest::TestTypes().MakeStruct(
         std::vector<std::pair<std::string, TTypePtr>>{
             {"text", stringType},
         });
@@ -96,7 +97,7 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
             TLocation{},
             "items",
             std::vector<TExprPtr>{
-                MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+                MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
             },
             Literal("element")),
         object,
@@ -110,14 +111,14 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
 
     auto refParam = Variable(
         "result",
-        MakeIntrusive<TReferenceType>(stringType));
+        NQumir::NTest::TestTypes().MakeReference(stringType));
     auto refBody = Block({
         MakeIntrusive<TAssignExpr>(TLocation{}, "result", Literal("reference")),
     });
     auto writeRef = Function("write_ref", {refParam}, refBody);
 
     TExprPtr root = Block({make, rewrite, writeRef});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
     auto final = NTransform::RunFinalSemanticPipeline(root, resolver);
@@ -142,11 +143,11 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
 }
 
 TEST(LifetimePass, SplitsStringDeclarationInitializerAfterNullInitialization) {
-    auto value = Variable("value", MakeIntrusive<TStringType>());
+    auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
     value->Init = Literal("initial");
     auto body = Block({value});
     TExprPtr root = Block({Function("main", {}, body)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -161,7 +162,7 @@ TEST(LifetimePass, SplitsStringDeclarationInitializerAfterNullInitialization) {
 }
 
 TEST(LifetimePass, DestroysTwoOwnedCallArgumentsInReverseOrder) {
-    auto stringType = MakeIntrusive<TStringType>();
+    auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto makeFirst = Function(
         "make_first",
         {},
@@ -186,7 +187,7 @@ TEST(LifetimePass, DestroysTwoOwnedCallArgumentsInReverseOrder) {
         consume,
         Function("main", {}, body),
     });
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -203,7 +204,7 @@ TEST(LifetimePass, DestroysTwoOwnedCallArgumentsInReverseOrder) {
 }
 
 TEST(LifetimePass, PreservesNestedCallResultPastArgumentCleanup) {
-    auto stringType = MakeIntrusive<TStringType>();
+    auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto make = Function(
         "make",
         {},
@@ -223,7 +224,7 @@ TEST(LifetimePass, PreservesNestedCallResultPastArgumentCleanup) {
             Call("wrap", {Call("make")})),
     });
     TExprPtr root = Block({make, wrap, Function("main", {}, body)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -240,18 +241,18 @@ TEST(LifetimePass, PreservesNestedCallResultPastArgumentCleanup) {
 }
 
 TEST(LifetimePass, MaterializesLiteralOnlyWhenCallAbiRequiresIt) {
-    auto stringType = MakeIntrusive<TStringType>();
+    auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto raw = Function(
         "raw",
         {Variable("value", stringType)},
         Block({}),
-        MakeIntrusive<TVoidType>());
+        NQumir::NTest::TestTypes().Make<TVoidType>());
     raw->MangledName = "raw";
     auto managed = Function(
         "managed",
         {Variable("value", stringType)},
         Block({}),
-        MakeIntrusive<TVoidType>());
+        NQumir::NTest::TestTypes().Make<TVoidType>());
     managed->MangledName = "managed";
     managed->RequireArgsMaterialization = true;
     auto body = Block({
@@ -270,7 +271,7 @@ TEST(LifetimePass, MaterializesLiteralOnlyWhenCallAbiRequiresIt) {
         makeUnused,
         Function("main", {}, body),
     });
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -289,7 +290,7 @@ TEST(LifetimePass, MaterializesLiteralOnlyWhenCallAbiRequiresIt) {
 }
 
 TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
-    auto stringType = MakeIntrusive<TStringType>();
+    auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto first = Variable("first", stringType);
     first->Init = Literal("first");
     auto second = Variable("second", stringType);
@@ -300,7 +301,7 @@ TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
     });
     auto body = Block({first, nested});
     TExprPtr root = Block({Function("value", {}, body, stringType)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -316,18 +317,18 @@ TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
 }
 
 TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
-    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    condition->Type = MakeIntrusive<TBoolType>();
-    auto loopCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
-    loopCondition->Type = MakeIntrusive<TBoolType>();
-    auto value = Variable("value", MakeIntrusive<TStringType>());
+    auto condition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
+    condition->Type = NQumir::NTest::TestTypes().Make<TBoolType>();
+    auto loopCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
+    loopCondition->Type = NQumir::NTest::TestTypes().Make<TBoolType>();
+    auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
     value->Init = Literal("iteration");
     auto items = Variable(
         "items",
-        MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1));
+        NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1));
     items->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
     });
     auto earlyBreak = Block({MakeIntrusive<TBreakStmt>(TLocation{})});
     auto loopBody = Block({
@@ -346,7 +347,7 @@ TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
         loopBody);
     auto body = Block({loop});
     TExprPtr root = Block({Function("main", {}, body)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -361,11 +362,11 @@ TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
 }
 
 TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
-    auto i64 = MakeIntrusive<TIntegerType>();
-    auto plain = Variable("plain", MakeIntrusive<TArrayType>(i64, 1));
+    auto i64 = NQumir::NTest::TestTypes().MakeInteger();
+    auto plain = Variable("plain", NQumir::NTest::TestTypes().MakeArray(i64, 1));
     plain->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes()),
     });
     auto marker = Variable("marker", i64);
     auto nested = Block({
@@ -374,19 +375,19 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
         MakeIntrusive<TAssignExpr>(
             TLocation{},
             "marker",
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0})),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}, NQumir::NTest::TestTypes())),
     });
 
     auto strings = Variable(
         "strings",
-        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1));
+        NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1));
     strings->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}, NQumir::NTest::TestTypes()),
     });
     auto body = Block({nested, strings});
     TExprPtr root = Block({Function("main", {}, body)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -404,18 +405,18 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
 }
 
 TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
-    auto i64 = MakeIntrusive<TIntegerType>();
+    auto i64 = NQumir::NTest::TestTypes().MakeInteger();
     auto lower = Variable("lower", i64);
-    lower->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1});
+    lower->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
     auto upper = Variable("upper", i64);
-    upper->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2});
+    upper->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes());
     auto grid = Variable(
         "grid",
-        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 2));
+        NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 2));
     grid->Bounds.push_back({Ident("lower"), Ident("upper")});
     grid->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
     });
     auto body = Block({
         lower,
@@ -424,10 +425,10 @@ TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
         MakeIntrusive<TAssignExpr>(
             TLocation{},
             "upper",
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{100})),
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{100}, NQumir::NTest::TestTypes())),
     });
     TExprPtr root = Block({Function("main", {}, body)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -444,17 +445,17 @@ TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
 }
 
 TEST(LifetimePass, DoesNotDestroyArrayParameter) {
-    auto arrayType = MakeIntrusive<TArrayType>(
-        MakeIntrusive<TStringType>(),
+    auto arrayType = NQumir::NTest::TestTypes().MakeArray(
+        NQumir::NTest::TestTypes().Make<TStringType>(),
         1);
     auto parameter = Variable("items", arrayType);
     parameter->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
     });
     auto body = Block({});
     TExprPtr root = Block({Function("consume", {parameter}, body)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -470,18 +471,18 @@ TEST(LifetimePass, EvaluatesEffectfulStringArrayBoundOnce) {
         {},
         Block({MakeIntrusive<TReturnExpr>(
             TLocation{},
-            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}))}),
-        MakeIntrusive<TIntegerType>());
+            MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()))}),
+        NQumir::NTest::TestTypes().MakeInteger());
     auto items = Variable(
         "items",
-        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1));
+        NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1));
     items->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
         Call("bound"),
     });
     auto body = Block({items});
     TExprPtr root = Block({bound, Function("main", {}, body)});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -501,21 +502,21 @@ TEST(LifetimePass, EvaluatesEffectfulStringArrayBoundOnce) {
 }
 
 TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
-    auto first = Variable("first", MakeIntrusive<TStringType>());
+    auto first = Variable("first", NQumir::NTest::TestTypes().Make<TStringType>());
     first->Init = Literal("first");
     auto plain = Variable(
         "plain",
-        MakeIntrusive<TArrayType>(MakeIntrusive<TIntegerType>(), 1));
+        NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1));
     plain->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
     });
     auto words = Variable(
         "words",
-        MakeIntrusive<TArrayType>(MakeIntrusive<TStringType>(), 1));
+        NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1));
     words->Bounds.push_back({
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes()),
     });
     TExprPtr root = Block({
         first,
@@ -523,7 +524,7 @@ TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
         words,
         Function("main", {}, Block({})),
     });
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();
@@ -548,10 +549,10 @@ TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
 }
 
 TEST(LifetimePass, DoesNotRewriteFinalizedLifetimeAstTwice) {
-    auto value = Variable("value", MakeIntrusive<TStringType>());
+    auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
     value->Init = Literal("value");
     TExprPtr root = Block({Function("main", {}, Block({value}))});
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
     auto source = NTransform::RunSourceTransformFixpoint(root, resolver);
     ASSERT_TRUE(source.has_value()) << source.error().ToString();

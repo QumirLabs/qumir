@@ -1773,7 +1773,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     }
     if (var.Init) {
         auto assign = MakeIntrusive<NAst::TAssignExpr>(var.Location, var.Name, var.Init);
-        assign->Type = MakeIntrusive<NAst::TVoidType>();
+        assign->Type = Context.Types().Make<NAst::TVoidType>();
         auto assignRes = co_await Lower(assign, scope);
         Builder.SetCurrentBlock(assignRes.ProducingLabel);
     }
@@ -1849,7 +1849,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     auto coroutineResultType = NAst::FutureResultType(fun.RetType);
     const bool isCoroutine = static_cast<bool>(coroutineResultType);
     auto physicalReturnAstType = isCoroutine
-        ? MakeIntrusive<NAst::TPointerType>(MakeIntrusive<NAst::TVoidType>())
+        ? Context.Types().MakePointer(Context.Types().Make<NAst::TVoidType>())
         : fun.RetType;
     auto returnType = FromAstType(physicalReturnAstType, Module.Types);
     Builder.SetReturnType(returnType);
@@ -2009,7 +2009,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     }
     auto futureResultType = NAst::FutureResultType(funDecl->RetType);
     NAst::TTypePtr returnType = futureResultType
-        ? MakeIntrusive<NAst::TPointerType>(MakeIntrusive<NAst::TVoidType>())
+        ? Context.Types().MakePointer(Context.Types().Make<NAst::TVoidType>())
         : PhysicalCallResultType(funDecl->RetType);
     std::vector<NAst::TTypePtr>* argTypes = nullptr;
     if (auto maybeFuncType = NAst::TMaybeType<NAst::TFunctionType>(funDecl->Type)) {
@@ -2199,7 +2199,7 @@ void TAstLowerer::ImportExternalFunction(int symbolId, const NAst::TFunDecl& fun
 
     std::vector<int> argTypes; argTypes.reserve(funcDecl.Params.size());
     NAst::TTypePtr physRetType = NAst::FutureResultType(funcDecl.RetType)
-        ? MakeIntrusive<NAst::TPointerType>(MakeIntrusive<NAst::TVoidType>())
+        ? Context.Types().MakePointer(Context.Types().Make<NAst::TVoidType>())
         : PhysicalCallResultType(funcDecl.RetType);
     int returnType = FromAstType(physRetType, Module.Types);
     for (auto& p : funcDecl.Params) {

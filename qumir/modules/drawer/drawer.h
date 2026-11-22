@@ -7,7 +7,7 @@ namespace NRegistry {
 
 class DrawerModule : public IModule {
 public:
-    DrawerModule();
+    explicit DrawerModule(NAst::TTypeFactory& types);
 
     const std::string& Name() const override {
         static const std::string name = "Чертежник";

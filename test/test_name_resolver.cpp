@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/modules/builtins/builtins.h>
 #include <qumir/modules/robot/robot.h>
@@ -26,7 +27,7 @@ namespace {
 TExprPtr parseStmtList(const std::string& src) {
     std::istringstream in(src);
     TTokenStream ts(in);
-    TParser p;
+    TParser p(NQumir::NTest::TestTypes());
     auto res = p.parse(ts);
     if (!res.has_value()) {
         std::cerr << "Parse error: " << res.error().ToString() << std::endl;
@@ -87,8 +88,8 @@ TIntrusivePtr<TAwaitExpr> findAwaitCall(const TExprPtr& expr, const std::string&
 }
 
 TExprPtr annotateWithRobotCoroutines(const std::string& src) {
-    RobotModule robot;
-    TNameResolver resolver;
+    RobotModule robot(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&robot);
     auto importResult = resolver.ImportModule(robot.Name());
     if (!importResult) {
@@ -98,7 +99,7 @@ TExprPtr annotateWithRobotCoroutines(const std::string& src) {
 
     std::istringstream in(src);
     TTokenStream ts(in);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.parse(ts, &resolver);
     if (!parsed) {
         ADD_FAILURE() << parsed.error().ToString();
@@ -119,9 +120,9 @@ TExprPtr annotateWithRobotCoroutines(const std::string& src) {
 }
 
 std::optional<NIR::TModule> buildRobotCoroutineModule(const std::string& src) {
-    BuiltinsModule builtins;
-    RobotModule robot;
-    TNameResolver resolver;
+    BuiltinsModule builtins(NQumir::NTest::TestTypes());
+    RobotModule robot(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     // Every host imports Builtins; the lowering calls builtin::record_locator from it.
     resolver.RegisterModule(&builtins);
     (void)resolver.ImportModule(builtins.Name());
@@ -134,7 +135,7 @@ std::optional<NIR::TModule> buildRobotCoroutineModule(const std::string& src) {
 
     std::istringstream in(src);
     TTokenStream ts(in);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.parse(ts, &resolver);
     if (!parsed) {
         ADD_FAILURE() << parsed.error().ToString();
@@ -165,8 +166,8 @@ std::optional<NIR::TModule> buildRobotCoroutineModule(const std::string& src) {
 }
 
 std::optional<NIR::TModule> buildTurtleCoroutineModule(const std::string& src) {
-    TurtleModule turtle;
-    TNameResolver resolver;
+    TurtleModule turtle(NQumir::NTest::TestTypes());
+    TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.RegisterModule(&turtle);
     auto importResult = resolver.ImportModule(turtle.Name());
     if (!importResult) {
@@ -176,7 +177,7 @@ std::optional<NIR::TModule> buildTurtleCoroutineModule(const std::string& src) {
 
     std::istringstream in(src);
     TTokenStream ts(in);
-    TParser parser;
+    TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.parse(ts, &resolver);
     if (!parsed) {
         ADD_FAILURE() << parsed.error().ToString();
@@ -253,7 +254,7 @@ b := 10
 )__");
     ASSERT_NE(ast, nullptr);
 
-    TNameResolver r{};
+    TNameResolver r{NQumir::NTest::TestTypes()};
     r.Resolve(ast);
 
     const auto& syms = r.GetSymbols();
@@ -603,7 +604,7 @@ b := 10
 
     ASSERT_NE(ast, nullptr);
 
-    TNameResolver r{};
+    TNameResolver r{NQumir::NTest::TestTypes()};
     r.Resolve(ast);
 
     auto s1 = r.Lookup("a", {0});

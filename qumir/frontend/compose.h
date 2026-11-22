@@ -49,6 +49,7 @@ std::expected<TComposeResult, TError> LoadAndCompose(
     bool cloneSourceModules = false);
 
 std::expected<TComposeResult, TError> LoadAndCompose(
+    NAst::TTypeFactory& types,
     const NAst::TExprPtr& mainAst,
     const std::vector<NAst::TPragma>& corePragmas,
     const std::vector<std::string>& searchPaths,

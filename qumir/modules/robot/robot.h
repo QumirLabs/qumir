@@ -7,7 +7,7 @@ namespace NRegistry {
 
 class RobotModule : public IModule {
 public:
-    RobotModule();
+    explicit RobotModule(NAst::TTypeFactory& types);
 
     const std::string& Name() const override {
         static const std::string name = "Робот";

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/location.h>
 #include <qumir/parser/ast.h>
@@ -129,9 +130,9 @@ TEST(PrinterCustomNodes, NodePrinterKeepsItsStateWhilePrintingAChild) {
 }
 
 TEST(PrinterNumbers, IntegralFloatKeepsItsLiteralType) {
-    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, 1.0)), "1.0");
-    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, -0.0)), "-0.0");
-    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, 1e20)), "1e+20");
+    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, 1.0, NQumir::NTest::TestTypes())), "1.0");
+    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, -0.0, NQumir::NTest::TestTypes())), "-0.0");
+    EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, 1e20, NQumir::NTest::TestTypes())), "1e+20");
 }
 
 TEST(PrinterCustomNodes, PairCompact) {
@@ -158,7 +159,7 @@ TEST(PrinterCustomNodes, UnknownNodeThrows) {
 namespace {
 
 TParser MakeParser() {
-    TParser p;
+    TParser p(NQumir::NTest::TestTypes());
     p.NodeParsers["tag"] = [](IParseHandle& h, TLocation loc) -> TAstTask {
         auto tok = h.Next();
         if (tok.Type != TToken::String) {
@@ -254,14 +255,14 @@ TEST(LifetimeNodes, UnaryFormsPrintCompactly) {
 TEST(LifetimeNodes, DestroyAndReplacePrintCompactly) {
     auto destroy = MakeIntrusive<TDestroyExpr>(
         TLocation{},
-        MakeIdent("array"),
+        MakeIdent("array"), NQumir::NTest::TestTypes(),
         MakeIdent("array_size"));
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         MakeIdent("target"),
         MakeIntrusive<TRetainExpr>(
             TLocation{},
-            MakeIntrusive<TBorrowExpr>(TLocation{}, MakeIdent("source"))));
+            MakeIntrusive<TBorrowExpr>(TLocation{}, MakeIdent("source"))), NQumir::NTest::TestTypes());
 
     EXPECT_EQ(PrintAst(destroy, MakeOptions(false)), "(destroy array array_size)");
     EXPECT_EQ(
@@ -271,8 +272,8 @@ TEST(LifetimeNodes, DestroyAndReplacePrintCompactly) {
 
 TEST(LifetimeNodes, CleanupFormsPreserveStoredOrder) {
     std::vector<TExprPtr> cleanups {
-        MakeIntrusive<TDestroyExpr>(TLocation{}, MakeIdent("second")),
-        MakeIntrusive<TDestroyExpr>(TLocation{}, MakeIdent("first")),
+        MakeIntrusive<TDestroyExpr>(TLocation{}, MakeIdent("second"), NQumir::NTest::TestTypes()),
+        MakeIntrusive<TDestroyExpr>(TLocation{}, MakeIdent("first"), NQumir::NTest::TestTypes()),
     };
     auto exit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
@@ -280,18 +281,18 @@ TEST(LifetimeNodes, CleanupFormsPreserveStoredOrder) {
         MakeIntrusive<TRetainExpr>(
             TLocation{},
             MakeIntrusive<TBorrowExpr>(TLocation{}, MakeIdent("result"))),
-        auto(cleanups));
-    auto global = MakeIntrusive<TGlobalCleanupExpr>(TLocation{}, auto(cleanups));
+        auto(cleanups), NQumir::NTest::TestTypes());
+    auto global = MakeIntrusive<TGlobalCleanupExpr>(TLocation{}, auto(cleanups), NQumir::NTest::TestTypes());
     auto breakExit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Break,
         nullptr,
-        auto(cleanups));
+        auto(cleanups), NQumir::NTest::TestTypes());
     auto continueExit = MakeIntrusive<TCleanupExitExpr>(
         TLocation{},
         ECleanupExitKind::Continue,
         nullptr,
-        std::vector<TExprPtr>{});
+        std::vector<TExprPtr>{}, NQumir::NTest::TestTypes());
 
     EXPECT_EQ(
         PrintAst(exit, MakeOptions(false)),
@@ -308,7 +309,7 @@ TEST(LifetimeNodes, CleanupFormsPreserveStoredOrder) {
 TEST(LifetimeNodes, ReplaceChildrenUseStructuralOrder) {
     auto target = MakeIdent("target");
     auto value = MakeIdent("value");
-    auto replace = MakeIntrusive<TReplaceExpr>(TLocation{}, target, value);
+    auto replace = MakeIntrusive<TReplaceExpr>(TLocation{}, target, value, NQumir::NTest::TestTypes());
 
     const auto children = replace->Children();
     ASSERT_EQ(children.size(), 2u);
@@ -324,8 +325,8 @@ TEST(LifetimeNodes, ReplaceChildrenUseStructuralOrder) {
 TEST(LifetimeNodes, DestroyChildrenIncludeOptionalAux) {
     auto value = MakeIdent("value");
     auto aux = MakeIdent("aux");
-    auto withoutAux = MakeIntrusive<TDestroyExpr>(TLocation{}, value);
-    auto withAux = MakeIntrusive<TDestroyExpr>(TLocation{}, value, aux);
+    auto withoutAux = MakeIntrusive<TDestroyExpr>(TLocation{}, value, NQumir::NTest::TestTypes());
+    auto withAux = MakeIntrusive<TDestroyExpr>(TLocation{}, value, NQumir::NTest::TestTypes(), aux);
 
     ASSERT_EQ(withoutAux->Children().size(), 1u);
     ASSERT_EQ(withAux->Children().size(), 2u);
@@ -343,7 +344,7 @@ TEST(LifetimeNodes, CleanupChildrenPutValueBeforeOrderedCleanups) {
         TLocation{},
         ECleanupExitKind::Return,
         value,
-        std::vector<TExprPtr>{cleanup1, cleanup2});
+        std::vector<TExprPtr>{cleanup1, cleanup2}, NQumir::NTest::TestTypes());
 
     const auto children = exit->Children();
     ASSERT_EQ(children.size(), 3u);
@@ -359,7 +360,7 @@ TEST(LifetimeNodes, CleanupChildrenPutValueBeforeOrderedCleanups) {
 
     auto global = MakeIntrusive<TGlobalCleanupExpr>(
         TLocation{},
-        std::vector<TExprPtr>{cleanup2, cleanup1});
+        std::vector<TExprPtr>{cleanup2, cleanup1}, NQumir::NTest::TestTypes());
     EXPECT_EQ(global->Children(), (std::vector<TExprPtr>{cleanup2, cleanup1}));
 }
 
@@ -435,29 +436,29 @@ TTypeParserMap MakeTypeParsers() {
 std::expected<TTypePtr, TError> ParseTypeText(const std::string& src, const TTypeParserMap& parsers) {
     std::istringstream in(src);
     TTokenStream ts(in);
-    return ParseType(ts, parsers);
+    return ParseType(ts, parsers, NQumir::NTest::TestTypes());
 }
 
 TTypePtr MakeNestedType() {
     auto dec = MakeIntrusive<TDecType>(18, 4);
     auto opt = MakeIntrusive<TOptType>(dec);
     auto optOpt = MakeIntrusive<TOptType>(opt);
-    return MakeIntrusive<TStructType>(std::vector<std::pair<std::string, TTypePtr>>{
+    return NQumir::NTest::TestTypes().MakeStruct(std::vector<std::pair<std::string, TTypePtr>>{
         {"a", optOpt},
         {"b", dec},
-        {"c", MakeIntrusive<TIntegerType>(TIntegerType::I64)},
+        {"c", NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64)},
     });
 }
 
 } // namespace
 
 TEST(TypeExtensions, PrintWithoutPrinterThrows) {
-    EXPECT_THROW(PrintType(MakeIntrusive<TOptType>(MakeIntrusive<TIntegerType>(TIntegerType::I64))), std::runtime_error);
+    EXPECT_THROW(PrintType(MakeIntrusive<TOptType>(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64))), std::runtime_error);
 }
 
 TEST(TypeExtensions, PrintCustomTypes) {
     auto opts = MakeTypePrintOptions();
-    EXPECT_EQ(PrintType(MakeIntrusive<TOptType>(MakeIntrusive<TIntegerType>(TIntegerType::I64)), opts),
+    EXPECT_EQ(PrintType(MakeIntrusive<TOptType>(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64)), opts),
               "<named Opt [i64]>");
     EXPECT_EQ(PrintType(MakeIntrusive<TDecType>(18, 4), opts), "<named Dec [18 4]>");
 }

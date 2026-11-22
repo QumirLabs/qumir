@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/frontend/compose.h>
 #include <qumir/frontend/source_module_loader.h>
@@ -27,7 +28,7 @@ namespace {
 NAst::TExprPtr ParseAst(const std::string& source) {
     std::istringstream in(source);
     NAst::NCore::TTokenStream tokens(in);
-    NAst::NCore::TParser parser;
+    NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     EXPECT_TRUE(parsed) << (parsed ? "" : parsed.error().ToString());
     return parsed ? *parsed : nullptr;
@@ -38,7 +39,7 @@ std::string CompileBitcode(
     const std::string& targetTriple = {})
 {
     auto ast = ParseAst(source);
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
     resolver.GetOrCreateRootScope()->RootLevel = false;
     if (auto error = resolver.Resolve(ast)) {
         ADD_FAILURE() << error->ToString();
@@ -103,7 +104,7 @@ protected:
 };
 
 TEST_F(SourceModuleLoaderTest, DefaultVectorAlias) {
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     auto module = loader.Load("Vector");
     ASSERT_TRUE(module) << module.error().ToString();
     EXPECT_EQ((*module)->Path.filename(), "vector.oz");
@@ -112,7 +113,7 @@ TEST_F(SourceModuleLoaderTest, DefaultVectorAlias) {
 TEST_F(SourceModuleLoaderTest, SingleModuleNoDeps) {
     Write("a", "(block (type t i64) (fun foo () (block)) (fun bar () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -126,7 +127,7 @@ TEST_F(SourceModuleLoaderTest, SingleModuleNoDeps) {
 TEST_F(SourceModuleLoaderTest, LoadAlreadyParsedAst) {
     auto ast = ParseAst("(block (type t i64) (fun foo () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     auto m = loader.LoadAst("memory", ast);
     ASSERT_TRUE(m) << m.error().ToString();
     EXPECT_EQ((*m)->Ast, ast);
@@ -144,7 +145,7 @@ TEST_F(SourceModuleLoaderTest, ProgramUseComposesAlreadyParsedAst) {
     auto moduleAst = ParseAst("(block (fun from_memory () -> i64 (block (return (: 42 i64)))))");
     auto mainAst = ParseAst("(block (use memory) (fun <main> () (block (call from_memory))))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     auto loaded = loader.LoadAst("memory", moduleAst);
     ASSERT_TRUE(loaded) << loaded.error().ToString();
 
@@ -179,7 +180,7 @@ TEST_F(SourceModuleLoaderTest, ProgramUseLinksBitcodeFromAlreadyParsedAst) {
         "(block (use memory)"
         " (fun entry () -> i64 (block (return (call add (: 40 i64))))))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     auto loaded = loader.LoadAst("memory", moduleAst, {std::move(bitcode)});
     ASSERT_TRUE(loaded) << loaded.error().ToString();
 
@@ -215,7 +216,7 @@ TEST_F(SourceModuleLoaderTest, ProgramUseLinksBitcodeForWasmObject) {
         "(block (use memory)"
         " (fun entry () -> i64 (block (return (call add (: 40 i64))))))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     auto loaded = loader.LoadAst("memory", moduleAst, {std::move(bitcode)});
     ASSERT_TRUE(loaded) << loaded.error().ToString();
 
@@ -240,7 +241,7 @@ TEST_F(SourceModuleLoaderTest, ParsedAstUsesRegularSourceDependency) {
     Write("dep", "(block (fun dependency () (block)))");
     auto ast = ParseAst("(block (use dep) (fun from_memory () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
     auto m = loader.LoadAst("memory", std::move(ast));
     ASSERT_TRUE(m) << m.error().ToString();
@@ -256,7 +257,7 @@ TEST_F(SourceModuleLoaderTest, AliasFromModaliasFile) {
     Write("local_complex", "(block (fun foo () -> i64 (block (return (: 7 i64)))))");
     std::ofstream(Dir / "modalias") << "Тестовый модуль = local_complex\n";
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     EXPECT_TRUE(loader.Resolvable("Тестовый модуль"));
@@ -270,7 +271,7 @@ TEST_F(SourceModuleLoaderTest, TransitiveChain) {
     Write("b", "(block (use c) (fun fb () (block)))");
     Write("c", "(block (fun fc () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -288,7 +289,7 @@ TEST_F(SourceModuleLoaderTest, DiamondDependency) {
     Write("c", "(block (use d) (fun fc () (block)))");
     Write("d", "(block (fun fd () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -303,7 +304,7 @@ TEST_F(SourceModuleLoaderTest, DiamondDependency) {
 TEST_F(SourceModuleLoaderTest, DirectCycle) {
     Write("a", "(block (use a) (fun fa () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -315,7 +316,7 @@ TEST_F(SourceModuleLoaderTest, IndirectCycle) {
     Write("a", "(block (use b) (fun fa () (block)))");
     Write("b", "(block (use a) (fun fb () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -326,7 +327,7 @@ TEST_F(SourceModuleLoaderTest, IndirectCycle) {
 }
 
 TEST_F(SourceModuleLoaderTest, ModuleNotFound) {
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("missing");
@@ -344,7 +345,7 @@ TEST_F(SourceModuleLoaderTest, DuplicateExplicitRegistration) {
     out << "(block (fun fa () (block)))";
     out.close();
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     ASSERT_TRUE(loader.RegisterSourceModule(first));
     auto res = loader.RegisterSourceModule(other / "a.oz");
     ASSERT_FALSE(res);
@@ -354,7 +355,7 @@ TEST_F(SourceModuleLoaderTest, DuplicateExplicitRegistration) {
 TEST_F(SourceModuleLoaderTest, IdempotentLoad) {
     Write("a", "(block (fun fa () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto first = loader.Load("a");
@@ -368,7 +369,7 @@ TEST_F(SourceModuleLoaderTest, IdempotentLoad) {
 TEST_F(SourceModuleLoaderTest, ForbidEntryPoint) {
     Write("a", "(block (fun <main> () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -381,7 +382,7 @@ TEST_F(SourceModuleLoaderTest, ForbidEntryPoint) {
 TEST_F(SourceModuleLoaderTest, GlobalExported) {
     Write("a", "(block (var g i64) (fun fa () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -392,7 +393,7 @@ TEST_F(SourceModuleLoaderTest, GlobalExported) {
 TEST_F(SourceModuleLoaderTest, ForbidExecutableTopLevel) {
     Write("a", "(block (output \"hi\") (fun fa () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");
@@ -403,7 +404,7 @@ TEST_F(SourceModuleLoaderTest, ForbidExecutableTopLevel) {
 TEST_F(SourceModuleLoaderTest, ExternalDependencyRecordedNotFollowed) {
     Write("a", "(block (use System) (fun fa () (block)))");
 
-    TSourceModuleLoader loader;
+    TSourceModuleLoader loader(NQumir::NTest::TestTypes());
     loader.AddSearchPath(Dir);
 
     auto m = loader.Load("a");

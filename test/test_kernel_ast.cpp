@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "test_types.h"
 
 #include <qumir/codegen/llvm/llvm_initializer.h>
 #include <qumir/parser/core/lexer.h>
@@ -47,7 +48,7 @@ std::string CompileKernelObjectIr(const char* source, int optLevel)
 {
     std::istringstream input(source);
     NQumir::NAst::NCore::TTokenStream tokens(input);
-    NQumir::NAst::NCore::TParser parser;
+    NQumir::NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     EXPECT_TRUE(parsed) << parsed.error().ToString();
     if (!parsed) {
@@ -74,7 +75,7 @@ std::string CompileKernelObjectIr(const char* source, int optLevel)
 TEST(KernelAst, LoadsU64FromPointerIndex) {
     std::istringstream input(WordHashSource);
     NQumir::NAst::NCore::TTokenStream tokens(input);
-    NQumir::NAst::NCore::TParser parser;
+    NQumir::NAst::NCore::TParser parser(NQumir::NTest::TestTypes());
     auto parsed = parser.Parse(tokens);
     ASSERT_TRUE(parsed) << parsed.error().ToString();
 

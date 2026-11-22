@@ -10,14 +10,14 @@ namespace NRegistry {
 
 using namespace NRuntime;
 
-TurtleModule::TurtleModule()
+TurtleModule::TurtleModule(NAst::TTypeFactory& types)
 {
-    auto integerType = MakeIntrusive<NAst::TIntegerType>();
-    auto floatType = MakeIntrusive<NAst::TFloatType>();
-    auto voidType = MakeIntrusive<NAst::TVoidType>();
-    auto stringType = MakeIntrusive<NAst::TStringType>();
-    auto voidPtrType = MakeIntrusive<NAst::TPointerType>(voidType);
-    auto futureVoidType = NAst::WrapFutureType(voidType);
+    auto integerType = types.MakeInteger();
+    auto floatType = types.MakeFloat();
+    auto voidType = types.Make<NAst::TVoidType>();
+    auto stringType = types.Make<NAst::TStringType>();
+    auto voidPtrType = types.MakePointer(voidType);
+    auto futureVoidType = types.WrapFuture(voidType);
 
     std::vector<TExternalFunction> functions = {
         {

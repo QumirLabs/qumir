@@ -1,4 +1,5 @@
 #include <qumir/ir/eval.h>
+#include "test_types.h"
 #include <qumir/ir/lowering/lower_ast.h>
 #include <qumir/ir/passes/transforms/const_fold.h>
 #include <qumir/ir/passes/transforms/pipeline.h>
@@ -40,11 +41,11 @@ struct TVMTest {
 std::expected<TFunction*, TError> LowerCore(TVMTest& vm, const std::string& source, bool optimize) {
     std::istringstream input(source);
     NAst::NCore::TTokenStream tokens(input);
-    auto parsed = NAst::NCore::TParser{}.Parse(tokens);
+    auto parsed = NAst::NCore::TParser{NQumir::NTest::TestTypes()}.Parse(tokens);
     if (!parsed) {
         return std::unexpected(parsed.error());
     }
-    NSemantics::TNameResolver resolver;
+    NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
     auto annotated = NTransform::Pipeline(*parsed, resolver);
     if (!annotated) {
         return std::unexpected(annotated.error());
