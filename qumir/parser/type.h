@@ -36,6 +36,10 @@ protected:
 // A type lives as long as its factory, so a plain pointer to const is enough.
 using TTypePtr = const TType*;
 
+template<typename T>
+requires std::is_base_of_v<TType, T>
+using TConcreteTypePtr = const T*;
+
 struct TGenericArg {
     enum class EKind {
         Type,

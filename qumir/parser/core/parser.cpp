@@ -43,7 +43,7 @@ struct TParserContext {
     const TTypeParserMap* TypeParsers = nullptr;
 };
 
-const TIntegerType* IntegerTypeByName(TTypeFactory& types, const std::string& name) {
+TConcreteTypePtr<TIntegerType> IntegerTypeByName(TTypeFactory& types, const std::string& name) {
     using K = TIntegerType::EKind;
     if (name == "i8") return types.MakeInteger(K::I8);
     if (name == "i16") return types.MakeInteger(K::I16);
@@ -450,7 +450,7 @@ TAstTask ParseExpr(TParserContext& context) {
     }
     if (token.Type == TToken::Char) {
         auto expr = MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64, context.Types);
-        expr->Type = nullptr;
+        expr->Type = TConcreteTypePtr<TSymbolType>();
         co_return expr;
     }
     if (token.Type == TToken::String) {

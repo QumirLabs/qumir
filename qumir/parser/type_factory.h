@@ -19,7 +19,7 @@ public:
     // Parameterless singleton types: bool, string, char, void.
     template<typename T>
     requires (!std::is_same_v<T, TIntegerType> && !std::is_same_v<T, TFloatType>)
-    const T* Make() {
+    TConcreteTypePtr<T> Make() {
         auto& ret = Types_[T::TypeId];
         if (!ret) {
             ret = New<T>();
@@ -27,22 +27,22 @@ public:
         return static_cast<const T*>(ret);
     }
 
-    const TIntegerType* MakeInteger(TIntegerType::EKind kind = TIntegerType::I64) {
+    TConcreteTypePtr<TIntegerType> MakeInteger(TIntegerType::EKind kind = TIntegerType::I64) {
         auto& ret = IntegerTypes_[kind];
         return ret ? ret : (ret = New<TIntegerType>(kind));
     }
 
-    const TFloatType* MakeFloat(TFloatType::EKind kind = TFloatType::F64) {
+    TConcreteTypePtr<TFloatType> MakeFloat(TFloatType::EKind kind = TFloatType::F64) {
         auto& ret = FloatTypes_[kind];
         return ret ? ret : (ret = New<TFloatType>(kind));
     }
 
-    const TFunctionType* MakeFunction(std::vector<TTypePtr>&& params, const TTypePtr& retType) {
+    TConcreteTypePtr<TFunctionType> MakeFunction(std::vector<TTypePtr>&& params, const TTypePtr& retType) {
         auto& ret = FunctionTypes_[{params, retType}];
         return ret ? ret : (ret = New<TFunctionType>(std::move(params), retType));
     }
 
-    const TFutureType* MakeFuture(const TTypePtr& type) {
+    TConcreteTypePtr<TFutureType> MakeFuture(const TTypePtr& type) {
         auto& ret = FutureTypes_[type];
         return ret ? ret : (ret = New<TFutureType>(type));
     }
@@ -55,17 +55,17 @@ public:
         return MakeFuture(type);
     }
 
-    const TArrayType* MakeArray(const TTypePtr& elementType, int arity) {
+    TConcreteTypePtr<TArrayType> MakeArray(const TTypePtr& elementType, int arity) {
         auto& ret = ArrayTypes_[{elementType, arity}];
         return ret ? ret : (ret = New<TArrayType>(elementType, arity));
     }
 
-    const TPointerType* MakePointer(const TTypePtr& pointee) {
+    TConcreteTypePtr<TPointerType> MakePointer(const TTypePtr& pointee) {
         auto& ret = PointerTypes_[pointee];
         return ret ? ret : (ret = New<TPointerType>(pointee));
     }
 
-    const TReferenceType* MakeReference(const TTypePtr& referenced) {
+    TConcreteTypePtr<TReferenceType> MakeReference(const TTypePtr& referenced) {
         auto& ret = ReferenceTypes_[referenced];
         return ret ? ret : (ret = New<TReferenceType>(referenced));
     }
@@ -76,7 +76,7 @@ public:
     // completed in place, once. A conflicting redefinition - the name is declared again with
     // a different underlying type, e.g. a reused resolver or a second program - gets a fresh
     // object and replaces the cached one.
-    const TNamedType* MakeNamed(
+    TConcreteTypePtr<TNamedType> MakeNamed(
         const std::string& name,
         const TTypePtr& underlying = nullptr,
         std::vector<TGenericArg>&& typeArgs = {},
@@ -95,29 +95,29 @@ public:
         return ret;
     }
 
-    const TStructType* MakeStruct(std::vector<std::pair<std::string, TTypePtr>>&& fields) {
+    TConcreteTypePtr<TStructType> MakeStruct(std::vector<std::pair<std::string, TTypePtr>>&& fields) {
         auto& ret = TStructTypes_[fields];
         return ret ? ret : (ret = New<TStructType>(std::move(fields)));
     }
 
-    const TTensorType* MakeTensor(const TTypePtr& elementType, std::vector<int>&& shape) {
+    TConcreteTypePtr<TTensorType> MakeTensor(const TTypePtr& elementType, std::vector<int>&& shape) {
         auto& ret = TensorTypes_[{elementType, shape}];
         return ret ? ret : (ret = New<TTensorType>(elementType, std::move(shape)));
     }
 
-    const TVectorType* MakeVector(const TTypePtr& elementType, int size) {
+    TConcreteTypePtr<TVectorType> MakeVector(const TTypePtr& elementType, int size) {
         auto& ret = VectorTypes_[{elementType, size, std::string{}}];
         return ret ? ret : (ret = New<TVectorType>(elementType, size));
     }
 
     // Size is a generic value parameter that is not bound yet.
-    const TVectorType* MakeGenericVector(const TTypePtr& elementType, const std::string& sizeParam) {
+    TConcreteTypePtr<TVectorType> MakeGenericVector(const TTypePtr& elementType, const std::string& sizeParam) {
         auto& ret = VectorTypes_[{elementType, 0, sizeParam}];
         return ret ? ret : (ret = New<TVectorType>(elementType, 0, sizeParam));
     }
 
     // Size from a bound generic value argument (0 if it is not an integer).
-    const TVectorType* MakeVector(const TTypePtr& elementType, std::string_view sizeValue) {
+    TConcreteTypePtr<TVectorType> MakeVector(const TTypePtr& elementType, std::string_view sizeValue) {
         return MakeVector(elementType, TVectorType::ParseSize(sizeValue));
     }
 
@@ -125,7 +125,7 @@ public:
     // makes its constructors private and befriends TTypeFactory, like the built-in kinds.
     template<typename T, typename... TArgs>
     requires std::is_base_of_v<TType, T>
-    const T* MakeCustom(TArgs&&... args) {
+    TConcreteTypePtr<T> MakeCustom(TArgs&&... args) {
         return New<T>(std::forward<TArgs>(args)...);
     }
 
@@ -141,18 +141,18 @@ private:
 
     std::vector<std::unique_ptr<TType>> Owned_;
     std::unordered_map<std::string_view, TTypePtr> Types_;
-    std::unordered_map<TIntegerType::EKind, const TIntegerType*> IntegerTypes_;
-    std::unordered_map<TFloatType::EKind, const TFloatType*> FloatTypes_;
-    std::map<std::pair<std::vector<TTypePtr>, TTypePtr>, const TFunctionType*> FunctionTypes_;
-    std::map<TTypePtr, const TFutureType*> FutureTypes_;
-    std::map<std::pair<TTypePtr, int>, const TArrayType*> ArrayTypes_;
-    std::map<TTypePtr, const TPointerType*> PointerTypes_;
-    std::map<TTypePtr, const TReferenceType*> ReferenceTypes_;
-    std::map<std::vector<std::pair<std::string, TTypePtr>>, const TStructType*> TStructTypes_;
-    std::map<std::tuple<TTypePtr, int, std::string>, const TVectorType*> VectorTypes_;
+    std::unordered_map<TIntegerType::EKind, TConcreteTypePtr<TIntegerType>> IntegerTypes_;
+    std::unordered_map<TFloatType::EKind, TConcreteTypePtr<TFloatType>> FloatTypes_;
+    std::map<std::pair<std::vector<TTypePtr>, TTypePtr>, TConcreteTypePtr<TFunctionType>> FunctionTypes_;
+    std::map<TTypePtr, TConcreteTypePtr<TFutureType>> FutureTypes_;
+    std::map<std::pair<TTypePtr, int>, TConcreteTypePtr<TArrayType>> ArrayTypes_;
+    std::map<TTypePtr, TConcreteTypePtr<TPointerType>> PointerTypes_;
+    std::map<TTypePtr, TConcreteTypePtr<TReferenceType>> ReferenceTypes_;
+    std::map<std::vector<std::pair<std::string, TTypePtr>>, TConcreteTypePtr<TStructType>> TStructTypes_;
+    std::map<std::tuple<TTypePtr, int, std::string>, TConcreteTypePtr<TVectorType>> VectorTypes_;
     // Not const: MakeNamed completes these in place.
     std::map<std::pair<std::string, std::vector<TGenericArg>>, TNamedType*> NamedTypes_;
-    std::map<std::pair<TTypePtr, std::vector<int>>, const TTensorType*> TensorTypes_;
+    std::map<std::pair<TTypePtr, std::vector<int>>, TConcreteTypePtr<TTensorType>> TensorTypes_;
 };
 
 } // namespace NAst
