@@ -21,7 +21,8 @@ struct TAccess {
 };
 
 // Only TTypeFactory creates types (their constructors are private), owns and interns
-// them. Types are never copied: equal types are one object.
+// them. Types are never copied: equal types are one object. The built-in kinds are
+// final: a subclass could reach a private constructor through an inherited one.
 struct TType {
     TType(const TType&) = delete;
     TType& operator=(const TType&) = delete;
@@ -109,7 +110,7 @@ struct TMaybeType {
     operator bool() const { return Type != nullptr; }
 };
 
-struct TIntegerType : TType {
+struct TIntegerType final : TType {
     static constexpr const char* TypeId = "Int";
 
     enum EKind {
@@ -194,7 +195,7 @@ public:
     }
 };
 
-struct TFloatType : TType {
+struct TFloatType final : TType {
     static constexpr const char* TypeId = "Float";
 
     enum EKind {
@@ -224,7 +225,7 @@ public:
     }
 };
 
-struct TBoolType : TType {
+struct TBoolType final : TType {
     static constexpr const char* TypeId = "Bool";
 
     const std::string_view TypeName() const override {
@@ -237,7 +238,7 @@ private:
     TBoolType() = default;
 };
 
-struct TStringType : TType {
+struct TStringType final : TType {
     static constexpr const char* TypeId = "String";
 
     const std::string_view TypeName() const override {
@@ -250,7 +251,7 @@ private:
     TStringType() = default;
 };
 
-struct TSymbolType : TType {
+struct TSymbolType final : TType {
     static constexpr const char* TypeId = "Char";
 
     const std::string_view TypeName() const override {
@@ -263,7 +264,7 @@ private:
     TSymbolType() = default;
 };
 
-struct TVoidType : TType {
+struct TVoidType final : TType {
     static constexpr const char* TypeId = "Void";
 
     const std::string_view TypeName() const override {
@@ -276,7 +277,7 @@ private:
     TVoidType() = default;
 };
 
-struct TFunctionType : TType {
+struct TFunctionType final : TType {
     static constexpr const char* TypeId = "Fun";
 
     std::vector<TTypePtr> ParamTypes;
@@ -309,7 +310,7 @@ public:
     }
 };
 
-struct TFutureType : TType {
+struct TFutureType final : TType {
     static constexpr const char* TypeId = "Future";
 
     TTypePtr ResultType = nullptr;
@@ -331,7 +332,7 @@ public:
     }
 };
 
-struct TArrayType : TType {
+struct TArrayType final : TType {
     static constexpr const char* TypeId = "Array";
 
     TTypePtr ElementType = nullptr;
@@ -358,7 +359,7 @@ public:
     }
 };
 
-struct TPointerType : TType {
+struct TPointerType final : TType {
     static constexpr const char* TypeId = "Ptr";
 
     TTypePtr PointeeType = nullptr;
@@ -380,7 +381,7 @@ public:
     }
 };
 
-struct TReferenceType : TType {
+struct TReferenceType final : TType {
     static constexpr const char* TypeId = "Ref";
 
     TTypePtr ReferencedType = nullptr;
@@ -402,7 +403,7 @@ public:
     }
 };
 
-struct TNamedType : TType {
+struct TNamedType final : TType {
     static constexpr const char* TypeId = "Named";
     std::string Name;
     std::vector<TGenericArg> TypeArgs;
@@ -463,7 +464,7 @@ private:
     std::optional<std::string> Reference_;
 };
 
-struct TStructType : TType {
+struct TStructType final : TType {
     static constexpr const char* TypeId = "Struct";
 
     std::vector<std::pair<std::string, TTypePtr>> Fields;
@@ -526,7 +527,7 @@ public:
 // - <vec type N> <= <vec type N>  => <vec i1 N>
 // - <vec type N> >  <vec type N>  => <vec i1 N>
 // - <vec type N> >= <vec type N>  => <vec i1 N>
-struct TVectorType : TType {
+struct TVectorType final : TType {
     static constexpr const char* TypeId = "Vector";
 
     TTypePtr ElementType = nullptr;
@@ -571,7 +572,7 @@ public:
 
 // simd tensor type, e.g. f32x4x4, i32x8x8, etc.
 // examples: <tensor f32 4 4>, <tensor i32 8 8>
-struct TTensorType : TType {
+struct TTensorType final : TType {
     static constexpr const char* TypeId = "Tensor";
 
     TTypePtr ElementType = nullptr;

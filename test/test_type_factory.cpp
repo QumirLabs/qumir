@@ -17,6 +17,9 @@ static_assert(!std::is_default_constructible_v<TBoolType>);
 static_assert(!std::is_constructible_v<TIntegerType, TIntegerType::EKind>);
 static_assert(!std::is_constructible_v<TNamedType, std::string, TTypePtr>);
 static_assert(!std::is_copy_constructible_v<TIntegerType>);
+// Final: MakeCustom cannot make an uninterned subclass that TMaybeType accepts.
+static_assert(std::is_final_v<TNamedType>);
+static_assert(std::is_final_v<TIntegerType>);
 
 namespace {
 
