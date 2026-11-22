@@ -74,6 +74,8 @@ const NAst::TTypePtr& PhysicalCallResultType(const NAst::TTypePtr& type)
     return type;
 }
 
+const NAst::TTypePtr& PhysicalCallResultType(NAst::TTypePtr&& type) = delete;
+
 bool IsRawArraySymbol(NAst::TExpr* node)
 {
     auto var = NAst::TMaybeNode<NAst::TVarStmt>(node);

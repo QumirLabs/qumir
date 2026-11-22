@@ -34,10 +34,10 @@ struct TRefCounted {
 
 template<typename T>
 struct TIntrusivePtr {
-    TIntrusivePtr() noexcept : Ptr(nullptr) {
+    constexpr TIntrusivePtr() noexcept : Ptr(nullptr) {
     }
 
-    TIntrusivePtr(std::nullptr_t) noexcept : Ptr(nullptr) {
+    constexpr TIntrusivePtr(std::nullptr_t) noexcept : Ptr(nullptr) {
     }
 
     explicit TIntrusivePtr(T* ptr) noexcept : Ptr(ptr) {
@@ -68,7 +68,7 @@ struct TIntrusivePtr {
         other.Ptr = nullptr;
     }
 
-    ~TIntrusivePtr() {
+    constexpr ~TIntrusivePtr() {
         if (Ptr) {
             Ptr->Unref();
         }
