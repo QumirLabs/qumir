@@ -43,7 +43,7 @@ struct TParserContext {
     const TTypeParserMap* TypeParsers = nullptr;
 };
 
-TConcreteTypePtr<TIntegerType> IntegerTypeByName(TTypeFactory& types, const std::string& name) {
+const TIntegerType* IntegerTypeByName(TTypeFactory& types, const std::string& name) {
     using K = TIntegerType::EKind;
     if (name == "i8") return types.MakeInteger(K::I8);
     if (name == "i16") return types.MakeInteger(K::I16);
@@ -450,7 +450,7 @@ TAstTask ParseExpr(TParserContext& context) {
     }
     if (token.Type == TToken::Char) {
         auto expr = MakeIntrusive<TNumberExpr>(token.Location, token.Value.i64, context.Types);
-        expr->Type = TConcreteTypePtr<TSymbolType>();
+        expr->Type = nullptr;
         co_return expr;
     }
     if (token.Type == TToken::String) {
@@ -517,7 +517,7 @@ TTypeTask ParseCompositeType(TParserContext& context, TLocation location) {
     if (head == "vec") {
         auto elementType = co_await ParseType(context);
         auto sizeToken = context.Stream.Next();
-        TTypePtr vector;
+        TTypePtr vector = nullptr;
         if (sizeToken.Type == TToken::Integer) {
             vector = context.Types.MakeVector(elementType, std::string_view(std::to_string(sizeToken.Value.i64)));
         } else if (sizeToken.Type == TToken::Identifier) {

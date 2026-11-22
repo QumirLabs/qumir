@@ -54,6 +54,8 @@ public:
     std::expected<std::optional<std::string>, TError> Run(std::istream& input);
 
 private:
+    // Owns every type of this runner, so it is declared first and destroyed last.
+    NAst::TTypeFactory Types;
     NIR::TModule Module;
     NIR::TVMCompiler Compiler;
     NIR::TRuntime Runtime;
@@ -63,7 +65,6 @@ private:
     NIR::TInterpreter Interpreter;
     std::unordered_set<int> PrintedChunks;
 
-    NAst::TTypeFactory Types;
     NSemantics::TNameResolver Resolver{Types};
 
     std::vector<std::shared_ptr<NRegistry::IModule>> RegisteredModules;

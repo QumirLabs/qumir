@@ -17,19 +17,17 @@ struct TRefCounted {
     TRefCounted(const TRefCounted&) noexcept {}
     TRefCounted& operator=(const TRefCounted&) noexcept { return *this; }
 
-    // const: the count is bookkeeping, not part of the object's value, so pointers to
-    // const objects (TIntrusivePtr<const T>) can still share and release them.
-    void Ref() const noexcept {
+    void Ref() noexcept {
         ++Count;
     }
 
-    void Unref() const noexcept {
+    void Unref() noexcept {
         if (--Count == 0) {
-            delete static_cast<const TDerived*>(this);
+            delete static_cast<TDerived*>(this);
         }
     }
 
-    mutable int Count = 0;
+    int Count = 0;
 };
 
 template<typename T>

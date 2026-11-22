@@ -29,7 +29,7 @@ TLLVMDebugInfo::TLLVMDebugInfo(llvm::Module& module, const NIR::TModule& sourceM
 }
 
 llvm::DIType* TLLVMDebugInfo::GetType(const NAst::TTypePtr& astType, int typeId) {
-    auto& cached = Types_[typeId][astType.Get()];
+    auto& cached = Types_[typeId][astType];
     if (cached) {
         return cached;
     }

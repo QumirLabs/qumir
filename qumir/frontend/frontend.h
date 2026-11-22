@@ -65,7 +65,8 @@ private:
     TFrontendOptions Options_;
 
 protected:
-    // Owns every interned type of this session; must outlive and precede the resolver.
+    // Owns every type of this session, so it precedes (and outlives) the IR module, the
+    // lowerer, the resolver and a derived runner's codegen.
     NAst::TTypeFactory Types;
     NIR::TModule Module;
     NIR::TBuilder Builder;

@@ -43,21 +43,17 @@ bool ContainsLifetimeNode(const TExprPtr& expr) {
     return false;
 }
 
-// A reference to `type` or to a type it points to, so `type` must outlive it.
-const TTypePtr& ValueType(const TTypePtr& type) {
-    const TTypePtr* current = &type;
+TTypePtr ValueType(TTypePtr type) {
     while (true) {
-        if (auto reference = TMaybeType<TReferenceType>(*current)) {
-            current = &reference.Cast()->ReferencedType;
-        } else if (auto named = TMaybeType<TNamedType>(*current)) {
-            current = &named.Cast()->UnderlyingType();
+        if (auto reference = TMaybeType<TReferenceType>(type)) {
+            type = reference.Cast()->ReferencedType;
+        } else if (auto named = TMaybeType<TNamedType>(type)) {
+            type = named.Cast()->UnderlyingType();
         } else {
-            return *current;
+            return type;
         }
     }
 }
-
-const TTypePtr& ValueType(TTypePtr&& type) = delete;
 
 const TLifetimeTraits* TryTraits(const TTypePtr& type, TLifetimeTraits& storage) {
     if (!type) {
