@@ -17,17 +17,22 @@ static_assert(!std::is_default_constructible_v<TBoolType>);
 static_assert(!std::is_constructible_v<TIntegerType, TIntegerType::EKind>);
 static_assert(!std::is_constructible_v<TNamedType, std::string, TTypePtr>);
 static_assert(!std::is_copy_constructible_v<TIntegerType>);
+// Final: MakeCustom cannot make an uninterned subclass that TMaybeType accepts.
+static_assert(std::is_final_v<TNamedType>);
+static_assert(std::is_final_v<TIntegerType>);
 
 namespace {
 
-// A host kind derived from a named type, like QumirDB's decimal.
-struct THostNamedType : TNamedType {
+// A type kind Qumir does not know.
+struct TCustomType : TType {
+    const std::string_view TypeName() const override {
+        return "Custom";
+    }
+
 private:
     friend class NQumir::NAst::TTypeFactory;
 
-    THostNamedType()
-        : TNamedType("Host", nullptr)
-    {}
+    TCustomType() = default;
 };
 
 template<typename T, typename... TArgs>
@@ -37,8 +42,8 @@ concept CanMakeCustom = requires(TTypeFactory& types, TArgs... args) {
 
 } // namespace
 
-// MakeCustom takes host kinds only: a built-in kind made there would not be interned.
-static_assert(CanMakeCustom<THostNamedType>);
+// MakeCustom takes unknown kinds only: a built-in kind made there would not be interned.
+static_assert(CanMakeCustom<TCustomType>);
 static_assert(!CanMakeCustom<TIntegerType, TIntegerType::EKind>);
 static_assert(!CanMakeCustom<TNamedType, std::string, TTypePtr>);
 
@@ -83,6 +88,11 @@ TEST(TypeFactory, NamedTypesAreInternedByNameAndArgsAndCompletedOnce) {
 
     // Different arguments are a different type.
     EXPECT_NE(types.MakeNamed("X", i64, {TGenericArg::TypeArg(i64)}), complete);
+
+    // Value arguments are part of the key too, e.g. a host's "<named DECIMAL [15 2]>".
+    auto decimal = types.MakeNamed("DECIMAL", nullptr, {TGenericArg::ValueArg("15"), TGenericArg::ValueArg("2")});
+    EXPECT_EQ(decimal, types.MakeNamed("DECIMAL", nullptr, {TGenericArg::ValueArg("15"), TGenericArg::ValueArg("2")}));
+    EXPECT_NE(decimal, types.MakeNamed("DECIMAL", nullptr, {TGenericArg::ValueArg("15"), TGenericArg::ValueArg("3")}));
 
     // A conflicting redefinition of the name does not reuse the stale declaration.
     auto redefined = types.MakeNamed("X", f64);

@@ -130,8 +130,8 @@ public:
         return MakeVector(elementType, TVectorType::ParseSize(sizeValue));
     }
 
-    // A type kind defined outside Qumir (a host or a test); owned, not interned. The kind
-    // makes its constructors private and befriends TTypeFactory, like the built-in kinds.
+    // A type kind Qumir does not know (tests); owned, not interned. The kind befriends
+    // TTypeFactory. A host type is a named type with arguments instead, which is interned.
     template<typename T, typename... TArgs>
     requires (std::is_base_of_v<TType, T> && !IsInternedTypeKind<T>)
     TConcreteTypePtr<T> MakeCustom(TArgs&&... args) {

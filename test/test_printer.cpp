@@ -382,33 +382,13 @@ private:
     {}
 };
 
-// Custom named type with value args: <named Dec [precision scale]>
-struct TDecType : TNamedType {
-    int Precision;
-    int Scale;
-
-private:
-    friend class NQumir::NAst::TTypeFactory;
-
-    TDecType(int precision, int scale)
-        : TNamedType("Dec", nullptr, {
-              TGenericArg::ValueArg(std::to_string(precision)),
-              TGenericArg::ValueArg(std::to_string(scale)),
-          })
-        , Precision(precision)
-        , Scale(scale)
-    {}
-};
-
-// Custom named type without args, printed short: Unit
-struct TUnitType : TNamedType {
-private:
-    friend class NQumir::NAst::TTypeFactory;
-
-    TUnitType()
-        : TNamedType("Unit", nullptr)
-    {}
-};
+// A host type as a named type with value args: <named Dec [precision scale]>
+TTypePtr MakeDec(int precision, int scale) {
+    return NQumir::NTest::TestTypes().MakeNamed("Dec", nullptr, {
+        TGenericArg::ValueArg(std::to_string(precision)),
+        TGenericArg::ValueArg(std::to_string(scale)),
+    });
+}
 
 TPrintOptions MakeTypePrintOptions() {
     TPrintOptions opts;
@@ -426,17 +406,15 @@ TTypeParserMap MakeTypeParsers() {
         }
         return types.MakeCustom<TOptType>(args[0].Type);
     };
-    parsers["Unit"] = [](TTypeFactory& types, std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
-        if (!args.empty()) {
-            return std::unexpected("Unit expects no arguments");
-        }
-        return types.MakeCustom<TUnitType>();
-    };
     parsers["Dec"] = [](TTypeFactory& types, std::vector<TGenericArg> args) -> std::expected<TTypePtr, std::string> {
+        // A bare Dec means the default precision and scale.
+        if (args.empty()) {
+            args = {TGenericArg::ValueArg("18"), TGenericArg::ValueArg("0")};
+        }
         if (args.size() != 2 || args[0].Kind != TGenericArg::EKind::Value || args[1].Kind != TGenericArg::EKind::Value) {
             return std::unexpected("Dec expects two value arguments");
         }
-        return types.MakeCustom<TDecType>(std::stoi(args[0].Value), std::stoi(args[1].Value));
+        return types.MakeNamed("Dec", nullptr, std::move(args));
     };
     return parsers;
 }
@@ -448,7 +426,7 @@ std::expected<TTypePtr, TError> ParseTypeText(const std::string& src, const TTyp
 }
 
 TTypePtr MakeNestedType() {
-    auto dec = NQumir::NTest::TestTypes().MakeCustom<TDecType>(18, 4);
+    auto dec = MakeDec(18, 4);
     auto opt = NQumir::NTest::TestTypes().MakeCustom<TOptType>(dec);
     auto optOpt = NQumir::NTest::TestTypes().MakeCustom<TOptType>(opt);
     return NQumir::NTest::TestTypes().MakeStruct(std::vector<std::pair<std::string, TTypePtr>>{
@@ -468,7 +446,7 @@ TEST(TypeExtensions, PrintCustomTypes) {
     auto opts = MakeTypePrintOptions();
     EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeCustom<TOptType>(NQumir::NTest::TestTypes().MakeInteger(TIntegerType::I64)), opts),
               "<named Opt [i64]>");
-    EXPECT_EQ(PrintType(NQumir::NTest::TestTypes().MakeCustom<TDecType>(18, 4), opts), "<named Dec [18 4]>");
+    EXPECT_EQ(PrintType(MakeDec(18, 4), opts), "<named Dec [18 4]>");
 }
 
 TEST(TypeExtensions, ParseWithoutParsersKeepsNamedType) {
@@ -480,15 +458,15 @@ TEST(TypeExtensions, ParseWithoutParsersKeepsNamedType) {
 
 TEST(TypeExtensions, BareNamedTypeConsultsParsers) {
     TPrintOptions opts;
-    opts.ShortNamedTypes.insert("Unit");
-    auto text = PrintType(NQumir::NTest::TestTypes().MakeCustom<TUnitType>(), opts);
-    EXPECT_EQ(text, "Unit");
+    opts.ShortNamedTypes.insert("Dec");
+    auto text = PrintType(NQumir::NTest::TestTypes().MakeNamed("Dec"), opts);
+    EXPECT_EQ(text, "Dec");
     auto parsed = ParseTypeText(text, MakeTypeParsers());
     ASSERT_TRUE(parsed.has_value()) << parsed.error().ToString();
-    EXPECT_TRUE(DynCast<TUnitType>(*parsed));
+    EXPECT_EQ(*parsed, MakeDec(18, 0));
     auto plain = ParseTypeText(text, {});
     ASSERT_TRUE(plain.has_value());
-    EXPECT_FALSE(DynCast<TUnitType>(*plain));
+    EXPECT_EQ(*plain, NQumir::NTest::TestTypes().MakeNamed("Dec"));
 }
 
 TEST(TypeExtensions, RoundTripNested) {
@@ -505,11 +483,9 @@ TEST(TypeExtensions, RoundTripNested) {
     ASSERT_TRUE(outer);
     auto inner = DynCast<TOptType>(outer->Inner);
     ASSERT_TRUE(inner);
-    auto dec = DynCast<TDecType>(inner->Inner);
-    ASSERT_TRUE(dec);
-    EXPECT_EQ(dec->Precision, 18);
-    EXPECT_EQ(dec->Scale, 4);
-    EXPECT_TRUE(DynCast<TDecType>(st.Cast()->Fields[1].second));
+    // A named host type is interned: parsing gives back the very same object.
+    EXPECT_EQ(inner->Inner, MakeDec(18, 4));
+    EXPECT_EQ(st.Cast()->Fields[1].second, MakeDec(18, 4));
 }
 
 TEST(TypeExtensions, ParserTypeParsersApplyInsideExpressions) {
