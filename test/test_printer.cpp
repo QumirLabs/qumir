@@ -82,8 +82,8 @@ TExprPtr MakeIdent(std::string name) {
 
 namespace {
 template<typename To, typename From>
-TIntrusivePtr<To> DynCast(const TIntrusivePtr<From>& from) {
-    return TIntrusivePtr<To>(dynamic_cast<To*>(from.Get()));
+TIntrusivePtr<const To> DynCast(const TIntrusivePtr<From>& from) {
+    return TIntrusivePtr<const To>(dynamic_cast<const To*>(from.Get()));
 }
 } // namespace
 
@@ -403,8 +403,8 @@ struct TUnitType : TNamedType {
 
 TPrintOptions MakeTypePrintOptions() {
     TPrintOptions opts;
-    opts.TypePrinters[TOptType::TypeId] = [](TType& type, TPrinter& p, int level) {
-        TNamedType named("Opt", nullptr, {TGenericArg::TypeArg(static_cast<TOptType&>(type).Inner)});
+    opts.TypePrinters[TOptType::TypeId] = [](const TType& type, TPrinter& p, int level) {
+        TNamedType named("Opt", nullptr, {TGenericArg::TypeArg(static_cast<const TOptType&>(type).Inner)});
         p.PrintType(MakeIntrusive<TNamedType>(std::move(named)), level);
     };
     return opts;

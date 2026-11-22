@@ -40,13 +40,13 @@ TEST(TypeFactory, NamedTypesAreInternedByNameAndArgsAndCompletedOnce) {
 
     // Created incomplete, e.g. by a parser before the declaration is known.
     auto incomplete = types.MakeNamed("X");
-    EXPECT_FALSE(incomplete->UnderlyingType);
+    EXPECT_FALSE(incomplete->UnderlyingType());
     EXPECT_EQ(incomplete, types.MakeNamed("X"));
 
     // Completing it fills the very same object.
     auto complete = types.MakeNamed("X", i64);
     EXPECT_EQ(complete, incomplete);
-    EXPECT_EQ(incomplete->UnderlyingType, i64);
+    EXPECT_EQ(incomplete->UnderlyingType(), i64);
     EXPECT_EQ(complete, types.MakeNamed("X"));
     EXPECT_EQ(complete, types.MakeNamed("X", i64));
 
@@ -56,8 +56,8 @@ TEST(TypeFactory, NamedTypesAreInternedByNameAndArgsAndCompletedOnce) {
     // A conflicting redefinition of the name does not reuse the stale declaration.
     auto redefined = types.MakeNamed("X", f64);
     EXPECT_NE(redefined, complete);
-    EXPECT_EQ(complete->UnderlyingType, i64);
-    EXPECT_EQ(redefined->UnderlyingType, f64);
+    EXPECT_EQ(complete->UnderlyingType(), i64);
+    EXPECT_EQ(redefined->UnderlyingType(), f64);
 }
 
 TEST(TypeFactory, PointersAreHashableAndOrdered) {

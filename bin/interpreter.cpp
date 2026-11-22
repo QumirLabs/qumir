@@ -46,7 +46,7 @@ public:
     void Print(std::ostream& out, const char* data, int typeId, NAst::TTypePtr astType) const {
         const auto kind = Types.GetKind(typeId);
         while (auto named = NAst::TMaybeType<NAst::TNamedType>(astType)) {
-            astType = named.Cast()->UnderlyingType;
+            astType = named.Cast()->UnderlyingType();
         }
         if (kind == NIR::EKind::Struct) {
             const auto& fields = Types.GetStructFields(typeId);

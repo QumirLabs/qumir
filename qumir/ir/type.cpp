@@ -114,10 +114,10 @@ int TTypeTable::Unify(int leftId, int rightId) {
 
 int FromAstType(const NAst::TTypePtr& t, TTypeTable& tt) {
     if (auto named = NAst::TMaybeType<NAst::TNamedType>(t)) {
-        if (!named.Cast()->UnderlyingType) {
+        if (!named.Cast()->UnderlyingType()) {
             throw std::runtime_error("FromAstType: named type '" + named.Cast()->Name + "' has null UnderlyingType — not resolved by name resolver");
         }
-        return FromAstType(named.Cast()->UnderlyingType, tt);
+        return FromAstType(named.Cast()->UnderlyingType(), tt);
     }
     if (NAst::TMaybeType<NAst::TFutureType>(t)) {
         throw std::runtime_error("AST Future<T> cannot be lowered as a regular IR type");

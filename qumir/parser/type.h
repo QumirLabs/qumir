@@ -28,11 +28,12 @@ struct TType : TRefCounted<TType> {
     virtual const std::string_view TypeName() const = 0;
 };
 
-using TTypePtr = TIntrusivePtr<TType>;
+// Types are immutable and shared (interned by TTypeFactory), hence pointers to const.
+using TTypePtr = TIntrusivePtr<const TType>;
 
 template<typename T>
 requires std::is_base_of_v<TType, T>
-using TConcreteTypePtr = TIntrusivePtr<T>;
+using TConcreteTypePtr = TIntrusivePtr<const T>;
 
 struct TGenericArg {
     enum class EKind {
@@ -90,26 +91,26 @@ struct TGenericArg {
 // reference count, so the type must stay owned elsewhere while the view is used.
 template<typename T>
 struct TMaybeType {
-    TMaybeType(TType* type)
+    TMaybeType(const TType* type)
         : Type(type && std::string_view(T::TypeId) == type->TypeName()
-            ? static_cast<T*>(type)
+            ? static_cast<const T*>(type)
             : nullptr)
     { }
 
     template<typename U>
     TMaybeType(const TIntrusivePtr<U>& type)
-        : TMaybeType(static_cast<TType*>(type.Get()))
+        : TMaybeType(static_cast<const TType*>(type.Get()))
     { }
 
     // A temporary owner would release the type before the view is used.
     template<typename U>
     TMaybeType(TIntrusivePtr<U>&& type) = delete;
 
-    T* Cast() const {
+    const T* Cast() const {
         return Type;
     }
 
-    T* Type;
+    const T* Type;
     operator bool() const { return Type != nullptr; }
 };
 
@@ -370,17 +371,27 @@ struct TNamedType : TType {
     static constexpr const char* TypeId = "Named";
     std::string Name;
     std::vector<TGenericArg> TypeArgs;
-    TTypePtr UnderlyingType; // Resolved on name resolution phase, exported by modules
-    std::optional<std::string> Reference; // Set = imported from this module; not printed in AST
 
     explicit TNamedType(
         const std::string& name,
         const TTypePtr& underlying,
         std::vector<TGenericArg>&& typeArgs = {})
-        : Name(std::move(name))
+        : Name(name)
         , TypeArgs(std::move(typeArgs))
-        , UnderlyingType(std::move(underlying))
+        , UnderlyingType_(underlying)
     {}
+
+    // A named type is declared by name and completed later (name resolution, imports), so
+    // these two are the only parts of a type that are set after creation. They are written
+    // through setters: the object itself stays const for everyone else.
+
+    // Resolved on name resolution phase, exported by modules.
+    const TTypePtr& UnderlyingType() const { return UnderlyingType_; }
+    void SetUnderlyingType(const TTypePtr& type) const { UnderlyingType_ = type; }
+
+    // Set = imported from this module; not printed in AST.
+    const std::optional<std::string>& Reference() const { return Reference_; }
+    void SetReference(std::optional<std::string> reference) const { Reference_ = std::move(reference); }
 
     std::string ToString() const override {
         std::string result = Name;
@@ -394,8 +405,8 @@ struct TNamedType : TType {
             }
             result += "]";
         }
-        if (UnderlyingType) {
-            return result + " (" + UnderlyingType->ToString() + ")";
+        if (UnderlyingType_) {
+            return result + " (" + UnderlyingType_->ToString() + ")";
         }
         return result;
     }
@@ -403,6 +414,10 @@ struct TNamedType : TType {
     const std::string_view TypeName() const override {
         return TNamedType::TypeId; // "Named" - consistent with TMaybeType contract
     }
+
+private:
+    mutable TTypePtr UnderlyingType_;
+    mutable std::optional<std::string> Reference_;
 };
 
 struct TStructType : TType {
@@ -469,13 +484,13 @@ struct TVectorType : TType {
 
     TTypePtr ElementType;
     int Size{0};
+    // Name of the generic value parameter while the size is not bound yet.
     std::string SizeParam;
 
-    TVectorType() = default;
-
-    explicit TVectorType(const TTypePtr& et, int size)
+    TVectorType(const TTypePtr& et, int size, std::string sizeParam = {})
         : ElementType(et)
         , Size(size)
+        , SizeParam(std::move(sizeParam))
     {}
 
     std::string SizeText() const {
@@ -484,12 +499,14 @@ struct TVectorType : TType {
             : SizeParam;
     }
 
-    void BindSize(std::string_view value) {
-        auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), Size);
+    // Size of a bound generic value argument; 0 if `value` is not an integer.
+    static int ParseSize(std::string_view value) {
+        int size = 0;
+        auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), size);
         if (error != std::errc{} || end != value.data() + value.size()) {
-            Size = 0;
+            return 0;
         }
-        SizeParam.clear();
+        return size;
     }
 
     std::string ToString() const override {
@@ -544,7 +561,7 @@ const TTypePtr& UnwrapReferenceType(TTypePtr&& type) = delete;
 
 inline const TTypePtr& UnwrapNamedType(const TTypePtr& type) {
     if (auto named = TMaybeType<TNamedType>(type)) {
-        return named.Cast()->UnderlyingType;
+        return named.Cast()->UnderlyingType();
     }
     return type;
 }
@@ -635,8 +652,8 @@ inline std::string TypeDiagnosticName(const TTypePtr& type) {
             }
             value += "]";
         }
-        if (named.Cast()->UnderlyingType) {
-            value += " (" + TypeDiagnosticName(named.Cast()->UnderlyingType) + ")";
+        if (named.Cast()->UnderlyingType()) {
+            value += " (" + TypeDiagnosticName(named.Cast()->UnderlyingType()) + ")";
         }
         return value;
     }

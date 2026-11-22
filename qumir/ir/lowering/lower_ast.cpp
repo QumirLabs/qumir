@@ -2010,7 +2010,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
     NAst::TTypePtr returnType = futureResultType
         ? Context.Types().MakePointer(Context.Types().Make<NAst::TVoidType>())
         : PhysicalCallResultType(funDecl->RetType);
-    std::vector<NAst::TTypePtr>* argTypes = nullptr;
+    const std::vector<NAst::TTypePtr>* argTypes = nullptr;
     if (auto maybeFuncType = NAst::TMaybeType<NAst::TFunctionType>(funDecl->Type)) {
         argTypes = &maybeFuncType.Cast()->ParamTypes;
     }
