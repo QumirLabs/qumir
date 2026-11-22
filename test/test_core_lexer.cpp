@@ -288,7 +288,7 @@ TEST(CoreTypeTest, ParametricTypeDeclPrintsAndParses) {
     ASSERT_TRUE(named);
     EXPECT_EQ(named->Name, "Nullable");
 
-    auto structure = TMaybeType<TStructType>(named->UnderlyingType).Cast();
+    auto structure = TMaybeType<TStructType>(named->UnderlyingType()).Cast();
     ASSERT_TRUE(structure);
     ASSERT_EQ(structure->Fields.size(), 2u);
 

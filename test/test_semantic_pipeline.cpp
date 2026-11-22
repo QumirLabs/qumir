@@ -560,7 +560,7 @@ TEST(ParametricTypes, ConcreteNamedTypeInstantiationResolvesUnderlyingFields) {
     ASSERT_TRUE(function);
     auto paramType = TMaybeType<TNamedType>(function->Params[0]->Type).Cast();
     ASSERT_TRUE(paramType);
-    auto paramStruct = TMaybeType<TStructType>(paramType->UnderlyingType).Cast();
+    auto paramStruct = TMaybeType<TStructType>(paramType->UnderlyingType()).Cast();
     ASSERT_TRUE(paramStruct);
     ASSERT_EQ(paramStruct->Fields.size(), 2u);
     EXPECT_EQ(paramStruct->Fields[0].first, "Value");
