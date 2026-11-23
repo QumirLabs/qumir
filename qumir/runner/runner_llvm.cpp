@@ -263,13 +263,6 @@ bool TLLVMRunner::LowerKernelAst(
     // scope->AllowsRedeclare = true;
     scope->RootLevel = false;
 
-    if (auto err = Resolver.Resolve(ast)) {
-        if (error) {
-            *error = err->ToString();
-        }
-        return false;
-    }
-
     NTransform::TPipelineOptions pipelineOptions{
         .RunDefiniteAssignment = Options.RunDefiniteAssignment,
     };
