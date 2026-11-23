@@ -558,10 +558,10 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
                 co_return *err;
             }
         }
-        co_await Resolve(fdecl->Body, newScope, newScope);
-        if (fdecl->LastAssert) {
-            auto bodyScope = Scopes[fdecl->Body->Scope];
-            co_await Resolve(fdecl->LastAssert, bodyScope, newScope);
+        co_await Resolve(fdecl->BodyExpr(), newScope, newScope);
+        if (fdecl->LastAssert()) {
+            auto bodyScope = Scopes[fdecl->Body()->Scope];
+            co_await Resolve(fdecl->LastAssert(), bodyScope, newScope);
         }
         co_return std::monostate{};
     } else if (auto maybeBlock = TMaybeNode<TBlockExpr>(node)) {
@@ -576,10 +576,10 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
             scope = Scopes[block->Scope];
         }
     } else if (auto call = TMaybeNode<TCallExpr>(node)) {
-        auto callee = TMaybeNode<TIdentExpr>(call.Cast()->Callee).Cast();
+        auto callee = TMaybeNode<TIdentExpr>(call.Cast()->Callee()).Cast();
         if (callee && !Lookup(callee->Name, scope->Id) && !VectorIntrinsic(callee->Name).empty()) {
             // Pseudo-calls receive their concrete declarations during annotation.
-            for (const auto& arg : call.Cast()->Args) {
+            for (const auto& arg : call.Cast()->Args()) {
                 co_await Resolve(arg, scope, funcScope);
             }
             co_return {};
@@ -627,8 +627,8 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
         if (existing != scope->NameToSymbolId.end()
             && GetSymbolNode(existing->second) == node)
         {
-            if (varStmt->Init) {
-                auto res = Resolve(varStmt->Init, scope, funcScope).result();
+            if (varStmt->Init()) {
+                auto res = Resolve(varStmt->Init(), scope, funcScope).result();
                 if (!res) { co_return res.error(); }
             }
             co_return {};
@@ -637,8 +637,8 @@ TNameResolver::TTask TNameResolver::Resolve(TExprPtr node, TScopePtr scope, TSco
         if (!res) {
             co_return res.error();
         }
-        if (varStmt->Init) {
-            auto initRes = Resolve(varStmt->Init, scope, funcScope).result();
+        if (varStmt->Init()) {
+            auto initRes = Resolve(varStmt->Init(), scope, funcScope).result();
             if (!initRes) { co_return initRes.error(); }
         }
         co_return {};
@@ -1005,7 +1005,7 @@ std::expected<TSymbolId, TError> TNameResolver::ResolveInstantiatedFunDecl(const
         }
     }
 
-    auto bodyRes = Resolve(fdecl->Body, funcScope, funcScope).result();
+    auto bodyRes = Resolve(fdecl->BodyExpr(), funcScope, funcScope).result();
     if (!bodyRes) {
         return std::unexpected(bodyRes.error());
     }
@@ -1025,7 +1025,7 @@ std::vector<std::pair<int, NAst::TFunDecl*>> TNameResolver::GetExternalFunctions
         auto& symbol = Symbols[symbolId];
         if (auto maybeFun = TMaybeNode<TFunDecl>(symbol.Node)) {
             auto fun = maybeFun.Cast();
-            if (fun->Body == nullptr) {
+            if (fun->BodyExpr() == nullptr) {
                 result.push_back({symbolId, fun});
             }
         }

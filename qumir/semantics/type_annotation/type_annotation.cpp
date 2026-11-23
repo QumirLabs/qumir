@@ -130,7 +130,7 @@ TTask AnnotateStructConstruct(
     NSemantics::TScopeId scopeId);
 TFunDeclTask InstantiateGenericFunction(
     TFunDecl* genericDecl,
-    const std::vector<TExprPtr>& args,
+    std::span<const TExprPtr> args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
     TTypePtr expectedReturnType = nullptr);
@@ -155,7 +155,7 @@ TTask TryGenericUnaryOp(
 // body-annotation for generic declarations.
 bool HasGenericParams(const TFunDecl& decl);
 
-std::string FormatCallSignature(const std::string& name, const std::vector<TExprPtr>& args) {
+std::string FormatCallSignature(const std::string& name, std::span<const TExprPtr> args) {
     std::ostringstream out;
     out << name << "(";
     for (size_t i = 0; i < args.size(); ++i) {
@@ -589,11 +589,11 @@ bool ApplyStructConstructContext(const TExprPtr& expr, const TTypePtr& targetTyp
     }
     if (auto ifExpr = TMaybeNode<TIfExpr>(expr)) {
         bool applied = false;
-        if (ifExpr.Cast()->Then) {
-            applied = ApplyStructConstructContext(ifExpr.Cast()->Then, targetType) || applied;
+        if (ifExpr.Cast()->Then()) {
+            applied = ApplyStructConstructContext(ifExpr.Cast()->Then(), targetType) || applied;
         }
-        if (ifExpr.Cast()->Else) {
-            applied = ApplyStructConstructContext(ifExpr.Cast()->Else, targetType) || applied;
+        if (ifExpr.Cast()->Else()) {
+            applied = ApplyStructConstructContext(ifExpr.Cast()->Else(), targetType) || applied;
         }
         return applied;
     }
@@ -816,7 +816,7 @@ TTask AnnotateUnary(TUnaryExpr* unary, NSemantics::TNameResolver& context, NSema
 TTask AnnotateFunDecl(TFunDecl* funDecl, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     std::vector<TTypePtr> params;
     for (auto& p : funDecl->Params) {
-        co_await DoAnnotate(p, context, NSemantics::TScopeId{funDecl->Body->Scope});
+        co_await DoAnnotate(p, context, NSemantics::TScopeId{funDecl->Body()->Scope});
         if (!p->Type) {
             co_return TError(p->Location, "Не указан тип параметра функции: " + p->Name);
         }
@@ -851,23 +851,23 @@ TTask AnnotateFunDecl(TFunDecl* funDecl, NSemantics::TNameResolver& context, NSe
         co_return TExprPtr(funDecl);
     }
 
-    co_await DoAnnotate(funDecl->Body, context, scopeId);
-    if (!funDecl->Body->Type) {
+    co_await DoAnnotate(funDecl->BodyExpr(), context, scopeId);
+    if (!funDecl->Body()->Type) {
         co_return TError(funDecl->Location, "Не удалось определить тип тела функции");
     }
-    if (funDecl->LastAssert) {
-        funDecl->LastAssert = co_await DoAnnotate(
-            funDecl->LastAssert,
+    if (funDecl->LastAssert()) {
+        funDecl->LastAssert() = co_await DoAnnotate(
+            funDecl->LastAssert(),
             context,
-            NSemantics::TScopeId{funDecl->Body->Scope});
+            NSemantics::TScopeId{funDecl->Body()->Scope});
     }
 
     // A non-void body either yields an implicit return value or explicitly
     // returns on every path. Return expressions remain void-typed.
     if (!TMaybeType<TVoidType>(funcScope->RetType)) {
-        auto bodyType = UnwrapReferenceType(funDecl->Body->Type);
+        auto bodyType = UnwrapReferenceType(funDecl->Body()->Type);
         if (TMaybeType<TVoidType>(bodyType)) {
-            if (!NSemantics::AlwaysReturns(funDecl->Body)) {
+            if (!NSemantics::AlwaysReturns(funDecl->BodyExpr())) {
                 co_return TError(funDecl->Location,
                     "Тело функции должно возвращать значение на каждом пути выполнения.");
             }
@@ -878,8 +878,8 @@ TTask AnnotateFunDecl(TFunDecl* funDecl, NSemantics::TNameResolver& context, NSe
                         "Тело функции должно возвращать значение типа '" + TypeDiagnosticName(funcScope->RetType) +
                         "', но имеет тип '" + TypeDiagnosticName(bodyType) + "'.");
                 }
-                funDecl->Body->Stmts.back() = InsertImplicitCastIfNeeded(funDecl->Body->Stmts.back(), funcScope->RetType, &context);
-                funDecl->Body->Type = funcScope->RetType;
+                funDecl->Body()->Stmts.back() = InsertImplicitCastIfNeeded(funDecl->Body()->Stmts.back(), funcScope->RetType, &context);
+                funDecl->Body()->Type = funcScope->RetType;
             }
         }
     }
@@ -942,9 +942,9 @@ TTask AnnotateDestroy(
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
-    destroy->Value = co_await DoAnnotate(destroy->Value, context, scopeId);
-    if (destroy->Aux) {
-        destroy->Aux = co_await DoAnnotate(destroy->Aux, context, scopeId);
+    destroy->Value() = co_await DoAnnotate(destroy->Value(), context, scopeId);
+    if (destroy->Aux()) {
+        destroy->Aux() = co_await DoAnnotate(destroy->Aux(), context, scopeId);
     }
     destroy->Type = context.Types().Make<TVoidType>();
     co_return TExprPtr(destroy);
@@ -955,25 +955,25 @@ TTask AnnotateReplace(
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
-    if (auto ident = TMaybeNode<TIdentExpr>(replace->Target)) {
-        replace->Target = co_await AnnotateIdent(
+    if (auto ident = TMaybeNode<TIdentExpr>(replace->Target())) {
+        replace->Target() = co_await AnnotateIdent(
             ident.Cast(),
             context,
             scopeId,
             true);
     } else {
-        replace->Target = co_await DoAnnotate(replace->Target, context, scopeId);
+        replace->Target() = co_await DoAnnotate(replace->Target(), context, scopeId);
     }
-    replace->Value = co_await DoAnnotate(replace->Value, context, scopeId);
-    auto targetType = UnwrapReferenceType(replace->Target->Type);
-    auto valueType = UnwrapReferenceType(replace->Value->Type);
+    replace->Value() = co_await DoAnnotate(replace->Value(), context, scopeId);
+    auto targetType = UnwrapReferenceType(replace->Target()->Type);
+    auto valueType = UnwrapReferenceType(replace->Value()->Type);
     if (!EqualTypes(valueType, targetType)) {
         if (!CanImplicit(valueType, targetType, &context)) {
             co_return TError(replace->Location,
                 "Нельзя заменить значение типа '" + TypeDiagnosticName(targetType)
                 + "' значением типа '" + TypeDiagnosticName(valueType) + "'.");
         }
-        replace->Value = InsertImplicitCastIfNeeded(replace->Value, targetType, &context);
+        replace->Value() = InsertImplicitCastIfNeeded(replace->Value(), targetType, &context);
     }
     replace->Type = context.Types().Make<TVoidType>();
     co_return TExprPtr(replace);
@@ -991,13 +991,13 @@ TTask AnnotateCleanupExit(
             co_return TError(exit->Location, "`return` вне функции.");
         }
         const auto& returnType = funcScope->RetType;
-        if (exit->Value) {
-            exit->Value = co_await DoAnnotate(exit->Value, context, scopeId);
+        if (exit->Value()) {
+            exit->Value() = co_await DoAnnotate(exit->Value(), context, scopeId);
             if (TMaybeType<TVoidType>(returnType)) {
                 co_return TError(exit->Location,
                     "Нельзя вернуть значение из функции, возвращающей void.");
             }
-            auto valueType = UnwrapReferenceType(exit->Value->Type);
+            auto valueType = UnwrapReferenceType(exit->Value()->Type);
             if (!EqualTypes(valueType, returnType)) {
                 if (!CanImplicit(valueType, returnType, &context)) {
                     co_return TError(exit->Location,
@@ -1005,7 +1005,7 @@ TTask AnnotateCleanupExit(
                         + "' к возвращаемому типу функции '"
                         + TypeDiagnosticName(returnType) + "'.");
                 }
-                exit->Value = InsertImplicitCastIfNeeded(exit->Value, returnType, &context);
+                exit->Value() = InsertImplicitCastIfNeeded(exit->Value(), returnType, &context);
             }
         } else if (!TMaybeType<TVoidType>(returnType)) {
             co_return TError(exit->Location,
@@ -1013,11 +1013,11 @@ TTask AnnotateCleanupExit(
                 + TypeDiagnosticName(returnType)
                 + "', но `return` указан без значения.");
         }
-    } else if (exit->Value) {
+    } else if (exit->Value()) {
         co_return TError(exit->Location, "`break` и `continue` не могут иметь значение.");
     }
 
-    for (auto& cleanup : exit->Cleanups) {
+    for (auto& cleanup : exit->Cleanups()) {
         cleanup = co_await DoAnnotate(cleanup, context, scopeId);
     }
     exit->Type = context.Types().Make<TVoidType>();
@@ -1160,7 +1160,7 @@ TBinaryOpTypesResult AnnotateNumericBinaryOp(
         return std::unexpected(TError(binary->Location, std::move(message)));
     };
     auto commonNumeric = [&](bool integerOnly, std::string message) -> TBinaryOpTypesResult {
-        RetypeIntegerLiteralOperands(binary->Left, binary->Right, left, right);
+        RetypeIntegerLiteralOperands(binary->Left(), binary->Right(), left, right);
         auto common = CommonNumericType(left, right);
         if (!common || (integerOnly && !TMaybeType<TIntegerType>(common))) {
             return error(std::move(message));
@@ -1294,7 +1294,7 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
             + TypeDiagnosticName(left) + " и " + TypeDiagnosticName(right)));
     }
 
-    RetypeIntegerLiteralOperands(binary->Left, binary->Right, leftElement, rightElement);
+    RetypeIntegerLiteralOperands(binary->Left(), binary->Right(), leftElement, rightElement);
     auto types = AnnotateNumericBinaryOp(binary, leftElement, rightElement, context);
     if (
         (binary->Operator == TOperator("&") || binary->Operator == TOperator("|")
@@ -1325,8 +1325,8 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
     if (rightVector) {
         types->Right = context.Types().MakeVector(types->Right, size);
     }
-    if (bitwise && !EqualTypes(UnwrapReferenceType(binary->Right->Type), types->Right)) {
-        binary->Right = MakeCast(binary->Right, types->Right);
+    if (bitwise && !EqualTypes(UnwrapReferenceType(binary->Right()->Type), types->Right)) {
+        binary->Right() = MakeCast(binary->Right(), types->Right);
     }
     types->Result = context.Types().MakeVector(types->Result, size);
     return types;
@@ -1334,13 +1334,13 @@ TBinaryOpTypesResult AnnotateVecBinaryOp(
 
 TTask AnnotateBinary(TBinaryExpr* binary, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     auto explicitType = binary->Type;
-    binary->Left = co_await DoAnnotate(binary->Left, context, scopeId);
-    binary->Right = co_await DoAnnotate(binary->Right, context, scopeId);
-    if (!binary->Left->Type || !binary->Right->Type) {
+    binary->Left() = co_await DoAnnotate(binary->Left(), context, scopeId);
+    binary->Right() = co_await DoAnnotate(binary->Right(), context, scopeId);
+    if (!binary->Left()->Type || !binary->Right()->Type) {
         co_return TError(binary->Location, "Не удалось определить типы выражения для бинарной операции");
     }
-    auto left = UnwrapReferenceType(binary->Left->Type);
-    auto right = UnwrapReferenceType(binary->Right->Type);
+    auto left = UnwrapReferenceType(binary->Left()->Type);
+    auto right = UnwrapReferenceType(binary->Right()->Type);
     TBinaryOpTypesResult types;
     if (TMaybeType<TVectorType>(left) || TMaybeType<TVectorType>(right)) {
         types = AnnotateVecBinaryOp(binary, left, right, context);
@@ -1350,17 +1350,17 @@ TTask AnnotateBinary(TBinaryExpr* binary, NSemantics::TNameResolver& context, NS
         types = AnnotateNumericBinaryOp(binary, left, right, context);
     }
     if (!types) {
-        if (auto result = TryModuleBinaryOp(binary->Left, binary->Right, binary->Operator, context)) {
+        if (auto result = TryModuleBinaryOp(binary->Left(), binary->Right(), binary->Operator, context)) {
             co_return co_await AnnotateIfNeeded(result, context, scopeId);
         }
-        if (auto result = co_await TryGenericBinaryOp(binary->Left, binary->Right, binary->Operator, context)) {
+        if (auto result = co_await TryGenericBinaryOp(binary->Left(), binary->Right(), binary->Operator, context)) {
             co_return co_await AnnotateIfNeeded(result, context, scopeId);
         }
         co_return types.error();
     }
 
-    binary->Left = InsertImplicitCastIfNeeded(binary->Left, types->Left, &context);
-    binary->Right = InsertImplicitCastIfNeeded(binary->Right, types->Right, &context);
+    binary->Left() = InsertImplicitCastIfNeeded(binary->Left(), types->Left, &context);
+    binary->Right() = InsertImplicitCastIfNeeded(binary->Right(), types->Right, &context);
     binary->Type = types->Result;
     if (explicitType && !EqualTypes(explicitType, binary->Type)) {
         co_return MakeCast(TExprPtr(binary), explicitType);
@@ -1449,8 +1449,8 @@ TTask AnnotateAssign(TAssignExpr* assign, NSemantics::TNameResolver& context, NS
 }
 
 TTask AnnotateArrayAssign(TArrayAssignExpr* arrayAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    arrayAssign->Value = co_await DoAnnotate(arrayAssign->Value, context, scopeId);
-    if (!arrayAssign->Value->Type) {
+    arrayAssign->Value() = co_await DoAnnotate(arrayAssign->Value(), context, scopeId);
+    if (!arrayAssign->Value()->Type) {
         co_return TError(arrayAssign->Location, "Нельзя присвоить значение без типа элементу массива '" + arrayAssign->Name + "'.");
     }
     auto symbolId = context.Lookup(arrayAssign->Name, scopeId);
@@ -1467,15 +1467,15 @@ TTask AnnotateArrayAssign(TArrayAssignExpr* arrayAssign, NSemantics::TNameResolv
     auto maybePointerType = TMaybeType<TPointerType>(sym->Type);
     if (maybeArrayType) {
         auto arrayType = maybeArrayType.Cast();
-        auto valueType = UnwrapReferenceType(arrayAssign->Value->Type);
+        auto valueType = UnwrapReferenceType(arrayAssign->Value()->Type);
         if (!EqualTypes(valueType, arrayType->ElementType)) {
             if (!CanImplicit(valueType, arrayType->ElementType, &context)) {
                 co_return TError(arrayAssign->Location, "Нельзя неявно преобразовать тип '" +
                     TypeDiagnosticName(valueType) + "' к типу '" + TypeDiagnosticName(arrayType->ElementType) + "' при присваивании элементу массива '" + arrayAssign->Name + "'.");
             }
-            arrayAssign->Value = InsertImplicitCastIfNeeded(arrayAssign->Value, arrayType->ElementType, &context);
+            arrayAssign->Value() = InsertImplicitCastIfNeeded(arrayAssign->Value(), arrayType->ElementType, &context);
         }
-        for (auto& indexExpr : arrayAssign->Indices) {
+        for (auto& indexExpr : arrayAssign->Indices()) {
             indexExpr = co_await DoAnnotate(indexExpr, context, scopeId);
             if (!indexExpr->Type) {
                 co_return TError(arrayAssign->Location, "Индекс в присваивании элементу массива '" + arrayAssign->Name + "' не имеет типа. Убедитесь, что выражение индекса корректно и его тип определён.");
@@ -1486,52 +1486,52 @@ TTask AnnotateArrayAssign(TArrayAssignExpr* arrayAssign, NSemantics::TNameResolv
             }
         }
         // check arity
-        if (arrayAssign->Indices.size() != arrayType->Arity) {
-            co_return TError(arrayAssign->Location, "Неверное количество индексов в присваивании элементу массива '" + arrayAssign->Name + "': ожидается " + std::to_string(arrayType->Arity) + ", получено " + std::to_string(arrayAssign->Indices.size()) + ".");
+        if (arrayAssign->Indices().size() != arrayType->Arity) {
+            co_return TError(arrayAssign->Location, "Неверное количество индексов в присваивании элементу массива '" + arrayAssign->Name + "': ожидается " + std::to_string(arrayType->Arity) + ", получено " + std::to_string(arrayAssign->Indices().size()) + ".");
         }
         arrayAssign->Type = context.Types().Make<NAst::TVoidType>();
         co_return TExprPtr(arrayAssign);
     } else if (maybePointerType) {
         auto pointerType = maybePointerType.Cast();
-        if (arrayAssign->Indices.size() != 1) {
+        if (arrayAssign->Indices().size() != 1) {
             co_return TError(arrayAssign->Location, "В присваивании по указателю '" + arrayAssign->Name + "' должен быть ровно один индекс.");
         }
 
-        arrayAssign->Indices[0] = co_await DoAnnotate(arrayAssign->Indices[0], context, scopeId);
-        if (!arrayAssign->Indices[0]->Type) {
+        arrayAssign->Indices()[0] = co_await DoAnnotate(arrayAssign->Indices()[0], context, scopeId);
+        if (!arrayAssign->Indices()[0]->Type) {
             co_return TError(arrayAssign->Location, "Индекс в присваивании по указателю '" + arrayAssign->Name + "' не имеет типа.");
         }
         auto intType = context.Types().MakeInteger();
-        if (!EqualTypes(arrayAssign->Indices[0]->Type, intType)) {
-            if (!CanImplicit(arrayAssign->Indices[0]->Type, intType, &context)) {
+        if (!EqualTypes(arrayAssign->Indices()[0]->Type, intType)) {
+            if (!CanImplicit(arrayAssign->Indices()[0]->Type, intType, &context)) {
                 co_return TError(arrayAssign->Location, "Индекс в присваивании по указателю '" + arrayAssign->Name + "' должен быть целым числом.");
             }
-            arrayAssign->Indices[0] = InsertImplicitCastIfNeeded(arrayAssign->Indices[0], intType, &context);
+            arrayAssign->Indices()[0] = InsertImplicitCastIfNeeded(arrayAssign->Indices()[0], intType, &context);
         }
 
-        auto valueType = UnwrapReferenceType(arrayAssign->Value->Type);
+        auto valueType = UnwrapReferenceType(arrayAssign->Value()->Type);
         if (!EqualTypes(valueType, pointerType->PointeeType)) {
             if (!CanImplicit(valueType, pointerType->PointeeType, &context)) {
                 co_return TError(arrayAssign->Location, "Нельзя неявно преобразовать тип '" +
                     TypeDiagnosticName(valueType) + "' к типу '" + TypeDiagnosticName(pointerType->PointeeType) + "' при присваивании по указателю '" + arrayAssign->Name + "'.");
             }
-            arrayAssign->Value = InsertImplicitCastIfNeeded(arrayAssign->Value, pointerType->PointeeType, &context);
+            arrayAssign->Value() = InsertImplicitCastIfNeeded(arrayAssign->Value(), pointerType->PointeeType, &context);
         }
 
         arrayAssign->Type = context.Types().Make<NAst::TVoidType>();
         co_return TExprPtr(arrayAssign);
     } else if (maybeStringType) {
         // Only allow s[1] = 'c' (symbol to string)
-        if (arrayAssign->Indices.size() != 1) {
-            co_return TError(arrayAssign->Location, "В присваивании элементу строки '" + arrayAssign->Name + "' должно быть ровно один индекс (например, s[1]='a'). Получено индексов: " + std::to_string(arrayAssign->Indices.size()) + ".");
+        if (arrayAssign->Indices().size() != 1) {
+            co_return TError(arrayAssign->Location, "В присваивании элементу строки '" + arrayAssign->Name + "' должно быть ровно один индекс (например, s[1]='a'). Получено индексов: " + std::to_string(arrayAssign->Indices().size()) + ".");
         }
         // Index must be integer
-        arrayAssign->Indices[0] = co_await DoAnnotate(arrayAssign->Indices[0], context, scopeId);
-        if (!arrayAssign->Indices[0]->Type || !TMaybeType<TIntegerType>(arrayAssign->Indices[0]->Type)) {
+        arrayAssign->Indices()[0] = co_await DoAnnotate(arrayAssign->Indices()[0], context, scopeId);
+        if (!arrayAssign->Indices()[0]->Type || !TMaybeType<TIntegerType>(arrayAssign->Indices()[0]->Type)) {
             co_return TError(arrayAssign->Location, "Индекс в присваивании элементу строки '" + arrayAssign->Name + "' должен быть целым числом (например, s[1]='a').");
         }
         // Value must be symbol (char)
-        auto valueType = UnwrapReferenceType(arrayAssign->Value->Type);
+        auto valueType = UnwrapReferenceType(arrayAssign->Value()->Type);
         if (!TMaybeType<TSymbolType>(valueType)) {
             co_return TError(arrayAssign->Location, "Значение в присваивании элементу строки '" + arrayAssign->Name + "' должно быть символом (например, s[1]='a').");
         }
@@ -1545,14 +1545,14 @@ TTask AnnotateArrayAssign(TArrayAssignExpr* arrayAssign, NSemantics::TNameResolv
 TTask AnnotateVar(TVarStmt* var, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
     if (!var->Type) {
         // (var name = expr): type inferred from init expression
-        if (!var->Init) {
+        if (!var->Init()) {
             co_return TError(var->Location, "Переменная без типа должна иметь инициализатор: " + var->Name);
         }
-        var->Init = co_await DoAnnotate(var->Init, context, scopeId);
-        if (!var->Init->Type) {
-            co_return TError(var->Init->Location, "Не удалось определить тип инициализатора переменной: " + var->Name);
+        var->Init() = co_await DoAnnotate(var->Init(), context, scopeId);
+        if (!var->Init()->Type) {
+            co_return TError(var->Init()->Location, "Не удалось определить тип инициализатора переменной: " + var->Name);
         }
-        var->Type = UnwrapReferenceType(var->Init->Type);
+        var->Type = UnwrapReferenceType(var->Init()->Type);
         auto sidOpt = context.Lookup(var->Name, scopeId);
         if (sidOpt) {
             auto sym = context.GetSymbolNode(NSemantics::TSymbolId{sidOpt->Id});
@@ -1560,7 +1560,7 @@ TTask AnnotateVar(TVarStmt* var, NSemantics::TNameResolver& context, NSemantics:
         }
         co_return TExprPtr(var);
     }
-    for (auto& [from, to] : var->Bounds) {
+    for (auto [from, to] : var->Bounds()) {
         if (from) {
             from = co_await DoAnnotate(from, context, scopeId);
         }
@@ -1568,9 +1568,9 @@ TTask AnnotateVar(TVarStmt* var, NSemantics::TNameResolver& context, NSemantics:
             to = co_await DoAnnotate(to, context, scopeId);
         }
     }
-    if (var->Init) {
-        var->Init = co_await DoAnnotate(var->Init, context, scopeId);
-        auto initType = UnwrapReferenceType(var->Init->Type);
+    if (var->Init()) {
+        var->Init() = co_await DoAnnotate(var->Init(), context, scopeId);
+        auto initType = UnwrapReferenceType(var->Init()->Type);
         auto variableType = UnwrapReferenceType(var->Type);
         if (!EqualTypes(initType, variableType)) {
             if (!CanImplicit(initType, variableType, &context)) {
@@ -1579,7 +1579,7 @@ TTask AnnotateVar(TVarStmt* var, NSemantics::TNameResolver& context, NSemantics:
                     + "' типа '" + TypeDiagnosticName(variableType)
                     + "' значением типа '" + TypeDiagnosticName(initType) + "'.");
             }
-            var->Init = InsertImplicitCastIfNeeded(var->Init, variableType, &context);
+            var->Init() = InsertImplicitCastIfNeeded(var->Init(), variableType, &context);
         }
     }
     co_return TExprPtr(var);
@@ -1959,7 +1959,7 @@ bool IsGenericTypeParamRef(const TTypePtr& type, const std::unordered_set<std::s
 
 std::optional<std::string> InferGenericBindings(
     const TFunDecl& decl,
-    const std::vector<TExprPtr>& args,
+    std::span<const TExprPtr> args,
     const TGenericParamSets& genericParams,
     TGenericBindings& bindings,
     bool retypeIntegerLiterals,
@@ -2061,8 +2061,8 @@ TExprPtr CloneAndSubstituteExpr(
     } else if (auto fdecl = TMaybeNode<TFunDecl>(clone)) {
         fdecl.Cast()->Scope = -1;
     }
-    for (auto* child : clone->MutableChildren()) {
-        *child = CloneAndSubstituteExpr(types, *child, genericParams, bindings);
+    for (auto& child : clone->MutableChildren()) {
+        child = CloneAndSubstituteExpr(types, child, genericParams, bindings);
     }
     return clone;
 }
@@ -2269,15 +2269,15 @@ TGenericBoolTask InferGenericBindingsFromReturnContext(
     if (auto ifExpr = TMaybeNode<TIfExpr>(expr)) {
         bool inferred = false;
         inferred = (co_await InferGenericBindingsFromReturnContext(
-            ifExpr.Cast()->Then,
+            ifExpr.Cast()->Then(),
             targetType,
             genericParams,
             bindings,
             context,
             scopeId)) || inferred;
-        if (ifExpr.Cast()->Else) {
+        if (ifExpr.Cast()->Else()) {
             inferred = (co_await InferGenericBindingsFromReturnContext(
-                ifExpr.Cast()->Else,
+                ifExpr.Cast()->Else(),
                 targetType,
                 genericParams,
                 bindings,
@@ -2337,12 +2337,12 @@ TGenericBoolTask InferGenericBindingsFromExplicitReturns(
     }
 
     bool inferred = false;
-    for (auto* child : node->MutableChildren()) {
-        if (!child || !*child) {
+    for (auto& child : node->MutableChildren()) {
+        if (!child) {
             continue;
         }
         inferred = (co_await InferGenericBindingsFromExplicitReturns(
-            *child,
+            child,
             returnType,
             genericParams,
             bindings,
@@ -2368,7 +2368,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
     for (auto& param : genericDecl->Params) {
         auto clonedParam = MakeIntrusive<TVarStmt>(*param);
         clonedParam->Type = SubstituteGenericType(context.Types(), param->Type, genericParams, bindings);
-        for (auto& bound : clonedParam->Bounds) {
+        for (auto bound : clonedParam->Bounds()) {
             bound.first = CloneAndSubstituteExpr(context.Types(), bound.first, genericParams, bindings);
             bound.second = CloneAndSubstituteExpr(context.Types(), bound.second, genericParams, bindings);
         }
@@ -2376,7 +2376,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
     }
 
     auto retType = SubstituteGenericType(context.Types(), genericDecl->RetType, genericParams, bindings);
-    auto clonedBody = CloneAndSubstituteExpr(context.Types(), genericDecl->Body, genericParams, bindings);
+    auto clonedBody = CloneAndSubstituteExpr(context.Types(), genericDecl->BodyExpr(), genericParams, bindings);
     auto body = TMaybeNode<TBlockExpr>(clonedBody).Cast();
     auto probe = MakeIntrusive<TFunDecl>(
         genericDecl->Location,
@@ -2404,7 +2404,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
     }
 
     auto scopeId = NSemantics::TScopeId{probe->Scope};
-    TExprPtr probeBody = probe->Body;
+    TExprPtr probeBody = probe->BodyExpr();
     bool inferred = co_await InferGenericBindingsFromExplicitReturns(
         probeBody,
         returnType,
@@ -2413,9 +2413,9 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
         context,
         scopeId);
 
-    if (!inferred && !probe->Body->Stmts.empty() && !TMaybeType<TVoidType>(returnType)) {
+    if (!inferred && !probe->Body()->Stmts.empty() && !TMaybeType<TVoidType>(returnType)) {
         inferred = co_await InferGenericBindingsFromReturnContext(
-            probe->Body->Stmts.back(),
+            probe->Body()->Stmts.back(),
             returnType,
             genericParams,
             bindings,
@@ -2433,7 +2433,7 @@ TGenericBoolTask InferGenericBindingsFromReturnBody(
 
 TGenericBindingsTask InferCompleteGenericBindings(
     TFunDecl* genericDecl,
-    const std::vector<TExprPtr>& args,
+    std::span<const TExprPtr> args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
     bool retypeIntegerLiterals,
@@ -2478,12 +2478,12 @@ TGenericBindingsTask InferCompleteGenericBindings(
 // to the already-registered (in-progress) clone instead of re-entering.
 TFunDeclTask InstantiateGenericFunction(
     TFunDecl* genericDecl,
-    const std::vector<TExprPtr>& args,
+    std::span<const TExprPtr> args,
     NSemantics::TNameResolver& context,
     TLocation callLoc,
     TTypePtr expectedReturnType)
 {
-    if (!genericDecl->Body) {
+    if (!genericDecl->BodyExpr()) {
         co_return TError(callLoc, "External generic functions are not supported: " + genericDecl->Name);
     }
 
@@ -2503,7 +2503,7 @@ TFunDeclTask InstantiateGenericFunction(
     for (auto& param : genericDecl->Params) {
         auto clonedParam = MakeIntrusive<TVarStmt>(*param);
         clonedParam->Type = SubstituteGenericType(context.Types(), param->Type, genericParams, bindings);
-        for (auto& bound : clonedParam->Bounds) {
+        for (auto bound : clonedParam->Bounds()) {
             bound.first = CloneAndSubstituteExpr(context.Types(), bound.first, genericParams, bindings);
             bound.second = CloneAndSubstituteExpr(context.Types(), bound.second, genericParams, bindings);
         }
@@ -2527,7 +2527,7 @@ TFunDeclTask InstantiateGenericFunction(
         }
     }
 
-    auto clonedBody = CloneAndSubstituteExpr(context.Types(), genericDecl->Body, genericParams, bindings);
+    auto clonedBody = CloneAndSubstituteExpr(context.Types(), genericDecl->BodyExpr(), genericParams, bindings);
     auto body = TMaybeNode<TBlockExpr>(clonedBody).Cast();
 
     auto cloned = MakeIntrusive<TFunDecl>(genericDecl->Location, mangledName, std::vector<TGenericParam>{}, std::move(params), TExprPtrOf<TBlockExpr>(body), retType);
@@ -2535,7 +2535,7 @@ TFunDeclTask InstantiateGenericFunction(
         ? genericDecl->Name
         : genericDecl->OriginalName;
     cloned->Inline = genericDecl->Inline;
-    cloned->LastAssert = CloneAndSubstituteExpr(context.Types(), genericDecl->LastAssert, genericParams, bindings);
+    cloned->LastAssert() = CloneAndSubstituteExpr(context.Types(), genericDecl->LastAssert(), genericParams, bindings);
     cloned->Type = context.Types().MakeFunction(std::move(paramTypes), cloned->RetType);
 
     auto declRes = context.ResolveInstantiatedFunDecl(cloned);
@@ -2553,8 +2553,8 @@ TFunDeclTask InstantiateGenericFunction(
         funcScope->RetType = cloned->RetType;
     }
 
-    co_await DoAnnotate(cloned->Body, context, NSemantics::TScopeId{cloned->Scope});
-    if (!cloned->Body->Type) {
+    co_await DoAnnotate(cloned->BodyExpr(), context, NSemantics::TScopeId{cloned->Scope});
+    if (!cloned->Body()->Type) {
         co_return TError(callLoc, "Не удалось определить тип тела инстанциированной функции '" + genericDecl->Name + "'");
     }
 
@@ -2562,7 +2562,7 @@ TFunDeclTask InstantiateGenericFunction(
     // trailing `return` - hand-written core lang) or be void-typed (every
     // path ends in an explicit `return`). Mirrors AnnotateFunDecl.
     if (!TMaybeType<TVoidType>(funcScope->RetType)) {
-        auto bodyType = UnwrapReferenceType(cloned->Body->Type);
+        auto bodyType = UnwrapReferenceType(cloned->Body()->Type);
         if (!TMaybeType<TVoidType>(bodyType)) {
             if (!EqualTypes(bodyType, funcScope->RetType)) {
                 if (!CanImplicit(bodyType, funcScope->RetType, &context)) {
@@ -2570,8 +2570,8 @@ TFunDeclTask InstantiateGenericFunction(
                         "Тело функции должно возвращать значение типа '" + TypeDiagnosticName(funcScope->RetType) +
                         "', но имеет тип '" + TypeDiagnosticName(bodyType) + "'.");
                 }
-                cloned->Body->Stmts.back() = InsertImplicitCastIfNeeded(cloned->Body->Stmts.back(), funcScope->RetType, &context);
-                cloned->Body->Type = funcScope->RetType;
+                cloned->Body()->Stmts.back() = InsertImplicitCastIfNeeded(cloned->Body()->Stmts.back(), funcScope->RetType, &context);
+                cloned->Body()->Type = funcScope->RetType;
             }
         }
     }
@@ -2724,7 +2724,7 @@ TTask AnnotateOverloadedCall(
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
-    for (auto& arg : call->Args) {
+    for (auto& arg : call->Args()) {
         arg = co_await DoAnnotate(arg, context, scopeId);
         if (!arg->Type) {
             co_return TError(arg->Location, "argument has no type");
@@ -2737,14 +2737,14 @@ TTask AnnotateOverloadedCall(
 
     for (const auto& symId : overloads) {
         auto funDecl = TMaybeNode<TFunDecl>(context.GetSymbolNode(symId)).Cast();
-        if (!funDecl || funDecl->Params.size() != call->Args.size()) {
+        if (!funDecl || funDecl->Params.size() != call->Args().size()) {
             continue;
         }
         TArgCost totalCost;
         bool viable = true;
         auto genericParams = GenericParamSets(*funDecl);
-        for (size_t i = 0; i < call->Args.size(); ++i) {
-            auto cost = ArgCost(call->Args[i]->Type, funDecl->Params[i]->Type, &context, &genericParams.Types, &genericParams.Values);
+        for (size_t i = 0; i < call->Args().size(); ++i) {
+            auto cost = ArgCost(call->Args()[i]->Type, funDecl->Params[i]->Type, &context, &genericParams.Types, &genericParams.Values);
             if (!cost) {
                 viable = false;
                 break;
@@ -2758,7 +2758,7 @@ TTask AnnotateOverloadedCall(
             TGenericBindings bindings;
             if (InferGenericBindings(
                     *funDecl,
-                    call->Args,
+                    call->Args(),
                     genericParams,
                     bindings,
                     false,
@@ -2777,8 +2777,8 @@ TTask AnnotateOverloadedCall(
         }
     }
 
-    const auto callName = TMaybeNode<TIdentExpr>(call->Callee).Cast()->Name;
-    const auto callSignature = FormatCallSignature(callName, call->Args);
+    const auto callName = TMaybeNode<TIdentExpr>(call->Callee()).Cast()->Name;
+    const auto callSignature = FormatCallSignature(callName, call->Args());
     if (!bestDecl) {
         co_return TError(call->Location, "no matching overload for call " + callSignature);
     }
@@ -2787,21 +2787,21 @@ TTask AnnotateOverloadedCall(
     }
 
     if (HasGenericParams(*bestDecl)) {
-        auto instantiated = co_await InstantiateGenericFunction(bestDecl.Get(), call->Args, context, call->Location);
+        auto instantiated = co_await InstantiateGenericFunction(bestDecl.Get(), call->Args(), context, call->Location);
         bestDecl = instantiated;
     }
 
-    for (size_t i = 0; i < call->Args.size(); ++i) {
-        call->Args[i] = InsertImplicitCastIfNeeded(call->Args[i], bestDecl->Params[i]->Type, &context);
+    for (size_t i = 0; i < call->Args().size(); ++i) {
+        call->Args()[i] = InsertImplicitCastIfNeeded(call->Args()[i], bestDecl->Params[i]->Type, &context);
     }
 
-    auto callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, bestDecl->Name);
+    auto callee = MakeIntrusive<TIdentExpr>(call->Callee()->Location, bestDecl->Name);
     callee->Type = bestDecl->Type;
-    call->Callee = callee;
+    call->Callee() = callee;
     call->Type = bestDecl->RetType;
 
     if (bestDecl->InlineFactory) {
-        auto inlined = (*bestDecl->InlineFactory)(call->Args);
+        auto inlined = (*bestDecl->InlineFactory)(std::ranges::to<std::vector>(call->Args()));
         if (inlined) {
             co_return co_await DoAnnotate(inlined, context, scopeId);
         }
@@ -2848,7 +2848,7 @@ std::expected<TTypePtr, TError> VectorIntrinsicResult(
         {
             return error("маска должна быть вектором целых индексов той же длины.");
         }
-        if (auto literal = TMaybeNode<TVectorExpr>(call.Args[1]).Cast()) {
+        if (auto literal = TMaybeNode<TVectorExpr>(call.Args()[1]).Cast()) {
             for (const auto& element : literal->Elements) {
                 auto number = TMaybeNode<TNumberExpr>(element).Cast();
                 if (number && (number->IntValue < 0 || number->IntValue >= vector->Size)) {
@@ -2883,11 +2883,11 @@ TTask AnnotateVectorIntrinsic(
     const size_t count = op == "select"
         ? 3
         : (op == "shuffle" || op == "gather" ? 2 : 1);
-    if (call->Args.size() != count) {
+    if (call->Args().size() != count) {
         co_return TError(call->Location, std::string(op) + ": неверное число аргументов.");
     }
     std::vector<TTypePtr> argTypes;
-    for (auto& arg : call->Args) {
+    for (auto& arg : call->Args()) {
         arg = co_await DoAnnotate(arg, context, scopeId);
         argTypes.push_back(UnwrapNamedType(UnwrapReferenceType(arg->Type)));
     }
@@ -2899,7 +2899,7 @@ TTask AnnotateVectorIntrinsic(
         auto indices = TMaybeType<TVectorType>(argTypes[1]).Cast();
         auto indexType = context.Types().MakeVector(context.Types().MakeInteger(), indices->Size);
         if (!EqualTypes(argTypes[1], indexType)) {
-            call->Args[1] = MakeCast(call->Args[1], indexType);
+            call->Args()[1] = MakeCast(call->Args()[1], indexType);
             argTypes[1] = indexType;
         }
     }
@@ -2910,7 +2910,7 @@ TTask AnnotateVectorIntrinsic(
     if (!context.Lookup(name, root)) {
         std::vector<TParam> params;
         for (size_t i = 0; i < argTypes.size(); ++i) {
-            params.push_back(MakeIntrusive<TVarStmt>(call->Args[i]->Location, "$arg" + std::to_string(i), argTypes[i]));
+            params.push_back(MakeIntrusive<TVarStmt>(call->Args()[i]->Location, "$arg" + std::to_string(i), argTypes[i]));
         }
         // Typed declarations keep ordinary call validation and lifetime handling.
         auto function = MakeIntrusive<TFunDecl>(call->Location, name, std::vector<TGenericParam>{},
@@ -2919,14 +2919,14 @@ TTask AnnotateVectorIntrinsic(
         function->Type = context.Types().MakeFunction(auto(argTypes), result);
         context.DeclareFunction(name, function);
     }
-    call->Callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, name);
-    call->Callee->Type = context.Types().MakeFunction(std::move(argTypes), result);
+    call->Callee() = MakeIntrusive<TIdentExpr>(call->Callee()->Location, name);
+    call->Callee()->Type = context.Types().MakeFunction(std::move(argTypes), result);
     call->Type = result;
     co_return TExprPtr(call);
 }
 
 TTask AnnotateCall(TCallExpr* call, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    if (auto maybeIdent = TMaybeNode<TIdentExpr>(call->Callee)) {
+    if (auto maybeIdent = TMaybeNode<TIdentExpr>(call->Callee())) {
         auto op = NSemantics::VectorIntrinsic(maybeIdent.Cast()->Name);
         if (!op.empty() && !context.Lookup(maybeIdent.Cast()->Name, scopeId)) {
             co_return co_await AnnotateVectorIntrinsic(call, op, context, scopeId);
@@ -2949,47 +2949,47 @@ TTask AnnotateCall(TCallExpr* call, NSemantics::TNameResolver& context, NSemanti
         if (overloads.size() == 1) {
             auto genericDecl = TMaybeNode<TFunDecl>(context.GetSymbolNode(overloads[0])).Cast();
             if (genericDecl && HasGenericParams(*genericDecl)) {
-                for (auto& arg : call->Args) {
+                for (auto& arg : call->Args()) {
                     arg = co_await DoAnnotate(arg, context, scopeId);
                     if (!arg->Type) {
                         co_return TError(arg->Location, "argument has no type");
                     }
                 }
-                if (genericDecl->Params.size() != call->Args.size()) {
+                if (genericDecl->Params.size() != call->Args().size()) {
                     co_return TError(call->Location, "Неверное количество аргументов при вызове функции '" + genericDecl->Name +
-                        "': ожидается " + std::to_string(genericDecl->Params.size()) + ", передано " + std::to_string(call->Args.size()) + ".");
+                        "': ожидается " + std::to_string(genericDecl->Params.size()) + ", передано " + std::to_string(call->Args().size()) + ".");
                 }
-                auto instantiated = co_await InstantiateGenericFunction(genericDecl, call->Args, context, call->Location);
-                call->Callee = MakeIntrusive<TIdentExpr>(call->Callee->Location, instantiated->Name);
+                auto instantiated = co_await InstantiateGenericFunction(genericDecl, call->Args(), context, call->Location);
+                call->Callee() = MakeIntrusive<TIdentExpr>(call->Callee()->Location, instantiated->Name);
             }
         }
     }
 
-    call->Callee = co_await DoAnnotate(call->Callee, context, scopeId);
-    if (!call->Callee->Type) {
+    call->Callee() = co_await DoAnnotate(call->Callee(), context, scopeId);
+    if (!call->Callee()->Type) {
         co_return TError(call->Location, "Нельзя вызвать выражение без типа (функция или процедура не определена или не имеет типа).");
     }
-    auto maybeFunType = TMaybeType<TFunctionType>(call->Callee->Type);
+    auto maybeFunType = TMaybeType<TFunctionType>(call->Callee()->Type);
     if (maybeFunType) {
         auto funT = maybeFunType.Cast();
-        if (funT->ParamTypes.size() != call->Args.size()) {
-            auto callee = TMaybeNode<TIdentExpr>(call->Callee);
+        if (funT->ParamTypes.size() != call->Args().size()) {
+            auto callee = TMaybeNode<TIdentExpr>(call->Callee());
             std::string message = "Неверное количество аргументов при вызове "
                 + (callee ? "`" + callee.Cast()->Name + "'" : std::string("функции"))
-                + ": ожидается " + std::to_string(funT->ParamTypes.size()) + ", передано " + std::to_string(call->Args.size()) + ".";
+                + ": ожидается " + std::to_string(funT->ParamTypes.size()) + ", передано " + std::to_string(call->Args().size()) + ".";
             // "вправо(60)" with Робот means the Черепаха command.
             if (callee) {
-                for (const auto& module : context.ModulesWithFunction(callee.Cast()->Name, call->Args.size())) {
+                for (const auto& module : context.ModulesWithFunction(callee.Cast()->Name, call->Args().size())) {
                     message += "\n `" + callee.Cast()->Name + "' с таким числом аргументов есть в модуле `" + module + "'.";
                 }
             }
             co_return TError(call->Location, message);
         }
-        for (size_t i = 0; i < call->Args.size(); ++i) {
+        for (size_t i = 0; i < call->Args().size(); ++i) {
             auto& paramT = funT->ParamTypes[i];
             auto maybeRef = TMaybeType<TReferenceType>(paramT);
 
-            auto& arg = call->Args[i];
+            auto& arg = call->Args()[i];
             auto maybeIdent = TMaybeNode<TIdentExpr>(arg);
             // TODO: support array cells as ref arguments?
             if (maybeIdent) {
@@ -3035,7 +3035,7 @@ TTask AnnotateCall(TCallExpr* call, NSemantics::TNameResolver& context, NSemanti
         call->Type = maybeFunType.Cast()->ReturnType;
 
     } else {
-        call->Type = call->Callee->Type;
+        call->Type = call->Callee()->Type;
     }
     co_return TExprPtr(call);
 }
@@ -3076,41 +3076,41 @@ TTypePtr SettledBranchType(const TTypePtr& type) {
 }
 
 TTask AnnotateIfExpr(TIfExpr* ifExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    ifExpr->Cond = co_await DoAnnotate(ifExpr->Cond, context, scopeId);
-    if (!ifExpr->Cond->Type) {
-        co_return TError(ifExpr->Cond->Location, "Условие в `если' не имеет типа. Проверьте корректность выражения в условии.");
+    ifExpr->Cond() = co_await DoAnnotate(ifExpr->Cond(), context, scopeId);
+    if (!ifExpr->Cond()->Type) {
+        co_return TError(ifExpr->Cond()->Location, "Условие в `если' не имеет типа. Проверьте корректность выражения в условии.");
     }
     auto boolT = context.Types().Make<TBoolType>();
-    auto condType = UnwrapReferenceType(ifExpr->Cond->Type);
+    auto condType = UnwrapReferenceType(ifExpr->Cond()->Type);
     if (!EqualTypes(condType, boolT)) {
         if (!CanImplicit(condType, boolT, &context)) {
-            co_return TError(ifExpr->Cond->Location, "Условие в `если' должно иметь логический тип или приводиться к нему.");
+            co_return TError(ifExpr->Cond()->Location, "Условие в `если' должно иметь логический тип или приводиться к нему.");
         }
-        ifExpr->Cond = InsertImplicitCastIfNeeded(ifExpr->Cond, boolT, &context);
+        ifExpr->Cond() = InsertImplicitCastIfNeeded(ifExpr->Cond(), boolT, &context);
     }
 
-    ifExpr->Then = co_await DoAnnotate(ifExpr->Then, context, scopeId);
-    if (!ifExpr->Then->Type) {
-        co_return TError(ifExpr->Then->Location, "Ветвь `то' в `если' не имеет типа.");
+    ifExpr->Then() = co_await DoAnnotate(ifExpr->Then(), context, scopeId);
+    if (!ifExpr->Then()->Type) {
+        co_return TError(ifExpr->Then()->Location, "Ветвь `то' в `если' не имеет типа.");
     }
 
-    if (!ifExpr->Else) {
+    if (!ifExpr->Else()) {
         // No else branch: then must be void, overall type is void
-        auto thenType = SettledBranchType(ifExpr->Then->Type);
+        auto thenType = SettledBranchType(ifExpr->Then()->Type);
         if (!TMaybeType<TVoidType>(thenType)) {
-            co_return TError(ifExpr->Then->Location, "if-expression без ветви `иначе': ветвь `то' должна иметь тип void.");
+            co_return TError(ifExpr->Then()->Location, "if-expression без ветви `иначе': ветвь `то' должна иметь тип void.");
         }
         ifExpr->Type = context.Types().Make<TVoidType>();
         co_return TExprPtr(ifExpr);
     }
 
-    ifExpr->Else = co_await DoAnnotate(ifExpr->Else, context, scopeId);
-    if (!ifExpr->Else->Type) {
-        co_return TError(ifExpr->Else->Location, "Ветвь `иначе' в `если' не имеет типа.");
+    ifExpr->Else() = co_await DoAnnotate(ifExpr->Else(), context, scopeId);
+    if (!ifExpr->Else()->Type) {
+        co_return TError(ifExpr->Else()->Location, "Ветвь `иначе' в `если' не имеет типа.");
     }
 
-    auto thenType = UnwrapReferenceType(ifExpr->Then->Type);
-    auto elseType = UnwrapReferenceType(ifExpr->Else->Type);
+    auto thenType = UnwrapReferenceType(ifExpr->Then()->Type);
+    auto elseType = UnwrapReferenceType(ifExpr->Else()->Type);
 
     // Both branches void -> statement context
     if (TMaybeType<TVoidType>(SettledBranchType(thenType))
@@ -3129,24 +3129,24 @@ TTask AnnotateIfExpr(TIfExpr* ifExpr, NSemantics::TNameResolver& context, NSeman
             "if-expression: типы ветвей несовместимы: '" + TypeDiagnosticName(thenType) +
             "' и '" + TypeDiagnosticName(elseType) + "'.");
     }
-    ifExpr->Then = InsertImplicitCastIfNeeded(ifExpr->Then, common, &context);
-    ifExpr->Else = InsertImplicitCastIfNeeded(ifExpr->Else, common, &context);
+    ifExpr->Then() = InsertImplicitCastIfNeeded(ifExpr->Then(), common, &context);
+    ifExpr->Else() = InsertImplicitCastIfNeeded(ifExpr->Else(), common, &context);
     ifExpr->Type = common;
     co_return TExprPtr(ifExpr);
 }
 
 TTask AnnotateWhile(TWhileStmtExpr* loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
-    loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, context.Types().Make<TBoolType>(), &context);
-    loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
+    loop->Cond() = co_await DoAnnotate(loop->Cond(), context, scopeId);
+    loop->Cond() = InsertImplicitCastIfNeeded(loop->Cond(), context.Types().Make<TBoolType>(), &context);
+    loop->Body() = co_await DoAnnotate(loop->Body(), context, scopeId);
     loop->Type = context.Types().Make<TVoidType>();
     co_return TExprPtr(loop);
 }
 
 TTask AnnotateRepeat(TRepeatStmtExpr* loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
-    loop->Cond = co_await DoAnnotate(loop->Cond, context, scopeId);
-    loop->Cond = InsertImplicitCastIfNeeded(loop->Cond, context.Types().Make<TBoolType>(), &context);
+    loop->Body() = co_await DoAnnotate(loop->Body(), context, scopeId);
+    loop->Cond() = co_await DoAnnotate(loop->Cond(), context, scopeId);
+    loop->Cond() = InsertImplicitCastIfNeeded(loop->Cond(), context.Types().Make<TBoolType>(), &context);
     loop->Type = context.Types().Make<TVoidType>();
     co_return TExprPtr(loop);
 }
@@ -3163,40 +3163,40 @@ TTask AnnotateFor(TForStmtExpr* loop, NSemantics::TNameResolver& context, NSeman
         co_return TError(loop->Location, "Переменная цикла должна иметь целый тип: " + loop->VarName);
     }
 
-    loop->From = co_await DoAnnotate(loop->From, context, scopeId);
-    loop->From = InsertImplicitCastIfNeeded(loop->From, intType, &context);
-    loop->To = co_await DoAnnotate(loop->To, context, scopeId);
-    loop->To = InsertImplicitCastIfNeeded(loop->To, intType, &context);
-    if (loop->Step) {
-        loop->Step = co_await DoAnnotate(loop->Step, context, scopeId);
-        loop->Step = InsertImplicitCastIfNeeded(loop->Step, intType, &context);
+    loop->From() = co_await DoAnnotate(loop->From(), context, scopeId);
+    loop->From() = InsertImplicitCastIfNeeded(loop->From(), intType, &context);
+    loop->To() = co_await DoAnnotate(loop->To(), context, scopeId);
+    loop->To() = InsertImplicitCastIfNeeded(loop->To(), intType, &context);
+    if (loop->Step()) {
+        loop->Step() = co_await DoAnnotate(loop->Step(), context, scopeId);
+        loop->Step() = InsertImplicitCastIfNeeded(loop->Step(), intType, &context);
     }
-    loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
+    loop->Body() = co_await DoAnnotate(loop->Body(), context, scopeId);
     loop->Type = context.Types().Make<TVoidType>();
     co_return TExprPtr(loop);
 }
 
 TTask AnnotateTimes(TTimesStmtExpr* loop, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    loop->Count = co_await DoAnnotate(loop->Count, context, scopeId);
-    loop->Count = InsertImplicitCastIfNeeded(loop->Count, context.Types().MakeInteger(), &context);
-    loop->Body = co_await DoAnnotate(loop->Body, context, scopeId);
+    loop->Count() = co_await DoAnnotate(loop->Count(), context, scopeId);
+    loop->Count() = InsertImplicitCastIfNeeded(loop->Count(), context.Types().MakeInteger(), &context);
+    loop->Body() = co_await DoAnnotate(loop->Body(), context, scopeId);
     loop->Type = context.Types().Make<TVoidType>();
     co_return TExprPtr(loop);
 }
 
 TTask AnnotateMultiIndex(TMultiIndexExpr* indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    indexExpr->Collection = co_await DoAnnotate(indexExpr->Collection, context, scopeId);
-    if (!indexExpr->Collection->Type) {
+    indexExpr->Collection() = co_await DoAnnotate(indexExpr->Collection(), context, scopeId);
+    if (!indexExpr->Collection()->Type) {
         co_return TError(indexExpr->Location, "В выражении многомерного индекса не удалось определить тип коллекции (массив). Проверьте корректность выражения.");
     }
-    auto maybeArrayType = TMaybeType<TArrayType>(indexExpr->Collection->Type);
+    auto maybeArrayType = TMaybeType<TArrayType>(indexExpr->Collection()->Type);
     if (!maybeArrayType) {
         co_return TError(indexExpr->Location, "Многомерная индексация поддерживается только для массивов. Проверьте, что вы обращаетесь к массиву, а не к другому типу.");
     }
 
     auto intType = context.Types().MakeInteger();
-    for (size_t i = 0; i < indexExpr->Indices.size(); ++i) {
-        auto& index = indexExpr->Indices[i];
+    for (size_t i = 0; i < indexExpr->Indices().size(); ++i) {
+        auto& index = indexExpr->Indices()[i];
         index = co_await DoAnnotate(index, context, scopeId);
         if (!index->Type) {
             co_return TError(index->Location, "Индекс #" + std::to_string(i+1) + " в многомерном обращении к массиву не имеет типа. Проверьте выражение индекса.");
@@ -3215,22 +3215,22 @@ TTask AnnotateMultiIndex(TMultiIndexExpr* indexExpr, NSemantics::TNameResolver& 
 }
 
 TTask AnnotateIndex(TIndexExpr* indexExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    indexExpr->Collection = co_await DoAnnotate(indexExpr->Collection, context, scopeId);
-    if (!indexExpr->Collection->Type) {
+    indexExpr->Collection() = co_await DoAnnotate(indexExpr->Collection(), context, scopeId);
+    if (!indexExpr->Collection()->Type) {
         co_return TError(indexExpr->Location, "В выражении индексации не удалось определить тип коллекции (массива или строки). Проверьте корректность выражения.");
     }
-    indexExpr->Index = co_await DoAnnotate(indexExpr->Index, context, scopeId);
-    if (!indexExpr->Index->Type) {
+    indexExpr->Index() = co_await DoAnnotate(indexExpr->Index(), context, scopeId);
+    if (!indexExpr->Index()->Type) {
         co_return TError(indexExpr->Location, "Индекс в выражении индексации не имеет типа. Убедитесь, что выражение индекса корректно и его тип определён.");
     }
     auto intType = context.Types().MakeInteger();
-    if (!EqualTypes(indexExpr->Index->Type, intType)) {
-        if (!CanImplicit(indexExpr->Index->Type, intType, &context)) {
+    if (!EqualTypes(indexExpr->Index()->Type, intType)) {
+        if (!CanImplicit(indexExpr->Index()->Type, intType, &context)) {
             co_return TError(indexExpr->Location, "Индекс в выражении индексации должен быть целым числом. Например: a[2], s[1].");
         }
-        indexExpr->Index = InsertImplicitCastIfNeeded(indexExpr->Index, intType, &context);
+        indexExpr->Index() = InsertImplicitCastIfNeeded(indexExpr->Index(), intType, &context);
     }
-    auto collectionType = UnwrapNamedType(UnwrapReferenceType(indexExpr->Collection->Type));
+    auto collectionType = UnwrapNamedType(UnwrapReferenceType(indexExpr->Collection()->Type));
     if (TMaybeType<TStringType>(collectionType)) {
         indexExpr->Type = context.Types().Make<TSymbolType>();
     } else if (auto maybeArrayType = TMaybeType<TArrayType>(collectionType)) {
@@ -3251,40 +3251,40 @@ TTask AnnotateIndex(TIndexExpr* indexExpr, NSemantics::TNameResolver& context, N
 }
 
 TTask AnnotateSlice(TSliceExpr* sliceExpr, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    sliceExpr->Collection = co_await DoAnnotate(sliceExpr->Collection, context, scopeId);
-    if (!sliceExpr->Collection->Type) {
+    sliceExpr->Collection() = co_await DoAnnotate(sliceExpr->Collection(), context, scopeId);
+    if (!sliceExpr->Collection()->Type) {
         co_return TError(sliceExpr->Location, "В выражении среза не удалось определить тип коллекции. Проверьте корректность выражения.");
     }
-    auto collectionType = UnwrapReferenceType(sliceExpr->Collection->Type);
+    auto collectionType = UnwrapReferenceType(sliceExpr->Collection()->Type);
     if (!TMaybeType<TStringType>(collectionType)) {
         co_return TError(sliceExpr->Location, "Срезы поддерживаются только для строк.\n"
             "Пример корректного среза: s[1:3] (где s — строка).\n"
             "Проверьте, что вы используете строку, а не другой тип.");
     }
-    sliceExpr->Start = co_await DoAnnotate(sliceExpr->Start, context, scopeId);
-    if (!sliceExpr->Start->Type) {
+    sliceExpr->Start() = co_await DoAnnotate(sliceExpr->Start(), context, scopeId);
+    if (!sliceExpr->Start()->Type) {
         co_return TError(sliceExpr->Location, "Начальный индекс в срезе не имеет типа. Убедитесь, что выражение индекса корректно и его тип определён.");
     }
     auto intType = context.Types().MakeInteger();
-    if (!EqualTypes(sliceExpr->Start->Type, intType)) {
-        if (!CanImplicit(sliceExpr->Start->Type, intType, &context)) {
+    if (!EqualTypes(sliceExpr->Start()->Type, intType)) {
+        if (!CanImplicit(sliceExpr->Start()->Type, intType, &context)) {
             co_return TError(sliceExpr->Location, "Начальный индекс в срезе должен быть целым числом. Пример: s[1:3].");
         }
-        sliceExpr->Start = InsertImplicitCastIfNeeded(sliceExpr->Start, intType, &context);
+        sliceExpr->Start() = InsertImplicitCastIfNeeded(sliceExpr->Start(), intType, &context);
     }
-    if (!sliceExpr->End) {
+    if (!sliceExpr->End()) {
         // (slice collection [start]) without an end bound is a single-element slice.
-        sliceExpr->End = ShallowCloneNode(sliceExpr->Start);
+        sliceExpr->End() = ShallowCloneNode(sliceExpr->Start());
     } else {
-        sliceExpr->End = co_await DoAnnotate(sliceExpr->End, context, scopeId);
-        if (!sliceExpr->End->Type) {
+        sliceExpr->End() = co_await DoAnnotate(sliceExpr->End(), context, scopeId);
+        if (!sliceExpr->End()->Type) {
             co_return TError(sliceExpr->Location, "Конечный индекс в срезе не имеет типа. Убедитесь, что выражение индекса корректно и его тип определён.");
         }
-        if (!EqualTypes(sliceExpr->End->Type, intType)) {
-            if (!CanImplicit(sliceExpr->End->Type, intType, &context)) {
+        if (!EqualTypes(sliceExpr->End()->Type, intType)) {
+            if (!CanImplicit(sliceExpr->End()->Type, intType, &context)) {
                 co_return TError(sliceExpr->Location, "Конечный индекс в срезе должен быть целым числом. Пример: s[1:3].");
             }
-            sliceExpr->End = InsertImplicitCastIfNeeded(sliceExpr->End, intType, &context);
+            sliceExpr->End() = InsertImplicitCastIfNeeded(sliceExpr->End(), intType, &context);
         }
     }
     // Срез строки возвращает строку
@@ -3345,13 +3345,13 @@ ResolveStructField(const TTypePtr& objType, const std::string& fieldName, int& o
 }
 
 TTask AnnotateFieldAssign(TFieldAssignExpr* fieldAssign, NSemantics::TNameResolver& context, NSemantics::TScopeId scopeId) {
-    fieldAssign->Object = co_await DoAnnotate(fieldAssign->Object, context, scopeId);
-    if (!fieldAssign->Object->Type) {
+    fieldAssign->Object() = co_await DoAnnotate(fieldAssign->Object(), context, scopeId);
+    if (!fieldAssign->Object()->Type) {
         co_return TError(fieldAssign->Location, "Не удалось определить тип объекта при присваивании полю '" + fieldAssign->FieldName + "'.");
     }
 
     int fieldIdx = -1;
-    auto [structType, available] = ResolveStructField(fieldAssign->Object->Type, fieldAssign->FieldName, fieldIdx);
+    auto [structType, available] = ResolveStructField(fieldAssign->Object()->Type, fieldAssign->FieldName, fieldIdx);
     if (!structType) {
         if (available.empty()) {
             co_return TError(fieldAssign->Location,
@@ -3363,18 +3363,18 @@ TTask AnnotateFieldAssign(TFieldAssignExpr* fieldAssign, NSemantics::TNameResolv
     fieldAssign->FieldIndex = fieldIdx;
     auto fieldType = structType->Fields[fieldIdx].second;
 
-    fieldAssign->Value = co_await DoAnnotate(fieldAssign->Value, context, scopeId);
-    if (!fieldAssign->Value->Type) {
+    fieldAssign->Value() = co_await DoAnnotate(fieldAssign->Value(), context, scopeId);
+    if (!fieldAssign->Value()->Type) {
         co_return TError(fieldAssign->Location, "Не удалось определить тип значения при присваивании полю '" + fieldAssign->FieldName + "'.");
     }
-    auto valueType = UnwrapReferenceType(fieldAssign->Value->Type);
+    auto valueType = UnwrapReferenceType(fieldAssign->Value()->Type);
     if (!EqualTypes(valueType, fieldType)) {
         if (!CanImplicit(valueType, fieldType, &context)) {
             co_return TError(fieldAssign->Location,
                 "Нельзя неявно преобразовать тип '" + TypeDiagnosticName(valueType) +
                 "' к типу поля '" + fieldAssign->FieldName + "' (" + TypeDiagnosticName(fieldType) + ").");
         }
-        fieldAssign->Value = InsertImplicitCastIfNeeded(fieldAssign->Value, fieldType, &context);
+        fieldAssign->Value() = InsertImplicitCastIfNeeded(fieldAssign->Value(), fieldType, &context);
     }
 
     fieldAssign->Type = context.Types().Make<TVoidType>();
@@ -3437,12 +3437,12 @@ TTask DoAnnotate(TExprPtr expr, NSemantics::TNameResolver& context, NSemantics::
     } else if (auto maybeReturn = TMaybeNode<TReturnExpr>(expr)) {
         co_return co_await AnnotateReturn(maybeReturn.Cast(), context, scopeId);
     } else if (auto output = TMaybeNode<TOutputExpr>(expr)) {
-        for (auto* child : output.Cast()->MutableChildren()) {
-            if (*child) {
-                *child = co_await DoAnnotate(*child, context, scopeId);
+        for (auto& child : output.Cast()->MutableChildren()) {
+            if (child) {
+                child = co_await DoAnnotate(child, context, scopeId);
             }
         }
-        for (const auto& arg : output.Cast()->Args) {
+        for (const auto& arg : output.Cast()->Args()) {
             auto type = UnwrapReferenceType(arg.Expr->Type);
             if ((TMaybeType<TVectorType>(UnwrapNamedType(type)) || TMaybeType<TNamedType>(type))
                 && !context.GetUnaryOp("print", type))
@@ -3490,9 +3490,9 @@ TTask DoAnnotate(TExprPtr expr, NSemantics::TNameResolver& context, NSemantics::
                 "Если вы считаете, что это ошибка компилятора, пожалуйста, сообщите о ней с примером кода.");
         }
 
-        for (auto* child : expr->MutableChildren()) {
-            if (*child) {
-                *child = co_await DoAnnotate(*child, context, scopeId);
+        for (auto& child : expr->MutableChildren()) {
+            if (child) {
+                child = co_await DoAnnotate(child, context, scopeId);
             }
         }
     }

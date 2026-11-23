@@ -162,8 +162,8 @@ TExprPtr DeepCloneExpr(const TExprPtr& node) {
     } else if (auto use = TMaybeNode<TUseExpr>(clone)) {
         use.Cast()->Resolved = false;
     }
-    for (auto* child : clone->MutableChildren()) {
-        *child = DeepCloneExpr(*child);
+    for (auto& child : clone->MutableChildren()) {
+        child = DeepCloneExpr(child);
     }
     return clone;
 }

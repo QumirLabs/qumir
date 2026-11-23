@@ -65,7 +65,7 @@ TRunResult RunWithInjection(
     TBlockExpr* funcBody = nullptr;
     for (auto& stmt : topBlock->Stmts) {
         if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.Get())) {
-            funcBody = funDecl->Body.Get();
+            funcBody = funDecl->Body();
             break;
         }
     }

@@ -363,13 +363,13 @@ void TPrinter::PrintArrayAssign(TArrayAssignExpr& node, int level) {
     *Out << "(= ";
     PrintIdentifier(node.Name);
     Separator(level + 1);
-    PrintIndexVector(node.Indices, level + 1);
+    PrintIndexVector(node.Indices(), level + 1);
     Separator(level + 1);
-    PrintExpr(node.Value, true, level + 1);
+    PrintExpr(node.Value(), true, level + 1);
     *Out << ')';
 }
 
-void TPrinter::PrintIndexVector(const std::vector<TExprPtr>& indices, int level) {
+void TPrinter::PrintIndexVector(std::span<const TExprPtr> indices, int level) {
     *Out << '[';
     for (size_t i = 0; i < indices.size(); ++i) {
         if (i != 0) {
@@ -383,18 +383,18 @@ void TPrinter::PrintIndexVector(const std::vector<TExprPtr>& indices, int level)
 void TPrinter::PrintWhile(TWhileStmtExpr& node, int level) {
     *Out << "(while";
     Separator(level + 1);
-    PrintExpr(node.Cond, true, level + 1);
+    PrintExpr(node.Cond(), true, level + 1);
     Separator(level + 1);
-    PrintExpr(node.Body, true, level + 1);
+    PrintExpr(node.Body(), true, level + 1);
     *Out << ')';
 }
 
 void TPrinter::PrintRepeat(TRepeatStmtExpr& node, int level) {
     *Out << "(repeat";
     Separator(level + 1);
-    PrintExpr(node.Body, true, level + 1);
+    PrintExpr(node.Body(), true, level + 1);
     Separator(level + 1);
-    PrintExpr(node.Cond, true, level + 1);
+    PrintExpr(node.Cond(), true, level + 1);
     *Out << ')';
 }
 
@@ -402,36 +402,36 @@ void TPrinter::PrintFor(TForStmtExpr& node, int level) {
     *Out << "(for ";
     PrintIdentifier(node.VarName);
     Separator(level + 1);
-    PrintExpr(node.From, true, level + 1);
+    PrintExpr(node.From(), true, level + 1);
     Separator(level + 1);
-    PrintExpr(node.To, true, level + 1);
+    PrintExpr(node.To(), true, level + 1);
     Separator(level + 1);
-    PrintExpr(node.Step, true, level + 1);
+    PrintExpr(node.Step(), true, level + 1);
     Separator(level + 1);
-    PrintExpr(node.Body, true, level + 1);
+    PrintExpr(node.Body(), true, level + 1);
     *Out << ')';
 }
 
 void TPrinter::PrintTimes(TTimesStmtExpr& node, int level) {
     *Out << "(times";
     Separator(level + 1);
-    PrintExpr(node.Count, true, level + 1);
+    PrintExpr(node.Count(), true, level + 1);
     Separator(level + 1);
-    PrintExpr(node.Body, true, level + 1);
+    PrintExpr(node.Body(), true, level + 1);
     *Out << ')';
 }
 
 void TPrinter::PrintVar(TVarStmt& node, int level) {
     *Out << "(var ";
     PrintIdentifier(node.Name);
-    if (node.Init) {
+    if (node.Init()) {
         *Out << " =";
         Space();
-        PrintExpr(node.Init, true, level + 1);
+        PrintExpr(node.Init(), true, level + 1);
     } else {
         Space();
         PrintType(node.Type, level);
-        for (const auto& [from, to] : node.Bounds) {
+        for (const auto& [from, to] : node.Bounds()) {
             Separator(level + 1);
             *Out << '[';
             PrintExpr(from, true, level + 1);
@@ -471,7 +471,7 @@ void TPrinter::PrintFun(TFunDecl& node, int level) {
         Space();
         PrintType(node.RetType, level);
     }
-    const bool hasAttrs = node.LastAssert
+    const bool hasAttrs = node.LastAssert()
         || node.OperatorName
         || node.LiteralSuffix
         || node.Cacheable
@@ -488,11 +488,11 @@ void TPrinter::PrintFun(TFunDecl& node, int level) {
             Separator(level + 2);
             *Out << "inline";
         }
-        if (node.LastAssert) {
+        if (node.LastAssert()) {
             Separator(level + 2);
             *Out << "(expect_after";
             Space();
-            PrintExpr(node.LastAssert, true, level + 2);
+            PrintExpr(node.LastAssert(), true, level + 2);
             *Out << ')';
         }
         if (node.OperatorName) {
@@ -520,7 +520,7 @@ void TPrinter::PrintFun(TFunDecl& node, int level) {
         *Out << ')';
     }
     Separator(level + 1);
-    PrintExpr(node.Body, true, level + 1);
+    PrintExpr(node.BodyExpr(), true, level + 1);
     *Out << ')';
     PopShortNamedTypes(shortNames);
 }
@@ -528,8 +528,8 @@ void TPrinter::PrintFun(TFunDecl& node, int level) {
 void TPrinter::PrintCall(TCallExpr& node, int level) {
     *Out << "(call";
     Separator(level + 1);
-    PrintExpr(node.Callee, true, level + 1);
-    for (const auto& arg : node.Args) {
+    PrintExpr(node.Callee(), true, level + 1);
+    for (const auto& arg : node.Args()) {
         Separator(level + 1);
         PrintExpr(arg, true, level + 1);
     }
@@ -538,7 +538,7 @@ void TPrinter::PrintCall(TCallExpr& node, int level) {
 
 void TPrinter::PrintOutput(TOutputExpr& node, int level) {
     *Out << "(output";
-    for (const auto& arg : node.Args) {
+    for (const auto& arg : node.Args()) {
         Separator(level + 1);
         if (!arg.Width && !arg.Precision) {
             PrintExpr(arg.Expr, true, level + 1);
@@ -559,21 +559,21 @@ void TPrinter::PrintOutput(TOutputExpr& node, int level) {
 
 void TPrinter::PrintMultiIndex(TMultiIndexExpr& node, int level) {
     *Out << "(index ";
-    PrintExpr(node.Collection, true, level + 1);
+    PrintExpr(node.Collection(), true, level + 1);
     Separator(level + 1);
-    PrintIndexVector(node.Indices, level + 1);
+    PrintIndexVector(node.Indices(), level + 1);
     *Out << ')';
 }
 
 void TPrinter::PrintSlice(TSliceExpr& node, int level) {
     *Out << "(slice ";
-    PrintExpr(node.Collection, true, level + 1);
+    PrintExpr(node.Collection(), true, level + 1);
     Separator(level + 1);
     *Out << '[';
-    PrintExpr(node.Start, true, level + 1);
-    if (node.End) {
+    PrintExpr(node.Start(), true, level + 1);
+    if (node.End()) {
         Space();
-        PrintExpr(node.End, true, level + 1);
+        PrintExpr(node.End(), true, level + 1);
     }
     *Out << "])";
 }
@@ -738,9 +738,9 @@ struct TPrintExpr : public IVisitor {
 
     void Visit(TBinaryExpr& node) override {
         *Out << '(' << node.Operator.ToString() << ' ';
-        Printer.PrintExpr(node.Left, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Left(), true, Frame.Level + 1);
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Right, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Right(), true, Frame.Level + 1);
         *Out << ')';
     }
 
@@ -868,7 +868,7 @@ struct TPrintExpr : public IVisitor {
     }
 
     void Visit(TIfExpr& node) override {
-        Printer.PrintIfLike("if", node.Cond, node.Then, node.Else, Frame.Level);
+        Printer.PrintIfLike("if", node.Cond(), node.Then(), node.Else(), Frame.Level);
     }
 
 
@@ -959,9 +959,9 @@ struct TPrintExpr : public IVisitor {
     void Visit(TIndexExpr& node) override {
         *Out << "(index";
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Collection, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Collection(), true, Frame.Level + 1);
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Index, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Index(), true, Frame.Level + 1);
         *Out << ')';
     }
 
@@ -1002,11 +1002,11 @@ struct TPrintExpr : public IVisitor {
     void Visit(TFieldAssignExpr& node) override {
         *Out << "(field_assign";
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Object, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Object(), true, Frame.Level + 1);
         Printer.Separator(Frame.Level + 1);
         Printer.PrintIdentifier(node.FieldName);
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Value, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Value(), true, Frame.Level + 1);
         *Out << ')';
     }
 
@@ -1029,10 +1029,10 @@ struct TPrintExpr : public IVisitor {
     void Visit(TDestroyExpr& node) override {
         *Out << "(destroy";
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Value, true, Frame.Level + 1);
-        if (node.Aux) {
+        Printer.PrintExpr(node.Value(), true, Frame.Level + 1);
+        if (node.Aux()) {
             Printer.Separator(Frame.Level + 1);
-            Printer.PrintExpr(node.Aux, true, Frame.Level + 1);
+            Printer.PrintExpr(node.Aux(), true, Frame.Level + 1);
         }
         *Out << ')';
     }
@@ -1040,9 +1040,9 @@ struct TPrintExpr : public IVisitor {
     void Visit(TReplaceExpr& node) override {
         *Out << "(replace";
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Target, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Target(), true, Frame.Level + 1);
         Printer.Separator(Frame.Level + 1);
-        Printer.PrintExpr(node.Value, true, Frame.Level + 1);
+        Printer.PrintExpr(node.Value(), true, Frame.Level + 1);
         *Out << ')';
     }
 
@@ -1050,12 +1050,12 @@ struct TPrintExpr : public IVisitor {
         *Out << "(cleanup-exit";
         Printer.Separator(Frame.Level + 1);
         *Out << '(' << CleanupExitKindName(node.Kind);
-        if (node.Value) {
+        if (node.Value()) {
             Printer.Separator(Frame.Level + 2);
-            Printer.PrintExpr(node.Value, true, Frame.Level + 2);
+            Printer.PrintExpr(node.Value(), true, Frame.Level + 2);
         }
         *Out << ')';
-        PrintCleanups(node.Cleanups);
+        PrintCleanups(node.Cleanups());
         *Out << ')';
     }
 
@@ -1085,7 +1085,7 @@ struct TPrintExpr : public IVisitor {
         *Out << ')';
     }
 
-    void PrintCleanups(const std::vector<TExprPtr>& cleanups) {
+    void PrintCleanups(std::span<const TExprPtr> cleanups) {
         for (const auto& cleanup : cleanups) {
             Printer.Separator(Frame.Level + 1);
             Printer.PrintExpr(cleanup, true, Frame.Level + 1);

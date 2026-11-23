@@ -39,7 +39,7 @@ std::expected<TExprPtr, TError> AnnotateBinary(
     if (!root) {
         return root;
     }
-    return TMaybeNode<TVarStmt>(TMaybeNode<TBlockExpr>(*root).Cast()->Stmts.back()).Cast()->Init;
+    return TMaybeNode<TVarStmt>(TMaybeNode<TBlockExpr>(*root).Cast()->Stmts.back()).Cast()->Init();
 }
 
 std::string TypeName(const TTypePtr& type) {
@@ -93,8 +93,8 @@ TEST(BinaryTypeAnnotation, NumericVectorPromotionAndDivision) {
         auto binary = TMaybeNode<TBinaryExpr>(*result).Cast();
         ASSERT_NE(binary, nullptr);
         EXPECT_EQ(TypeName(binary->Type), test.Result);
-        EXPECT_EQ(TypeName(binary->Left->Type), test.LeftOperand);
-        EXPECT_EQ(TypeName(binary->Right->Type), test.RightOperand);
+        EXPECT_EQ(TypeName(binary->Left()->Type), test.LeftOperand);
+        EXPECT_EQ(TypeName(binary->Right()->Type), test.RightOperand);
     }
 }
 
@@ -105,7 +105,7 @@ TEST(FloatWidthAnnotation, LiteralsAndConversions) {
     ASSERT_TRUE(root.has_value()) << root.error().ToString();
     auto stmts = TMaybeNode<TBlockExpr>(*root).Cast()->Stmts;
     auto init = [&](size_t index) {
-        return TypeName(TMaybeNode<TVarStmt>(stmts[index]).Cast()->Init->Type);
+        return TypeName(TMaybeNode<TVarStmt>(stmts[index]).Cast()->Init()->Type);
     };
     EXPECT_EQ(init(2), "f32"); // the 2.0 literal takes the f32 width
     EXPECT_EQ(init(5), "f32");
@@ -155,8 +155,8 @@ TEST(BinaryTypeAnnotation, StringAndSymbolOperators) {
                 ASSERT_NE(binary, nullptr);
                 EXPECT_EQ(TypeName(binary->Type), std::string(op) == "+" ? "String" : "Bool");
                 if (std::string(op) == "+" || std::string(left) == "string" || std::string(right) == "string") {
-                    EXPECT_EQ(TypeName(binary->Left->Type), "String");
-                    EXPECT_EQ(TypeName(binary->Right->Type), "String");
+                    EXPECT_EQ(TypeName(binary->Left()->Type), "String");
+                    EXPECT_EQ(TypeName(binary->Right()->Type), "String");
                 }
             }
         }
@@ -168,11 +168,11 @@ TEST(BinaryTypeAnnotation, StringAndSymbolOperators) {
 TEST(BinaryTypeAnnotation, ScalarLiteralUsesVectorElementType) {
     auto root = Annotate("(block (var a <vec i8 4>) (var result = (+ a 1)))");
     ASSERT_TRUE(root.has_value()) << root.error().ToString();
-    auto value = TMaybeNode<TVarStmt>(TMaybeNode<TBlockExpr>(*root).Cast()->Stmts.back()).Cast()->Init;
+    auto value = TMaybeNode<TVarStmt>(TMaybeNode<TBlockExpr>(*root).Cast()->Stmts.back()).Cast()->Init();
     auto binary = TMaybeNode<TBinaryExpr>(value).Cast();
     ASSERT_NE(binary, nullptr);
     EXPECT_EQ(TypeName(binary->Type), "Vector::i8::4");
-    EXPECT_EQ(TypeName(binary->Right->Type), "i8");
+    EXPECT_EQ(TypeName(binary->Right()->Type), "i8");
 }
 
 TEST(BinaryTypeAnnotation, VectorAssignmentsCheckShapeAndElementType) {
@@ -207,7 +207,7 @@ TEST(VectorTypeAnnotation, ConvertsElementsToExplicitType) {
         " (var value = (: (vec a (+ b 1)) <vec f64 2>)))");
     ASSERT_TRUE(result) << result.error().ToString();
     auto variable = TMaybeNode<TVarStmt>(TMaybeNode<TBlockExpr>(*result).Cast()->Stmts.back()).Cast();
-    auto vector = TMaybeNode<TVectorExpr>(variable->Init).Cast();
+    auto vector = TMaybeNode<TVectorExpr>(variable->Init()).Cast();
     ASSERT_NE(vector, nullptr);
     EXPECT_EQ(TypeName(vector->Type), "Vector::f64::2");
     for (const auto& element : vector->Elements) {
@@ -230,7 +230,7 @@ TEST(VectorTypeAnnotation, ConvertsReferencedElementsToExplicitType) {
         " (var value = (: (vec a a) <vec f64 2>)))");
     ASSERT_TRUE(result) << result.error().ToString();
     auto variable = TMaybeNode<TVarStmt>(TMaybeNode<TBlockExpr>(*result).Cast()->Stmts.back()).Cast();
-    auto vector = TMaybeNode<TVectorExpr>(variable->Init).Cast();
+    auto vector = TMaybeNode<TVectorExpr>(variable->Init()).Cast();
     ASSERT_NE(vector, nullptr);
     for (const auto& element : vector->Elements) {
         EXPECT_TRUE(TMaybeNode<TCastExpr>(element));
@@ -428,7 +428,7 @@ TEST(VectorTypeAnnotation, GenericVectorBindsTypeAndSizeAndCachesInstances) {
         ASSERT_NE(vector, nullptr);
         EXPECT_TRUE(vector->SizeParam.empty());
         EXPECT_TRUE(vector->Size == 2 || vector->Size == 4);
-        auto body = TMaybeNode<TBlockExpr>(function->Body).Cast();
+        auto body = TMaybeNode<TBlockExpr>(function->BodyExpr()).Cast();
         auto returned = TMaybeNode<TReturnExpr>(body->Stmts.back()).Cast();
         ASSERT_NE(returned, nullptr);
         auto number = TMaybeNode<TNumberExpr>(returned->Value).Cast();

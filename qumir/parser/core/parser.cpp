@@ -857,7 +857,7 @@ TListHandlerMap MakeDefaultHandlers() {
                 auto init = co_await ParseExpr(ctx);
                 co_await Expect(ctx, ')');
                 auto var = MakeIntrusive<TVarStmt>(loc, std::move(name), nullptr);
-                var->Init = std::move(init);
+                var->Init() = std::move(init);
                 co_return var;
             }
             ctx.Stream.Unget(peek);
@@ -965,7 +965,7 @@ TListHandlerMap MakeDefaultHandlers() {
                 co_return TError(bodyExpr ? bodyExpr->Location : loc, "function body must be block");
             }
             auto funDecl = MakeIntrusive<TFunDecl>(loc, std::move(name), std::move(genericParams), std::move(params), TExprPtrOf<TBlockExpr>(body), std::move(returnType));
-            funDecl->LastAssert = std::move(attrs.After);
+            funDecl->LastAssert() = std::move(attrs.After);
             funDecl->OperatorName = std::move(operatorName);
             funDecl->LiteralSuffix = std::move(literalSuffix);
             funDecl->Used = used;

@@ -65,13 +65,13 @@ TExprPtr Binary(
 // In elements, not bytes: the width of an element belongs to the target.
 TExprPtr ArrayAllocationSize(TTypeFactory& types, const TVarStmt& variable) {
     TExprPtr elements = Integer(types, variable.Location, 1);
-    for (const auto& [lower, upper] : variable.Bounds) {
-        auto dimension = Binary(types, 
+    for (const auto& [lower, upper] : variable.Bounds()) {
+        auto dimension = Binary(types,
             variable.Location,
             '+',
             Binary(types, variable.Location, '-', upper, lower),
             Integer(types, variable.Location, 1));
-        elements = Binary(types, 
+        elements = Binary(types,
             variable.Location,
             '*',
             std::move(elements),
@@ -296,9 +296,9 @@ private:
             return false;
         }
         if (auto branch = TMaybeNode<TIfExpr>(expr)) {
-            return branch.Cast()->Else
-                && AlwaysExits(branch.Cast()->Then)
-                && AlwaysExits(branch.Cast()->Else);
+            return branch.Cast()->Else()
+                && AlwaysExits(branch.Cast()->Then())
+                && AlwaysExits(branch.Cast()->Else());
         }
         return false;
     }
@@ -331,7 +331,7 @@ private:
                 returnExpr->Location,
                 resultName,
                 Context_.Types().Make<TStringType>());
-            result->Init = std::move(owned.value());
+            result->Init() = std::move(owned.value());
             auto resultValue = MakeIntrusive<TIdentExpr>(
                 returnExpr->Location,
                 resultName);
@@ -420,9 +420,9 @@ private:
             if (auto variable = TMaybeNode<TVarStmt>(statement);
                 variable && IsSynthetic(variable.Cast()->Name))
             {
-                if (variable.Cast()->Init) {
+                if (variable.Cast()->Init()) {
                     auto result = RewriteExpr(
-                        variable.Cast()->Init,
+                        variable.Cast()->Init(),
                         scopeId,
                         true);
                     if (!result) {
@@ -436,7 +436,7 @@ private:
             if (auto variable = TMaybeNode<TVarStmt>(statement);
                 variable && AsArray(variable.Cast()->Type))
             {
-                for (auto& [lower, upper] : variable.Cast()->Bounds) {
+                for (auto [lower, upper] : variable.Cast()->Bounds()) {
                     for (auto* bound : {&lower, &upper}) {
                         auto result = RewriteExpr(*bound, scopeId, true);
                         if (!result) {
@@ -453,7 +453,7 @@ private:
                                 boundName,
                                 Context_.Types().MakeInteger());
                             if (FunctionBoundary_) {
-                                boundValue->Init = std::move(*bound);
+                                boundValue->Init() = std::move(*bound);
                             }
                             statements.push_back(std::move(boundValue));
                             if (!FunctionBoundary_) {
@@ -481,7 +481,7 @@ private:
                         *auxName,
                         Context_.Types().MakeInteger());
                     if (FunctionBoundary_) {
-                        allocationSize->Init = ArrayAllocationSize(Context_.Types(), *variable.Cast());
+                        allocationSize->Init() = ArrayAllocationSize(Context_.Types(), *variable.Cast());
                     }
                     statements.push_back(std::move(allocationSize));
                     if (!FunctionBoundary_) {
@@ -513,7 +513,7 @@ private:
                 variable
                 && IsString(variable.Cast()->Type))
             {
-                if (IsNullString(variable.Cast()->Init)) {
+                if (IsNullString(variable.Cast()->Init())) {
                     statements.push_back(statement);
                     if (FunctionBoundary_) {
                         Scopes_.back().Locals.push_back({
@@ -530,8 +530,8 @@ private:
                     }
                     continue;
                 }
-                auto init = std::move(variable.Cast()->Init);
-                variable.Cast()->Init = MakeNullString(Context_.Types(), 
+                auto init = std::move(variable.Cast()->Init());
+                variable.Cast()->Init() = MakeNullString(Context_.Types(),
                     variable.Cast()->Location,
                     variable.Cast()->Type);
                 statements.push_back(statement);
@@ -654,14 +654,14 @@ private:
         TScopeId scopeId)
     {
         bool changed = false;
-        for (auto& index : assign->Indices) {
+        for (auto& index : assign->Indices()) {
             auto result = RewriteExpr(index, scopeId, true);
             if (!result) {
                 return std::unexpected(result.error());
             }
             changed = result.value() || changed;
         }
-        if (auto result = RewriteExpr(assign->Value, scopeId, true); !result) {
+        if (auto result = RewriteExpr(assign->Value(), scopeId, true); !result) {
             return std::unexpected(result.error());
         } else {
             changed = result.value() || changed;
@@ -690,19 +690,21 @@ private:
         auto collection = MakeIntrusive<TIdentExpr>(assign->Location, assign->Name);
         collection->Type = declaration->Type;
         TExprPtr target;
-        if (assign->Indices.size() == 1) {
+        if (assign->Indices().size() == 1) {
             target = MakeIntrusive<TIndexExpr>(
                 assign->Location,
                 std::move(collection),
-                std::move(assign->Indices.front()));
+                std::move(assign->Indices().front()));
         } else {
             target = MakeIntrusive<TMultiIndexExpr>(
                 assign->Location,
                 std::move(collection),
-                std::move(assign->Indices));
+                std::vector<TExprPtr>(
+                    std::make_move_iterator(assign->Indices().begin()),
+                    std::make_move_iterator(assign->Indices().end())));
         }
         target->Type = elementType;
-        auto owned = RequireOwned(std::move(assign->Value));
+        auto owned = RequireOwned(std::move(assign->Value()));
         if (!owned) {
             return std::unexpected(owned.error());
         }
@@ -719,18 +721,18 @@ private:
         TScopeId scopeId)
     {
         bool changed = false;
-        if (auto result = RewriteExpr(assign->Object, scopeId, true); !result) {
+        if (auto result = RewriteExpr(assign->Object(), scopeId, true); !result) {
             return std::unexpected(result.error());
         } else {
             changed = result.value() || changed;
         }
-        if (auto result = RewriteExpr(assign->Value, scopeId, true); !result) {
+        if (auto result = RewriteExpr(assign->Value(), scopeId, true); !result) {
             return std::unexpected(result.error());
         } else {
             changed = result.value() || changed;
         }
 
-        const auto& objectType = ValueType(assign->Object->Type);
+        const auto& objectType = ValueType(assign->Object()->Type);
         auto structType = TMaybeType<TStructType>(objectType);
         if (!structType
             || assign->FieldIndex < 0
@@ -744,11 +746,11 @@ private:
         }
         auto target = MakeIntrusive<TFieldAccessExpr>(
             assign->Location,
-            std::move(assign->Object),
+            std::move(assign->Object()),
             assign->FieldName);
         target->FieldIndex = assign->FieldIndex;
         target->Type = fieldType;
-        auto owned = RequireOwned(std::move(assign->Value));
+        auto owned = RequireOwned(std::move(assign->Value()));
         if (!owned) {
             return std::unexpected(owned.error());
         }
@@ -773,7 +775,7 @@ private:
             valueNode = TExprPtr(call);
         }
         bool changed = false;
-        for (auto& argument : call->Args) {
+        for (auto& argument : call->Args()) {
             auto result = RewriteExpr(argument, scopeId, true);
             if (!result) {
                 return std::unexpected(result.error());
@@ -781,7 +783,7 @@ private:
             changed = result.value() || changed;
         }
 
-        auto callee = TMaybeNode<TIdentExpr>(call->Callee);
+        auto callee = TMaybeNode<TIdentExpr>(call->Callee());
         if (!callee) {
             return std::unexpected(TError(
                 call->Location,
@@ -797,7 +799,7 @@ private:
                 call->Location,
                 "Cannot resolve call target '" + callee.Cast()->Name + "'."));
         }
-        if (call->Args.size() != function.Cast()->Params.size()) {
+        if (call->Args().size() != function.Cast()->Params.size()) {
             return std::unexpected(TError(
                 call->Location,
                 "Call argument count changed before lifetime rewrite."));
@@ -805,8 +807,8 @@ private:
 
         std::vector<TExprPtr> prefix;
         std::vector<TExprPtr> cleanups;
-        for (size_t i = 0; i < call->Args.size(); ++i) {
-            auto& argument = call->Args[i];
+        for (size_t i = 0; i < call->Args().size(); ++i) {
+            auto& argument = call->Args()[i];
             const auto& parameterType = function.Cast()->Params[i]->Type;
             if (TMaybeType<TReferenceType>(parameterType)
                 || !IsString(parameterType))
@@ -849,7 +851,7 @@ private:
                 call->Location,
                 name,
                 Context_.Types().Make<TStringType>());
-            temporary->Init = std::move(owned.value());
+            temporary->Init() = std::move(owned.value());
             prefix.push_back(temporary);
 
             auto borrowedStorage = MakeIntrusive<TIdentExpr>(
@@ -882,7 +884,7 @@ private:
                 call->Location,
                 resultName,
                 valueNode->Type);
-            result->Init = valueNode;
+            result->Init() = valueNode;
             statements.push_back(std::move(result));
             for (auto it = cleanups.rbegin(); it != cleanups.rend(); ++it) {
                 statements.push_back(*it);
@@ -945,11 +947,11 @@ private:
     std::expected<bool, TError> RewriteChildren(TExprPtr& expr, TScopeId scopeId)
     {
         bool changed = false;
-        for (auto* child : expr->MutableChildren()) {
-            if (!*child) {
+        for (auto& child : expr->MutableChildren()) {
+            if (!child) {
                 continue;
             }
-            auto result = RewriteExpr(*child, scopeId, true);
+            auto result = RewriteExpr(child, scopeId, true);
             if (!result) {
                 return std::unexpected(result.error());
             }
@@ -972,7 +974,7 @@ private:
         if (auto function = TMaybeNode<TFunDecl>(expr)) {
             const auto previousFunctionBoundary = FunctionBoundary_;
             FunctionBoundary_ = Scopes_.size();
-            TExprPtr body = function.Cast()->Body;
+            TExprPtr body = function.Cast()->BodyExpr();
             auto result = RewriteExpr(
                 body,
                 TScopeId{function.Cast()->Scope},
@@ -981,11 +983,11 @@ private:
                 FunctionBoundary_ = previousFunctionBoundary;
                 return result;
             }
-            function.Cast()->Body = StaticPointerCast<TBlockExpr>(body);
+            function.Cast()->BodyExpr() = StaticPointerCast<TBlockExpr>(body);
             bool changed = result.value();
-            if (function.Cast()->LastAssert) {
+            if (function.Cast()->LastAssert()) {
                 auto assertResult = RewriteExpr(
-                    function.Cast()->LastAssert,
+                    function.Cast()->LastAssert(),
                     TScopeId{function.Cast()->Scope},
                     false);
                 if (!assertResult) {
@@ -1006,20 +1008,24 @@ private:
         if (TMaybeNode<TContinueStmt>(expr)) {
             return RewriteLoopExit(expr, ECleanupExitKind::Continue);
         }
-        if (auto loop = TMaybeNode<TWhileStmtExpr>(expr)) {
-            return RewriteLoop({&loop.Cast()->Cond}, loop.Cast()->Body, scopeId);
+        if (auto maybeLoop = TMaybeNode<TWhileStmtExpr>(expr)) {
+            auto loop = maybeLoop.Cast();
+            return RewriteLoop({&loop->Cond()}, loop->Body(), scopeId);
         }
-        if (auto loop = TMaybeNode<TRepeatStmtExpr>(expr)) {
-            return RewriteLoop({&loop.Cast()->Cond}, loop.Cast()->Body, scopeId);
+        if (auto maybeLoop = TMaybeNode<TRepeatStmtExpr>(expr)) {
+            auto loop = maybeLoop.Cast();
+            return RewriteLoop({&loop->Cond()}, loop->Body(), scopeId);
         }
-        if (auto loop = TMaybeNode<TForStmtExpr>(expr)) {
+        if (auto maybeLoop = TMaybeNode<TForStmtExpr>(expr)) {
+            auto loop = maybeLoop.Cast();
             return RewriteLoop(
-                {&loop.Cast()->From, &loop.Cast()->To, &loop.Cast()->Step},
-                loop.Cast()->Body,
+                {&loop->From(), &loop->To(), &loop->Step()},
+                loop->Body(),
                 scopeId);
         }
-        if (auto loop = TMaybeNode<TTimesStmtExpr>(expr)) {
-            return RewriteLoop({&loop.Cast()->Count}, loop.Cast()->Body, scopeId);
+        if (auto maybeLoop = TMaybeNode<TTimesStmtExpr>(expr)) {
+            auto loop = maybeLoop.Cast();
+            return RewriteLoop({&loop->Count()}, loop->Body(), scopeId);
         }
         if (auto assign = TMaybeNode<TAssignExpr>(expr)) {
             return RewriteAssign(expr, assign.Cast(), scopeId);

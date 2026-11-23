@@ -67,7 +67,7 @@ SystemModule::SystemModule(NAst::TTypeFactory& types) {
         std::vector<NAst::TExprPtr> stmts;
         for (auto& [name, value] : vars) {
             auto var = MakeIntrusive<NAst::TVarStmt>(TLocation{}, std::move(name), nullptr);
-            var->Init = std::move(value);
+            var->Init() = std::move(value);
             stmts.push_back(std::move(var));
         }
         stmts.push_back(body);

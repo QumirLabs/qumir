@@ -95,7 +95,7 @@ private:
     const TStructType* GetStructType(const TTypePtr& type);
 
     void PrintArrayAssign(TArrayAssignExpr& node, int level);
-    void PrintIndexVector(const std::vector<TExprPtr>& indices, int level);
+    void PrintIndexVector(std::span<const TExprPtr> indices, int level);
     void PrintExprList(std::string_view head, const std::vector<TExprPtr>& items, int level);
     void PrintIfLike(std::string_view head, const TExprPtr& cond, const TExprPtr& thenBranch, const TExprPtr& elseBranch, int level);
     void PrintWhile(TWhileStmtExpr& node, int level);

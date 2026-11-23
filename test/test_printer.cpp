@@ -5,6 +5,7 @@
 #include <qumir/parser/ast.h>
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/core/printer.h>
+#include <algorithm>
 #include <array>
 #include <sstream>
 
@@ -28,7 +29,7 @@ struct TTagExpr : TExpr {
 
     const std::string_view NodeName() const override { return NodeId; }
 
-    std::vector<TExprPtr> Children() const override { return {Child}; }
+    std::span<const TExprPtr> Children() const override { return { &Child, 1 }; }
 
     void Accept(IVisitor& visitor) override { visitor.VisitOtherwise(*this); }
 };
@@ -37,17 +38,18 @@ struct TTagExpr : TExpr {
 struct TPairExpr : TExpr {
     static constexpr const char* NodeId = "Pair";
 
-    TExprPtr Left;
-    TExprPtr Right;
+    std::array<TExprPtr, 2> Operands;
 
     TPairExpr(TExprPtr left, TExprPtr right)
-        : Left(std::move(left))
-        , Right(std::move(right))
+        : Operands{std::move(left), std::move(right)}
     {}
+
+    auto& Left(this auto& self) { return self.Operands[0]; }
+    auto& Right(this auto& self) { return self.Operands[1]; }
 
     const std::string_view NodeName() const override { return NodeId; }
 
-    std::vector<TExprPtr> Children() const override { return {Left, Right}; }
+    std::span<const TExprPtr> Children() const override { return Operands; }
 
     void Accept(IVisitor& visitor) override { visitor.VisitOtherwise(*this); }
 };
@@ -66,9 +68,9 @@ TPrintOptions MakeOptions(bool pretty = false) {
         auto& pair = static_cast<TPairExpr&>(node);
         p.GetOut() << "(pair";
         p.Separator(frame.Level + 1);
-        p.PrintExpr(pair.Left, frame.AllowTypeWrap, frame.Level + 1);
+        p.PrintExpr(pair.Left(), frame.AllowTypeWrap, frame.Level + 1);
         p.Separator(frame.Level + 1);
-        p.PrintExpr(pair.Right, frame.AllowTypeWrap, frame.Level + 1);
+        p.PrintExpr(pair.Right(), frame.AllowTypeWrap, frame.Level + 1);
         p.GetOut() << ')';
     };
     return opts;
@@ -204,8 +206,8 @@ TEST(ParserCustomNodes, PairSimple) {
     ASSERT_NE(expr, nullptr);
     auto* pair = dynamic_cast<TPairExpr*>(expr.Get());
     ASSERT_NE(pair, nullptr);
-    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Left.Get())->Name, "a");
-    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Right.Get())->Name, "b");
+    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Left().Get())->Name, "a");
+    EXPECT_EQ(dynamic_cast<TIdentExpr*>(pair->Right().Get())->Name, "b");
 }
 
 TEST(ParserCustomNodes, NestedCustomNodes) {
@@ -318,8 +320,8 @@ TEST(LifetimeNodes, ReplaceChildrenUseStructuralOrder) {
 
     const auto mutableChildren = replace->MutableChildren();
     ASSERT_EQ(mutableChildren.size(), 2u);
-    EXPECT_EQ(mutableChildren[0], &replace->Target);
-    EXPECT_EQ(mutableChildren[1], &replace->Value);
+    EXPECT_EQ(&mutableChildren[0], &replace->Target());
+    EXPECT_EQ(&mutableChildren[1], &replace->Value());
 }
 
 TEST(LifetimeNodes, DestroyChildrenIncludeOptionalAux) {
@@ -332,8 +334,8 @@ TEST(LifetimeNodes, DestroyChildrenIncludeOptionalAux) {
     ASSERT_EQ(withAux->Children().size(), 2u);
     EXPECT_EQ(withAux->Children()[0], value);
     EXPECT_EQ(withAux->Children()[1], aux);
-    EXPECT_EQ(withAux->MutableChildren()[0], &withAux->Value);
-    EXPECT_EQ(withAux->MutableChildren()[1], &withAux->Aux);
+    EXPECT_EQ(&withAux->MutableChildren()[0], &withAux->Value());
+    EXPECT_EQ(&withAux->MutableChildren()[1], &withAux->Aux());
 }
 
 TEST(LifetimeNodes, CleanupChildrenPutValueBeforeOrderedCleanups) {
@@ -355,13 +357,13 @@ TEST(LifetimeNodes, CleanupChildrenPutValueBeforeOrderedCleanups) {
     auto replacement = MakeIdent("replacement");
     auto mutableChildren = exit->MutableChildren();
     ASSERT_EQ(mutableChildren.size(), 3u);
-    *mutableChildren[1] = replacement;
-    EXPECT_EQ(exit->Cleanups[0], replacement);
+    mutableChildren[1] = replacement;
+    EXPECT_EQ(exit->Cleanups()[0], replacement);
 
     auto global = MakeIntrusive<TGlobalCleanupExpr>(
         TLocation{},
         std::vector<TExprPtr>{cleanup2, cleanup1}, NQumir::NTest::TestTypes());
-    EXPECT_EQ(global->Children(), (std::vector<TExprPtr>{cleanup2, cleanup1}));
+    EXPECT_TRUE(std::ranges::equal(global->Children(), std::vector<TExprPtr>{cleanup2, cleanup1}));
 }
 
 namespace {

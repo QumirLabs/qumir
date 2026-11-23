@@ -65,31 +65,31 @@ private:
     };
 
     TExpectedTask<TValueWithBlock, TError, TLocation> Lower(const NAst::TExprPtr& expr, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerVector(const NAst::TVectorExpr& vector, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerRetain(const NAst::TRetainExpr& retain, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerOwnLiteral(const NAst::TOwnLiteralExpr& literal, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerDestroy(const NAst::TDestroyExpr& destroy, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerReplace(const NAst::TReplaceExpr& replace, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerCleanupExit(const NAst::TCleanupExitExpr& exit, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerGlobalCleanup(const NAst::TGlobalCleanupExpr& cleanup, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerBitcast(const NAst::TBitcastExpr& bitcast, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerCast(const NAst::TCastExpr& cast, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerNumber(const NAst::TNumberExpr& num);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerStringLiteral(const NAst::TStringLiteralExpr& str);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerBlock(const NAst::TBlockExpr& block, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerUnary(const NAst::TUnaryExpr& unary, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerBinary(const NAst::TBinaryExpr& binary, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIf(const NAst::TIfExpr& ife, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerArrayAssign(const NAst::TArrayAssignExpr& asg, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIndex(const NAst::TIndexExpr& index, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerStructConstruct(const NAst::TStructConstructExpr& sc, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerMultiIndex(const NAst::TMultiIndexExpr& multiIndex, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerAssign(const NAst::TAssignExpr& asg, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIdent(const NAst::TIdentExpr& ident, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerVar(const NAst::TVarStmt& var, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerFunction(const NAst::TFunDecl& fun, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerAwait(const NAst::TAwaitExpr& awaitExpr, const TBlockScope& scope);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerCall(const NAst::TCallExpr& call, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerVector(NAst::TVectorExpr* vector, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerRetain(NAst::TRetainExpr* retain, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerOwnLiteral(NAst::TOwnLiteralExpr* literal, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerDestroy(NAst::TDestroyExpr* destroy, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerReplace(NAst::TReplaceExpr* replace, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerCleanupExit(NAst::TCleanupExitExpr* exit, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerGlobalCleanup(NAst::TGlobalCleanupExpr* cleanup, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerBitcast(NAst::TBitcastExpr* bitcast, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerCast(NAst::TCastExpr* cast, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerNumber(NAst::TNumberExpr* num);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerStringLiteral(NAst::TStringLiteralExpr* str);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerBlock(NAst::TBlockExpr* block, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerUnary(NAst::TUnaryExpr* unary, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerBinary(NAst::TBinaryExpr* binary, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIf(NAst::TIfExpr* ife, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerArrayAssign(NAst::TArrayAssignExpr* asg, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIndex(NAst::TIndexExpr* index, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerStructConstruct(NAst::TStructConstructExpr* sc, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerMultiIndex(NAst::TMultiIndexExpr* multiIndex, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerAssign(NAst::TAssignExpr* asg, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIdent(NAst::TIdentExpr* ident, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerVar(NAst::TVarStmt* var, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerFunction(NAst::TFunDecl* fun, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerAwait(NAst::TAwaitExpr* awaitExpr, const TBlockScope& scope);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerCall(NAst::TCallExpr* call, const TBlockScope& scope);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerField(const NAst::TExprPtr& expr, const TBlockScope& scope);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerUnsupported(const NAst::TExprPtr& expr);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerVectorIntrinsic(
@@ -111,8 +111,8 @@ private:
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerFor(const NAst::TExprPtrOf<NAst::TForStmtExpr>& loop, const TBlockScope& scope);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerRepeat(const NAst::TExprPtrOf<NAst::TRepeatStmtExpr>& loop, const TBlockScope& scope);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerTimes(const NAst::TExprPtrOf<NAst::TTimesStmtExpr>& loop, const TBlockScope& scope);
-    TExpectedTask<TArrayLayout, TError, TLocation> LowerArrayLayout(NSemantics::TSymbolInfo symbol, const std::vector<std::pair<NAst::TExprPtr, NAst::TExprPtr>>& bounds, TBlockScope scope, const std::string& name, const TLocation& loc);
-    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIndices(NSemantics::TSymbolInfo symbol, const std::vector<NAst::TExprPtr>& indices, TBlockScope scope, int elemSize = 8);
+    TExpectedTask<TArrayLayout, TError, TLocation> LowerArrayLayout(NSemantics::TSymbolInfo symbol, const NAst::TVarStmt& var, TBlockScope scope, const std::string& name, const TLocation& loc);
+    TExpectedTask<TValueWithBlock, TError, TLocation> LowerIndices(NSemantics::TSymbolInfo symbol, std::span<const NAst::TExprPtr> indices, TBlockScope scope, int elemSize = 8);
     TExpectedTask<TValueWithBlock, TError, TLocation> LowerLValueAddress(const NAst::TExprPtr& expr, TBlockScope scope);
     TExpectedTask<std::monostate, TError, TLocation> EmitLifetimeDestroy(
         TOperand value,

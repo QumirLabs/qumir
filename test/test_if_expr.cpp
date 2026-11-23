@@ -58,7 +58,7 @@ TRunResult RunWithInjection(
     TBlockExpr* funcBody = nullptr;
     for (auto& stmt : topBlock->Stmts) {
         if (auto* funDecl = dynamic_cast<TFunDecl*>(stmt.Get())) {
-            funcBody = funDecl->Body.Get();
+            funcBody = funDecl->Body();
             break;
         }
     }
@@ -153,7 +153,7 @@ TExprPtr ifExpr(const TExprPtr& cond, const TExprPtr& thenExpr, const TExprPtr& 
 
 TExprPtr letExpr(std::string name, const TExprPtr& value, const TExprPtr& body) {
     auto var = MakeIntrusive<TVarStmt>(TLocation{}, std::move(name), nullptr);
-    var->Init = value;
+    var->Init() = value;
     return MakeIntrusive<TBlockExpr>(TLocation{}, std::vector<TExprPtr>{std::move(var), body});
 }
 

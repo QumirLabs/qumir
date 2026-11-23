@@ -125,8 +125,8 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
     ASSERT_TRUE(final.has_value()) << final.error().ToString();
 
     ASSERT_EQ(body->Stmts.size(), 12u);
-    EXPECT_EQ(Print(a->Init), "(bitcast 0 string)");
-    EXPECT_EQ(Print(b->Init), "(bitcast 0 string)");
+    EXPECT_EQ(Print(a->Init()), "(bitcast 0 string)");
+    EXPECT_EQ(Print(b->Init()), "(bitcast 0 string)");
     EXPECT_EQ(Print(body->Stmts[2]), "(replace a (own-literal \"literal\"))");
     EXPECT_EQ(Print(body->Stmts[3]), "(replace a (retain (borrow b)))");
     EXPECT_EQ(Print(body->Stmts[4]), "(replace a (retain (borrow a)))");
@@ -144,7 +144,7 @@ TEST(LifetimePass, RewritesAllStringAssignmentTargets) {
 
 TEST(LifetimePass, SplitsStringDeclarationInitializerAfterNullInitialization) {
     auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
-    value->Init = Literal("initial");
+    value->Init() = Literal("initial");
     auto body = Block({value});
     TExprPtr root = Block({Function("main", {}, body)});
     NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
@@ -155,7 +155,7 @@ TEST(LifetimePass, SplitsStringDeclarationInitializerAfterNullInitialization) {
     ASSERT_TRUE(final.has_value()) << final.error().ToString();
 
     ASSERT_EQ(body->Stmts.size(), 3u);
-    EXPECT_EQ(Print(value->Init), "(bitcast 0 string)");
+    EXPECT_EQ(Print(value->Init()), "(bitcast 0 string)");
     EXPECT_EQ(
         Print(body->Stmts[1]),
         "(replace value (own-literal \"initial\"))");
@@ -292,9 +292,9 @@ TEST(LifetimePass, MaterializesLiteralOnlyWhenCallAbiRequiresIt) {
 TEST(LifetimePass, CleansNestedStringLocalsOnReturnInLifoOrder) {
     auto stringType = NQumir::NTest::TestTypes().Make<TStringType>();
     auto first = Variable("first", stringType);
-    first->Init = Literal("first");
+    first->Init() = Literal("first");
     auto second = Variable("second", stringType);
-    second->Init = Literal("second");
+    second->Init() = Literal("second");
     auto nested = Block({
         second,
         MakeIntrusive<TReturnExpr>(TLocation{}, Ident("first")),
@@ -322,14 +322,13 @@ TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
     auto loopCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
     loopCondition->Type = NQumir::NTest::TestTypes().Make<TBoolType>();
     auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
-    value->Init = Literal("iteration");
+    value->Init() = Literal("iteration");
     auto items = Variable(
         "items",
         NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1));
-    items->Bounds.push_back({
+    items->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
-    });
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()));
     auto earlyBreak = Block({MakeIntrusive<TBreakStmt>(TLocation{})});
     auto loopBody = Block({
         MakeIntrusive<TIfExpr>(
@@ -364,10 +363,9 @@ TEST(LifetimePass, LoopExitCleansOnlyLocalsDeclaredBeforeTheExit) {
 TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
     auto i64 = NQumir::NTest::TestTypes().MakeInteger();
     auto plain = Variable("plain", NQumir::NTest::TestTypes().MakeArray(i64, 1));
-    plain->Bounds.push_back({
+    plain->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes()),
-    });
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes()));
     auto marker = Variable("marker", i64);
     auto nested = Block({
         plain,
@@ -381,10 +379,9 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
     auto strings = Variable(
         "strings",
         NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1));
-    strings->Bounds.push_back({
+    strings->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}, NQumir::NTest::TestTypes()),
-    });
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{4}, NQumir::NTest::TestTypes()));
     auto body = Block({nested, strings});
     TExprPtr root = Block({Function("main", {}, body)});
     NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
@@ -407,17 +404,16 @@ TEST(LifetimePass, DestroysLocalArraysOnNormalAndReturnExits) {
 TEST(LifetimePass, SavesStringArrayAllocationSizeForMultidimensionalBounds) {
     auto i64 = NQumir::NTest::TestTypes().MakeInteger();
     auto lower = Variable("lower", i64);
-    lower->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
+    lower->Init() = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
     auto upper = Variable("upper", i64);
-    upper->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes());
+    upper->Init() = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes());
     auto grid = Variable(
         "grid",
         NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 2));
-    grid->Bounds.push_back({Ident("lower"), Ident("upper")});
-    grid->Bounds.push_back({
+    grid->AddBound(Ident("lower"), Ident("upper"));
+    grid->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{0}, NQumir::NTest::TestTypes()),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
-    });
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()));
     auto body = Block({
         lower,
         upper,
@@ -449,10 +445,9 @@ TEST(LifetimePass, DoesNotDestroyArrayParameter) {
         NQumir::NTest::TestTypes().Make<TStringType>(),
         1);
     auto parameter = Variable("items", arrayType);
-    parameter->Bounds.push_back({
+    parameter->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
-    });
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()));
     auto body = Block({});
     TExprPtr root = Block({Function("consume", {parameter}, body)});
     NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
@@ -476,10 +471,9 @@ TEST(LifetimePass, EvaluatesEffectfulStringArrayBoundOnce) {
     auto items = Variable(
         "items",
         NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1));
-    items->Bounds.push_back({
+    items->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
-        Call("bound"),
-    });
+        Call("bound"));
     auto body = Block({items});
     TExprPtr root = Block({bound, Function("main", {}, body)});
     NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
@@ -503,21 +497,19 @@ TEST(LifetimePass, EvaluatesEffectfulStringArrayBoundOnce) {
 
 TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
     auto first = Variable("first", NQumir::NTest::TestTypes().Make<TStringType>());
-    first->Init = Literal("first");
+    first->Init() = Literal("first");
     auto plain = Variable(
         "plain",
         NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().MakeInteger(), 1));
-    plain->Bounds.push_back({
+    plain->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()),
-    });
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{2}, NQumir::NTest::TestTypes()));
     auto words = Variable(
         "words",
         NQumir::NTest::TestTypes().MakeArray(NQumir::NTest::TestTypes().Make<TStringType>(), 1));
-    words->Bounds.push_back({
+    words->AddBound(
         MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes()),
-        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes()),
-    });
+        MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{3}, NQumir::NTest::TestTypes()));
     TExprPtr root = Block({
         first,
         plain,
@@ -550,7 +542,7 @@ TEST(LifetimePass, CollectsGlobalCleanupOnceInReverseDeclarationOrder) {
 
 TEST(LifetimePass, DoesNotRewriteFinalizedLifetimeAstTwice) {
     auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
-    value->Init = Literal("value");
+    value->Init() = Literal("value");
     TExprPtr root = Block({Function("main", {}, Block({value}))});
     NSemantics::TNameResolver resolver(NQumir::NTest::TestTypes());
 
