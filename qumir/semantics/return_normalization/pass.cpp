@@ -46,22 +46,23 @@ bool NormalizeFunction(TFunDecl* function) {
 }
 
 // Walks the AST and normalizes every non-external function declaration.
-bool NormalizeFunctions(TExprPtr& expr) {
+bool NormalizeFunctions(const TExprPtr& expr) {
     if (!expr) {
         return false;
     }
-    if (auto function = TMaybeNode<TFunDecl>(expr)) {
+    if (auto maybeFunction = TMaybeNode<TFunDecl>(expr)) {
         // Nested declarations in the body are visited independently below.
-        bool changed = NormalizeFunction(function.Cast());
-        TExprPtr body = function.Cast()->Body;
+        auto function = maybeFunction.Cast();
+        bool changed = NormalizeFunction(function);
+        TExprPtr body = function->Body;
         changed = NormalizeFunctions(body) || changed;
-        function.Cast()->Body = TExprPtrOf<TBlockExpr>(TMaybeNode<TBlockExpr>(body).Cast());
+        function->Body = TExprPtrOf<TBlockExpr>(TMaybeNode<TBlockExpr>(body).Cast());
         return changed;
     }
 
     bool changed = false;
-    for (auto* child : expr->MutableChildren()) {
-        changed = NormalizeFunctions(*child) || changed;
+    for (auto child : expr->Children()) {
+        changed = NormalizeFunctions(child) || changed;
     }
     return changed;
 }
