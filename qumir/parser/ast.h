@@ -864,35 +864,48 @@ struct TOutputArg {
 
 struct TOutputArgRef {
     TExprPtr& Expr;
-    TExprPtr& Width;
-    TExprPtr& Precision;
+    TExprPtr Width; // null if absent
+    TExprPtr Precision; // null if absent
 };
 
 struct TOutputExpr : TExpr {
     static constexpr const char* NodeId = "Output";
-    static constexpr size_t ArgStride = 3;
 
-    std::vector<TExprPtr> Operands; // Expr, Width, Precision of each argument; Width and Precision may be null
+    // Only set slots are stored: Expr, then Width, then Precision of each argument.
+    // Precision implies Width.
+    std::vector<TExprPtr> Operands;
+    std::vector<size_t> Starts; // Starts[i] = offset of argument i in Operands; one extra end entry
+
     TOutputExpr(TLocation loc, std::vector<TOutputArg>&& a, TTypeFactory& types)
         : TExpr(std::move(loc))
     {
         Type = types.Make<TVoidType>();
-        Operands.reserve(ArgStride * a.size());
+        Operands.reserve(3 * a.size());
+        Starts.reserve(a.size() + 1);
         for (auto& arg : a) {
+            Starts.push_back(Operands.size());
             Operands.push_back(std::move(arg.Expr));
-            Operands.push_back(std::move(arg.Width));
-            Operands.push_back(std::move(arg.Precision));
+            if (arg.Width) {
+                Operands.push_back(std::move(arg.Width));
+                if (arg.Precision) {
+                    Operands.push_back(std::move(arg.Precision));
+                }
+            }
         }
+        Starts.push_back(Operands.size());
     }
 
     auto Args() {
         auto* slots = Operands.data();
-        return std::views::iota(size_t{0}, Operands.size() / ArgStride)
-            | std::views::transform([slots](size_t i) {
+        const auto* starts = Starts.data();
+        return std::views::iota(size_t{0}, Starts.size() - 1)
+            | std::views::transform([slots, starts](size_t i) {
+                const size_t n = starts[i + 1] - starts[i];
+                auto* arg = slots + starts[i];
                 return TOutputArgRef{
-                    slots[ArgStride * i],
-                    slots[ArgStride * i + 1],
-                    slots[ArgStride * i + 2],
+                    arg[0],
+                    n > 1 ? arg[1] : TExprPtr(),
+                    n > 2 ? arg[2] : TExprPtr(),
                 };
             });
     }

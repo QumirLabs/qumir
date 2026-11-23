@@ -137,6 +137,22 @@ TEST(PrinterNumbers, IntegralFloatKeepsItsLiteralType) {
     EXPECT_EQ(PrintAst(MakeIntrusive<TNumberExpr>(TLocation{}, 1e20, NQumir::NTest::TestTypes())), "1e+20");
 }
 
+TEST(PrinterOutput, ChildrenHaveNoNullSlots) {
+    auto& types = NQumir::NTest::TestTypes();
+    std::vector<TOutputArg> args;
+    args.push_back({MakeIdent("a"), nullptr, nullptr});
+    args.push_back({MakeIdent("b"), MakeIdent("w"), nullptr});
+    args.push_back({MakeIdent("c"), MakeIdent("w"), MakeIdent("p")});
+    auto expr = MakeIntrusive<TOutputExpr>(TLocation{}, std::move(args), types);
+
+    EXPECT_EQ(expr->Children().size(), 6u);
+    EXPECT_EQ(expr->MutableChildren().size(), 6u);
+    for (const auto& child : expr->Children()) {
+        EXPECT_TRUE(child);
+    }
+    EXPECT_EQ(PrintAst(expr), "(output a (fmt b w) (fmt c w p))");
+}
+
 TEST(PrinterCustomNodes, PairCompact) {
     auto expr = MakeIntrusive<TPairExpr>(MakeIdent("a"), MakeIdent("b"));
     EXPECT_EQ(PrintAst(expr, MakeOptions()), "(pair a b)");
