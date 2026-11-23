@@ -652,6 +652,19 @@ struct TVarsBlockExpr : TExpr {
         , Vars(std::move(vars))
     { }
 
+    std::vector<TExprPtr> Children() const override {
+        return Vars;
+    }
+
+    std::vector<TExprPtr*> MutableChildren() override {
+        std::vector<TExprPtr*> result;
+        result.reserve(Vars.size());
+        for (auto& var : Vars) {
+            result.push_back(&var);
+        }
+        return result;
+    }
+
     const std::string_view NodeName() const override {
         return NodeId;
     }
