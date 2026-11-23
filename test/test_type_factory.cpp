@@ -121,6 +121,94 @@ TEST(TypeFactory, TypesFromDifferentFactoriesAreDifferentObjects) {
     EXPECT_NE(first.MakeInteger(), second.MakeInteger());
 }
 
+TEST(TypeFactory, BaseTypeIsTheSameObjectInTheChild) {
+    auto base = std::make_shared<TTypeFactory>();
+    auto i64 = base->MakeInteger();
+    auto pointer = base->MakePointer(i64);
+    auto function = base->MakeFunction({i64}, pointer);
+    auto fields = base->MakeStruct({{"a", i64}});
+    auto named = base->MakeNamed("X", fields);
+    base->Freeze();
+
+    TTypeFactory child(base);
+    EXPECT_EQ(child.MakeInteger(), i64);
+    EXPECT_EQ(child.Make<TBoolType>(), child.Make<TBoolType>());
+    EXPECT_EQ(child.MakePointer(child.MakeInteger()), pointer);
+    EXPECT_EQ(child.MakeFunction({i64}, pointer), function);
+    EXPECT_EQ(child.MakeStruct({{"a", i64}}), fields);
+    EXPECT_EQ(child.MakeNamed("X"), named);
+    EXPECT_EQ(child.MakeNamed("X", fields), named);
+}
+
+TEST(TypeFactory, ChildCreatesTheTypesTheBaseLacks) {
+    auto base = std::make_shared<TTypeFactory>();
+    auto i64 = base->MakeInteger();
+    base->Freeze();
+
+    TTypeFactory first(base);
+    TTypeFactory second(base);
+    auto array = first.MakeArray(i64, 2);
+    EXPECT_EQ(first.MakeArray(i64, 2), array);
+    // The base did not get it, so another child makes its own.
+    EXPECT_NE(second.MakeArray(i64, 2), array);
+}
+
+TEST(TypeFactory, FrozenFactoryCreatesAndChangesNoType) {
+    auto base = std::make_shared<TTypeFactory>();
+    auto i64 = base->MakeInteger();
+    auto incomplete = base->MakeNamed("X");
+    auto unreferenced = base->MakeNamed("Y", i64);
+    base->Freeze();
+
+    EXPECT_EQ(base->MakeInteger(), i64);
+    EXPECT_THROW(base->MakeArray(i64, 2), std::runtime_error);
+    EXPECT_THROW(base->MakeCustom<TCustomType>(), std::runtime_error);
+    EXPECT_THROW(base->MakeNamed("X", i64), std::runtime_error);
+    EXPECT_THROW(base->MakeNamed("Y", i64, {}, "Module"), std::runtime_error);
+    // An unfrozen base could still create a type that a child has already made.
+    EXPECT_THROW(TTypeFactory child(std::make_shared<TTypeFactory>()), std::runtime_error);
+
+    // Completing a base type gives the child its own object; the base type stays as it is.
+    TTypeFactory child(base);
+    auto completed = child.MakeNamed("X", i64);
+    EXPECT_NE(completed, incomplete);
+    EXPECT_EQ(completed->UnderlyingType(), i64);
+    EXPECT_EQ(child.MakeNamed("X"), completed);
+    EXPECT_FALSE(incomplete->UnderlyingType());
+    auto referenced = child.MakeNamed("Y", nullptr, {}, "Module");
+    EXPECT_NE(referenced, unreferenced);
+    EXPECT_EQ(referenced->UnderlyingType(), i64);
+    EXPECT_EQ(referenced->Reference(), "Module");
+    EXPECT_FALSE(unreferenced->Reference());
+    EXPECT_TRUE(child.MakeArray(i64, 2));
+}
+
+TEST(TypeFactory, NamedTypesWithArgumentsComeFromTheBase) {
+    auto base = std::make_shared<TTypeFactory>();
+    auto i64 = base->MakeInteger();
+    auto layout = base->MakeStruct({{"Value", i64}, {"Valid", base->Make<TBoolType>()}});
+    auto decimal = base->MakeNamed("DECIMAL", nullptr, {TGenericArg::ValueArg("15"), TGenericArg::ValueArg("2")});
+    auto nullable = base->MakeNamed("Nullable", layout, {TGenericArg::TypeArg(i64)});
+    base->Freeze();
+
+    TTypeFactory child(base);
+    TTypeFactory other(base);
+    EXPECT_EQ(child.MakeNamed("DECIMAL", nullptr, {TGenericArg::ValueArg("15"), TGenericArg::ValueArg("2")}), decimal);
+    EXPECT_EQ(child.MakeNamed("Nullable", layout, {TGenericArg::TypeArg(child.MakeInteger())}), nullable);
+    EXPECT_EQ(child.MakeNamed("Nullable", nullptr, {TGenericArg::TypeArg(i64)}), nullable);
+
+    auto scale3 = child.MakeNamed("DECIMAL", nullptr, {TGenericArg::ValueArg("15"), TGenericArg::ValueArg("3")});
+    EXPECT_NE(scale3, decimal);
+    EXPECT_NE(other.MakeNamed("DECIMAL", nullptr, {TGenericArg::ValueArg("15"), TGenericArg::ValueArg("3")}), scale3);
+
+    // A redefinition replaces the base type in that child only.
+    auto redefined = child.MakeNamed("Nullable", i64, {TGenericArg::TypeArg(i64)});
+    EXPECT_NE(redefined, nullable);
+    EXPECT_EQ(child.MakeNamed("Nullable", nullptr, {TGenericArg::TypeArg(i64)}), redefined);
+    EXPECT_EQ(other.MakeNamed("Nullable", nullptr, {TGenericArg::TypeArg(i64)}), nullable);
+    EXPECT_EQ(nullable->UnderlyingType(), layout);
+}
+
 TEST(TypeFactory, PointersAreHashableAndOrdered) {
     TTypeFactory types;
     std::unordered_set<TTypePtr> set{types.MakeInteger(), types.MakeInteger(), types.Make<TBoolType>()};
