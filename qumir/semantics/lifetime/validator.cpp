@@ -192,7 +192,7 @@ private:
                 Parameters_.insert(parameter.Get());
             }
             auto result = ValidateNode(
-                function.Cast()->Body,
+                function.Cast()->BodyExpr(),
                 TScopeId{function.Cast()->Scope},
                 false);
             for (const auto& parameter : function.Cast()->Params) {
@@ -222,10 +222,10 @@ private:
             {
                 return result;
             }
-            if (variable.Cast()->Init) {
+            if (variable.Cast()->Init()) {
                 if (LifetimeMode_
                     && NeedsDestroy(expr)
-                    && TMaybeNode<TStringLiteralExpr>(variable.Cast()->Init))
+                    && TMaybeNode<TStringLiteralExpr>(variable.Cast()->Init()))
                 {
                     return Fail(expr,
                         "Raw string literal requires own-literal before entering owned storage.");
@@ -235,19 +235,19 @@ private:
                 if (LifetimeMode_
                     && traits
                     && !traits->CanCopy
-                    && ManagedValueKind(variable.Cast()->Init) == EManagedValueKind::Borrowed)
+                    && ManagedValueKind(variable.Cast()->Init()) == EManagedValueKind::Borrowed)
                 {
                     return Fail(expr, "Unique value cannot be copied.");
                 }
                 if (auto result = ValidateNode(
-                    variable.Cast()->Init,
+                    variable.Cast()->Init(),
                     scopeId,
                     NeedsDestroy(expr)); !result)
                 {
                     return result;
                 }
             }
-            for (const auto& bound : variable.Cast()->Bounds) {
+            for (const auto& bound : variable.Cast()->Bounds()) {
                 if (auto result = ValidateNode(bound.first, scopeId, false); !result) {
                     return result;
                 }
@@ -301,52 +301,52 @@ private:
         }
         if (auto destroy = TMaybeNode<TDestroyExpr>(expr)) {
             TLifetimeTraits storage;
-            const auto* traits = TryTraits(destroy.Cast()->Value->Type, storage);
+            const auto* traits = TryTraits(destroy.Cast()->Value()->Type, storage);
             if (!traits || !traits->NeedsDestroy) {
                 return Fail(expr, "destroy requires a managed value.");
             }
-            if (ManagedValueKind(destroy.Cast()->Value) != EManagedValueKind::Owned
-                && !IsOwnedStorage(destroy.Cast()->Value, scopeId))
+            if (ManagedValueKind(destroy.Cast()->Value()) != EManagedValueKind::Owned
+                && !IsOwnedStorage(destroy.Cast()->Value(), scopeId))
             {
                 return Fail(expr, "destroy cannot consume a borrowed value.");
             }
-            if (auto result = ValidateNode(destroy.Cast()->Value, scopeId, true); !result) {
+            if (auto result = ValidateNode(destroy.Cast()->Value(), scopeId, true); !result) {
                 return result;
             }
-            return ValidateNode(destroy.Cast()->Aux, scopeId, false);
+            return ValidateNode(destroy.Cast()->Aux(), scopeId, false);
         }
         if (auto replace = TMaybeNode<TReplaceExpr>(expr)) {
             TLifetimeTraits storage;
-            const auto* traits = TryTraits(replace.Cast()->Target->Type, storage);
+            const auto* traits = TryTraits(replace.Cast()->Target()->Type, storage);
             if (!traits || !traits->NeedsDestroy) {
                 return Fail(expr, "replace requires managed storage.");
             }
-            if (ManagedValueKind(replace.Cast()->Value) != EManagedValueKind::Owned) {
+            if (ManagedValueKind(replace.Cast()->Value()) != EManagedValueKind::Owned) {
                 if (!traits->CanCopy) {
                     return Fail(expr, "Unique value cannot be copied.");
                 }
-                if (TMaybeNode<TStringLiteralExpr>(replace.Cast()->Value)) {
+                if (TMaybeNode<TStringLiteralExpr>(replace.Cast()->Value())) {
                     return Fail(expr,
                         "Raw string literal requires own-literal before entering owned storage.");
                 }
                 return Fail(expr, "replace requires an owned value.");
             }
-            if (auto result = ValidateNode(replace.Cast()->Target, scopeId, false); !result) {
+            if (auto result = ValidateNode(replace.Cast()->Target(), scopeId, false); !result) {
                 return result;
             }
-            return ValidateNode(replace.Cast()->Value, scopeId, true);
+            return ValidateNode(replace.Cast()->Value(), scopeId, true);
         }
         if (auto exit = TMaybeNode<TCleanupExitExpr>(expr)) {
-            if (exit.Cast()->Value
-                && NeedsDestroy(exit.Cast()->Value)
-                && ManagedValueKind(exit.Cast()->Value) != EManagedValueKind::Owned)
+            if (exit.Cast()->Value()
+                && NeedsDestroy(exit.Cast()->Value())
+                && ManagedValueKind(exit.Cast()->Value()) != EManagedValueKind::Owned)
             {
                 return Fail(expr, "Managed return value must be owned.");
             }
-            if (auto result = ValidateNode(exit.Cast()->Value, scopeId, true); !result) {
+            if (auto result = ValidateNode(exit.Cast()->Value(), scopeId, true); !result) {
                 return result;
             }
-            for (const auto& cleanup : exit.Cast()->Cleanups) {
+            for (const auto& cleanup : exit.Cast()->Cleanups()) {
                 if (auto result = ValidateNode(cleanup, scopeId, false); !result) {
                     return result;
                 }

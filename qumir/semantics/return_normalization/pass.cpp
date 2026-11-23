@@ -20,14 +20,14 @@ bool IsVoidReturn(const TFunDecl& function) {
 
 // Replaces one function's fallthrough with an explicit return.
 bool NormalizeFunction(TFunDecl* function) {
-    if (!function->Body || function->IsExternal() || AlwaysReturns(function->Body)) {
+    if (!function->BodyExpr() || function->IsExternal() || AlwaysReturns(function->BodyExpr())) {
         return false;
     }
 
-    auto& statements = function->Body->Stmts;
+    auto& statements = function->Body()->Stmts;
     if (IsVoidReturn(*function)) {
         statements.push_back(MakeIntrusive<TReturnExpr>(
-            function->Body->Location,
+            function->Body()->Location,
             nullptr));
         return true;
     }
@@ -54,9 +54,9 @@ bool NormalizeFunctions(const TExprPtr& expr) {
         // Nested declarations in the body are visited independently below.
         auto function = maybeFunction.Cast();
         bool changed = NormalizeFunction(function);
-        TExprPtr body = function->Body;
+        TExprPtr body = function->BodyExpr();
         changed = NormalizeFunctions(body) || changed;
-        function->Body = TExprPtrOf<TBlockExpr>(TMaybeNode<TBlockExpr>(body).Cast());
+        function->BodyExpr() = TExprPtrOf<TBlockExpr>(TMaybeNode<TBlockExpr>(body).Cast());
         return changed;
     }
 

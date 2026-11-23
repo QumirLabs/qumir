@@ -98,17 +98,17 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
             if (auto maybeCall = NAst::TMaybeNode<NAst::TCallExpr>(node)) {
                 auto call = maybeCall.Cast();
                 if (call->Type) { // only inline already-annotated calls
-                    if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(call->Callee)) {
+                    if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(call->Callee())) {
                         auto symId = context.Lookup(maybeIdent.Cast()->Name, NSemantics::TScopeId{0});
                         if (symId) {
                             auto symNode = context.GetSymbolNode(NSemantics::TSymbolId{symId->Id});
                             if (auto maybeFunDecl = NAst::TMaybeNode<NAst::TFunDecl>(symNode)) {
                                 auto funDecl = maybeFunDecl.Cast();
                                 if (funDecl->InlineFactory) {
-                                    bool argsReady = std::all_of(call->Args.begin(), call->Args.end(),
+                                    bool argsReady = std::all_of(call->Args().begin(), call->Args().end(),
                                         [](const NAst::TExprPtr& a){ return a && a->Type; });
                                     if (argsReady) {
-                                        return (*funDecl->InlineFactory)(call->Args);
+                                        return (*funDecl->InlineFactory)(std::ranges::to<std::vector>(call->Args()));
                                     }
                                 }
                             }
@@ -121,12 +121,12 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
             // Transform string element assignment: s[i] = 'c' => s = str_replace_sym(s, 'c', i)
             if (auto maybeArrayAssign = NAst::TMaybeNode<NAst::TArrayAssignExpr>(node)) {
                 auto arrayAssign = maybeArrayAssign.Cast();
-                const auto& unrefType = UnwrapReferenceType(arrayAssign->Value->Type);
+                const auto& unrefType = UnwrapReferenceType(arrayAssign->Value()->Type);
                 auto maybeSymbolType = NAst::TMaybeType<NAst::TSymbolType>(unrefType);
                 if (!maybeSymbolType) {
                     return node;
                 }
-                if (arrayAssign->Indices.size() != 1) {
+                if (arrayAssign->Indices().size() != 1) {
                     errors.push_back(TError(arrayAssign->Location, "string element assignment must have exactly one index"));
                     return node;
                 }
@@ -134,8 +134,8 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                     MakeIntrusive<NAst::TIdentExpr>(arrayAssign->Location, "str_replace_sym"),
                     std::vector<NAst::TExprPtr>{
                         MakeIntrusive<NAst::TIdentExpr>(arrayAssign->Location, arrayAssign->Name),
-                        arrayAssign->Value,
-                        arrayAssign->Indices[0]});
+                        arrayAssign->Value(),
+                        arrayAssign->Indices()[0]});
 
                 auto assign = MakeIntrusive<NAst::TAssignExpr>(arrayAssign->Location,
                     arrayAssign->Name,
@@ -145,8 +145,8 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
             if (auto maybeBinary = NAst::TMaybeNode<NAst::TBinaryExpr>(node)) {
                 auto binary = maybeBinary.Cast();
 
-                const auto& leftType = UnwrapReferenceType(binary->Left->Type);
-                const auto& rightType = UnwrapReferenceType(binary->Right->Type);
+                const auto& leftType = UnwrapReferenceType(binary->Left()->Type);
+                const auto& rightType = UnwrapReferenceType(binary->Right()->Type);
                 bool leftStr = NAst::TMaybeType<NAst::TStringType>(leftType);
                 bool rightStr = NAst::TMaybeType<NAst::TStringType>(rightType);
 
@@ -155,13 +155,13 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                     if (binary->Operator == NAst::TOperator("+")) {
                         auto call = MakeIntrusive<NAst::TCallExpr>(binary->Location,
                             MakeIntrusive<NAst::TIdentExpr>(binary->Location, "str_concat"),
-                            std::vector<NAst::TExprPtr>{binary->Left, binary->Right});
+                            std::vector<NAst::TExprPtr>{binary->Left(), binary->Right()});
                         return call;
                     }
                     if ((binary->Operator == "==" || binary->Operator == "!=" || binary->Operator == "<=" || binary->Operator == ">=" || binary->Operator == "<" || binary->Operator == ">")) {
                         auto call = MakeIntrusive<NAst::TCallExpr>(binary->Location,
                             MakeIntrusive<NAst::TIdentExpr>(binary->Location, "str_compare"),
-                            std::vector<NAst::TExprPtr>{binary->Left, binary->Right});
+                            std::vector<NAst::TExprPtr>{binary->Left(), binary->Right()});
                         std::vector<NAst::TExprPtr> args;
                         args.push_back(call);
                         args.push_back(MakeIntrusive<NAst::TNumberExpr>(binary->Location, (int64_t)0, context.Types()));
@@ -173,12 +173,12 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 auto output = maybeOutput.Cast();
                 // transform output(a, b, c) into a series of calls to output_xxx functions
                 std::vector<NAst::TExprPtr> stmts;
-                if (output->Args.size() == 0) {
+                if (output->Args().size() == 0) {
                     errors.push_back(TError(output->Location, "output requires at least one argument"));
                     return node;
                 }
                 int i = 0;
-                const auto& arg0 = output->Args[0];
+                const auto& arg0 = output->Args()[0];
                 bool hasFileArg = false;
                 if (IsFileType(arg0.Expr->Type)) {
                     // first argument is a file, set output file
@@ -191,8 +191,8 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                     i = 1;
                 }
 
-                for (; i < (int)output->Args.size(); ++i) {
-                    const auto& arg = output->Args[i];
+                for (; i < (int)output->Args().size(); ++i) {
+                    const auto& arg = output->Args()[i];
                     NAst::TExprPtr call;
                     auto type = arg.Expr->Type;
                     if (auto refType = NAst::TMaybeType<NAst::TReferenceType>(type)) {
@@ -362,7 +362,7 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                             call);
                     } else if (auto maybeIndex = NAst::TMaybeNode<NAst::TIndexExpr>(arg)) {
                         auto index = maybeIndex.Cast();
-                        auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection);
+                        auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection());
                         if (!maybeIdent) {
                             errors.push_back(TError(arg->Location, "input argument index expression must index an identifier"));
                             continue;
@@ -372,11 +372,11 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         call = MakeIntrusive<NAst::TArrayAssignExpr>(
                             input->Location,
                             ident->Name,
-                            std::vector<NAst::TExprPtr>{index->Index},
+                            std::vector<NAst::TExprPtr>{index->Index()},
                             call);
                     } else if (auto maybeMultiIndex = NAst::TMaybeNode<NAst::TMultiIndexExpr>(arg)) {
                         auto multiIndex = maybeMultiIndex.Cast();
-                        auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(multiIndex->Collection);
+                        auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(multiIndex->Collection());
                         if (!maybeIdent) {
                             errors.push_back(TError(arg->Location, "input argument multi-index expression must index an identifier"));
                             continue;
@@ -386,7 +386,7 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                         call = MakeIntrusive<NAst::TArrayAssignExpr>(
                             input->Location,
                             ident->Name,
-                            auto(multiIndex->Indices),
+                            std::ranges::to<std::vector>(multiIndex->Indices()),
                             call);
                     } else {
                         errors.push_back(TError(arg->Location, "input argument must be an identifier or an index expression"));
@@ -406,27 +406,27 @@ std::expected<bool, TError> PostTypeAnnotationTransform(NAst::TExprPtr& expr, NS
                 return MakeIntrusive<NAst::TBlockExpr>(input->Location, std::move(stmts));
             } else if (auto maybeIndex = NAst::TMaybeNode<NAst::TIndexExpr>(node)) {
                 auto index = maybeIndex.Cast();
-                const auto& collectionType = UnwrapReferenceType(index->Collection->Type);
+                const auto& collectionType = UnwrapReferenceType(index->Collection()->Type);
                 if (NAst::TMaybeType<NAst::TStringType>(collectionType)) {
                     // rewrite to str_symbol_at(collection, index)
                     auto funcNameIdent = MakeIntrusive<NAst::TIdentExpr>(index->Location, "str_symbol_at");
                     auto symbolAt = MakeIntrusive<NAst::TCallExpr>(index->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
-                        index->Collection,
-                        index->Index,
+                        index->Collection(),
+                        index->Index(),
                     });
                     symbolAt->Type = index->Type;
                     return symbolAt;
                 }
             } else if (auto maybeSlice = NAst::TMaybeNode<NAst::TSliceExpr>(node)) {
                 auto slice = maybeSlice.Cast();
-                const auto& collectionType = UnwrapReferenceType(slice->Collection->Type);
+                const auto& collectionType = UnwrapReferenceType(slice->Collection()->Type);
                 if (NAst::TMaybeType<NAst::TStringType>(collectionType)) {
                     // rewrite to str_slice(collection, start, end)
                     auto funcNameIdent = MakeIntrusive<NAst::TIdentExpr>(slice->Location, "str_slice");
                     auto sliceCall = MakeIntrusive<NAst::TCallExpr>(slice->Location, funcNameIdent, std::vector<NAst::TExprPtr>{
-                        slice->Collection,
-                        slice->Start,
-                        slice->End
+                        slice->Collection(),
+                        slice->Start(),
+                        slice->End()
                     });
                     sliceCall->Type = slice->Type;
                     return sliceCall;
@@ -497,8 +497,8 @@ std::expected<bool, TError> PostNameResolutionTransform(NAst::TExprPtr& expr, NS
         }
         if (auto maybeCall = NAst::TMaybeNode<NAst::TCallExpr>(node)) {
             auto call = maybeCall.Cast();
-            if (call->Callee) {
-                callCallees.insert(call->Callee.Get());
+            if (call->Callee()) {
+                callCallees.insert(call->Callee().Get());
             }
         }
         for (const auto& child : node->Children()) {
@@ -588,7 +588,7 @@ struct TCoroutineAnalysis {
         }
         if (auto maybeFun = NAst::TMaybeNode<NAst::TFunDecl>(expr)) {
             auto fun = maybeFun.Cast();
-            if (fun->Body) {
+            if (fun->BodyExpr()) {
                 Functions.push_back(NAst::TExprPtrOf<NAst::TFunDecl>(fun));
                 UserFunctions.insert(fun);
                 FunctionPtrs[fun] = Functions.back();
@@ -622,10 +622,10 @@ struct TCoroutineAnalysis {
 
     void AnalyzeFunction(const NAst::TExprPtrOf<NAst::TFunDecl>& funDecl)
     {
-        if (!funDecl->Body) {
+        if (!funDecl->BodyExpr()) {
             return;
         }
-        AnalyzeExpr(funDecl->Body, funDecl.Get(), NSemantics::TScopeId{funDecl->Body->Scope});
+        AnalyzeExpr(funDecl->BodyExpr(), funDecl.Get(), NSemantics::TScopeId{funDecl->Body()->Scope});
     }
 
     void AnalyzeExpr(const NAst::TExprPtr& expr, NAst::TFunDecl* currentFunction, NSemantics::TScopeId scopeId)
@@ -645,12 +645,12 @@ struct TCoroutineAnalysis {
             }
         } else if (auto maybeCall = NAst::TMaybeNode<NAst::TCallExpr>(expr)) {
             auto call = maybeCall.Cast();
-            if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(call->Callee)) {
+            if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(call->Callee())) {
                 if (auto callee = LookupFunction(*maybeIdent.Cast(), scopeId)) {
                     if (NAst::IsFutureType(callee->RetType)) {
                         DirectCoroutineFunctions.insert(currentFunction);
                     }
-                    if (callee->Body) {
+                    if (callee->BodyExpr()) {
                         Calls[currentFunction].insert(callee);
                     }
                 }
@@ -698,7 +698,7 @@ struct TCoroutineAnalysis {
 
     bool IsSuspendCall(const NAst::TCallExpr& call, NSemantics::TScopeId scopeId)
     {
-        if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(call.Callee)) {
+        if (auto maybeIdent = NAst::TMaybeNode<NAst::TIdentExpr>(call.Callee())) {
             if (auto callee = LookupFunction(*maybeIdent.Cast(), scopeId)) {
                 return NAst::IsFutureType(callee->RetType);
             }
@@ -716,12 +716,12 @@ struct TCoroutineAnalysis {
         }
         if (auto maybeFun = NAst::TMaybeNode<NAst::TFunDecl>(expr)) {
             auto fun = maybeFun.Cast();
-            if (!fun->Body) {
+            if (!fun->BodyExpr()) {
                 return;
             }
-            NAst::TExprPtr body = fun->Body;
-            MarkAwaitCalls(body, NSemantics::TScopeId{fun->Body->Scope});
-            fun->Body = NAst::TExprPtrOf<NAst::TBlockExpr>(NAst::TMaybeNode<NAst::TBlockExpr>(body).Cast());
+            NAst::TExprPtr body = fun->BodyExpr();
+            MarkAwaitCalls(body, NSemantics::TScopeId{fun->Body()->Scope});
+            fun->BodyExpr() = NAst::TExprPtrOf<NAst::TBlockExpr>(NAst::TMaybeNode<NAst::TBlockExpr>(body).Cast());
             return;
         }
         if (auto maybeBlock = NAst::TMaybeNode<NAst::TBlockExpr>(expr)) {
@@ -731,8 +731,8 @@ struct TCoroutineAnalysis {
             }
         } else if (auto maybeCall = NAst::TMaybeNode<NAst::TCallExpr>(expr)) {
             auto call = maybeCall.Cast();
-            for (auto* child : call->MutableChildren()) {
-                MarkAwaitCalls(*child, scopeId);
+            for (auto& child : call->MutableChildren()) {
+                MarkAwaitCalls(child, scopeId);
             }
             if (IsSuspendCall(*call, scopeId)) {
                 expr = MakeIntrusive<NAst::TAwaitExpr>(call->Location, expr);
@@ -740,8 +740,8 @@ struct TCoroutineAnalysis {
             }
             return;
         }
-        for (auto* child : expr->MutableChildren()) {
-            MarkAwaitCalls(*child, scopeId);
+        for (auto& child : expr->MutableChildren()) {
+            MarkAwaitCalls(child, scopeId);
         }
     }
 };

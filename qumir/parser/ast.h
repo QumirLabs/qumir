@@ -2,11 +2,14 @@
 
 #include <string>
 #include <memory>
+#include <array>
 #include <vector>
 #include <sstream>
 #include <iostream>
 #include <functional>
 #include <optional>
+#include <ranges>
+#include <span>
 
 #include <qumir/location.h>
 #include <qumir/ptr.h>
@@ -80,10 +83,10 @@ struct TExpr : TRefCounted<TExpr> {
         , Type(std::move(type))
     { }
     virtual ~TExpr() = default;
-    virtual std::vector<TExprPtr> Children() const {
+    virtual std::span<const TExprPtr> Children() const {
         return {};
     }
-    virtual std::vector<TExprPtr*> MutableChildren() {
+    virtual std::span<TExprPtr> MutableChildren() {
         return {};
     }
     virtual const std::string_view NodeName() const = 0;
@@ -132,12 +135,12 @@ struct TAssignExpr : TExpr {
         , Value(v)
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Value };
+    std::span<const TExprPtr> Children() const override {
+        return { &Value, 1 };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Value };
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Value, 1 };
     }
 
     const std::string_view NodeName() const override {
@@ -155,28 +158,29 @@ struct TArrayAssignExpr : TExpr {
     static constexpr const char* NodeId = "ArrayAssign";
 
     std::string Name;
-    std::vector<TExprPtr> Indices;
-    TExprPtr Value;
+    std::vector<TExprPtr> Operands;
     TArrayAssignExpr(TLocation loc, std::string n, std::vector<TExprPtr>&& idxs, const TExprPtr& v)
         : TExpr(std::move(loc))
         , Name(std::move(n))
-        , Indices(std::move(idxs))
-        , Value(v)
-    { }
-
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> children = Indices;
-        children.push_back(Value);
-        return children;
+        , Operands(std::move(idxs))
+    {
+        Operands.push_back(v);
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> children;
-        for (auto& idx : Indices) {
-            children.push_back(&idx);
-        }
-        children.push_back(&Value);
-        return children;
+    auto Indices(this auto& self) {
+        return std::span(self.Operands).first(self.Operands.size() - 1);
+    }
+
+    auto& Value(this auto& self) {
+        return self.Operands.back();
+    }
+
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
+    }
+
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     const std::string_view NodeName() const override {
@@ -237,17 +241,12 @@ struct TVectorExpr : TExpr {
         : TExpr(std::move(loc)), Elements(std::move(elems))
     { }
 
-    std::vector<TExprPtr> Children() const override {
+    std::span<const TExprPtr> Children() const override {
         return Elements;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(Elements.size());
-        for (auto& elem : Elements) {
-            result.push_back(&elem);
-        }
-        return result;
+    std::span<TExprPtr> MutableChildren() override {
+        return Elements;
     }
 
     const std::string_view NodeName() const override {
@@ -310,12 +309,12 @@ struct TUnaryExpr : TExpr {
         , Operand(e)
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Operand };
+    std::span<const TExprPtr> Children() const override {
+        return { &Operand, 1 };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Operand };
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Operand, 1 };
     }
 
     const std::string_view NodeName() const override {
@@ -333,21 +332,22 @@ struct TBinaryExpr : TExpr {
     static constexpr const char* NodeId = "Binary";
 
     TOperator Operator;
-    TExprPtr Left;
-    TExprPtr Right;
+    std::array<TExprPtr, 2> Operands;
     TBinaryExpr(TLocation loc, TOperator o, const TExprPtr& l, const TExprPtr& r)
         : TExpr(std::move(loc))
         , Operator(o)
-        , Left(l)
-        , Right(r)
+        , Operands{l, r}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Left, Right };
+    auto& Left(this auto& self) { return self.Operands[0]; }
+    auto& Right(this auto& self) { return self.Operands[1]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Left, &Right };
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     const std::string_view NodeName() const override {
@@ -372,22 +372,12 @@ struct TBlockExpr : TExpr {
         , Stmts(std::move(s))
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> result;
-        result.reserve(Stmts.size());
-        for (const auto& stmt : Stmts) {
-            result.push_back(stmt);
-        }
-        return result;
+    std::span<const TExprPtr> Children() const override {
+        return Stmts;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(Stmts.size());
-        for (auto& stmt : Stmts) {
-            result.push_back(&stmt);
-        }
-        return result;
+    std::span<TExprPtr> MutableChildren() override {
+        return Stmts;
     }
 
     const std::string_view NodeName() const override {
@@ -400,24 +390,23 @@ struct TBlockExpr : TExpr {
 struct TIfExpr : TExpr {
     static constexpr const char* NodeId = "IfExpr";
 
-    TExprPtr Cond;
-    TExprPtr Then;
-    TExprPtr Else;
+    std::array<TExprPtr, 3> Branches; // Cond, Then, Else (optional)
+
     TIfExpr(TLocation loc, const TExprPtr& c, const TExprPtr& t, const TExprPtr& e)
         : TExpr(std::move(loc))
-        , Cond(c)
-        , Then(t)
-        , Else(e)
+        , Branches{c, t, e}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        if (Else) return { Cond, Then, Else };
-        return { Cond, Then };
+    auto& Cond(this auto& self) { return self.Branches[0]; }
+    auto& Then(this auto& self) { return self.Branches[1]; }
+    auto& Else(this auto& self) { return self.Branches[2]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return std::span(Branches).first(Branches[2] ? 3 : 2);
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        if (Else) return { &Cond, &Then, &Else };
-        return { &Cond, &Then };
+    std::span<TExprPtr> MutableChildren() override {
+        return std::span(Branches).first(Branches[2] ? 3 : 2);
     }
 
     const std::string_view NodeName() const override {
@@ -430,21 +419,22 @@ struct TIfExpr : TExpr {
 struct TWhileStmtExpr : TExpr {
     static constexpr const char* NodeId = "WhileStmt";
 
-    TExprPtr Cond;
-    TExprPtr Body;
+    std::array<TExprPtr, 2> Bodies; // Cond, Body
 
     TWhileStmtExpr(TLocation loc, const TExprPtr& cond, const TExprPtr& body)
         : TExpr(std::move(loc))
-        , Cond(cond)
-        , Body(body)
+        , Bodies{cond, body}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Cond, Body };
+    auto& Cond(this auto& self) { return self.Bodies[0]; }
+    auto& Body(this auto& self) { return self.Bodies[1]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Bodies;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Cond, &Body };
+    std::span<TExprPtr> MutableChildren() override {
+        return Bodies;
     }
 
     const std::string_view NodeName() const override {
@@ -457,21 +447,22 @@ struct TWhileStmtExpr : TExpr {
 struct TRepeatStmtExpr : TExpr {
     static constexpr const char* NodeId = "RepeatStmt";
 
-    TExprPtr Body;
-    TExprPtr Cond;
+    std::array<TExprPtr, 2> Bodies; // Body, Cond
 
     TRepeatStmtExpr(TLocation loc, const TExprPtr& body, const TExprPtr& cond)
         : TExpr(std::move(loc))
-        , Body(body)
-        , Cond(cond)
+        , Bodies{body, cond}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Body, Cond };
+    auto& Body(this auto& self) { return self.Bodies[0]; }
+    auto& Cond(this auto& self) { return self.Bodies[1]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Bodies;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Body, &Cond };
+    std::span<TExprPtr> MutableChildren() override {
+        return Bodies;
     }
 
     const std::string_view NodeName() const override {
@@ -485,26 +476,26 @@ struct TForStmtExpr : TExpr {
     static constexpr const char* NodeId = "ForStmt";
 
     std::string VarName;
-    TExprPtr From;
-    TExprPtr To;
-    TExprPtr Step;
-    TExprPtr Body;
+
+    std::array<TExprPtr, 4> Bodies; // From, To, Step, Body
 
     TForStmtExpr(TLocation loc, std::string varName, const TExprPtr& from, const TExprPtr& to, const TExprPtr& step, const TExprPtr& body)
         : TExpr(std::move(loc))
         , VarName(std::move(varName))
-        , From(from)
-        , To(to)
-        , Step(step)
-        , Body(body)
+        , Bodies{from, to, step, body}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { From, To, Step, Body };
+    auto& From(this auto& self) { return self.Bodies[0]; }
+    auto& To(this auto& self) { return self.Bodies[1]; }
+    auto& Step(this auto& self) { return self.Bodies[2]; }
+    auto& Body(this auto& self) { return self.Bodies[3]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Bodies;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &From, &To, &Step, &Body };
+    std::span<TExprPtr> MutableChildren() override {
+        return Bodies;
     }
 
     const std::string_view NodeName() const override {
@@ -517,21 +508,22 @@ struct TForStmtExpr : TExpr {
 struct TTimesStmtExpr : TExpr {
     static constexpr const char* NodeId = "TimesStmt";
 
-    TExprPtr Count;
-    TExprPtr Body;
+    std::array<TExprPtr, 2> Bodies; // Count, Body
 
     TTimesStmtExpr(TLocation loc, const TExprPtr& count, const TExprPtr& body)
         : TExpr(std::move(loc))
-        , Count(count)
-        , Body(body)
+        , Bodies{count, body}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Count, Body };
+    auto& Count(this auto& self) { return self.Bodies[0]; }
+    auto& Body(this auto& self) { return self.Bodies[1]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Bodies;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Count, &Body };
+    std::span<TExprPtr> MutableChildren() override {
+        return Bodies;
     }
 
     const std::string_view NodeName() const override {
@@ -583,14 +575,12 @@ struct TReturnExpr : TExpr {
         return NodeId;
     }
 
-    std::vector<TExprPtr> Children() const override {
-        if (Value) { return { Value }; }
-        return {};
+    std::span<const TExprPtr> Children() const override {
+        return { &Value, Value ? 1u : 0u };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        if (Value) { return { &Value }; }
-        return {};
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Value, Value ? 1u : 0u };
     }
 
     void Accept(IVisitor& visitor) override;
@@ -600,38 +590,49 @@ struct TVarStmt : TExpr {
     static constexpr const char* NodeId = "Var";
 
     std::string Name;
-    std::vector<std::pair<TExprPtr, TExprPtr>> Bounds; // for array types
-    TExprPtr Init; // for (var name = expr) form; type inferred from Init
+    static constexpr size_t BoundsOffset = 1;
+    std::vector<TExprPtr> Operands; // Init (optional), then lower and upper of each array bound
     TAccess Access; // readable/mutable; parameters: арг = {true,false}, рез = {false,true}, арг рез = {true,true}
 
     TVarStmt(TLocation loc, std::string name, NAst::TTypePtr type, std::vector<std::pair<TExprPtr, TExprPtr>>&& bounds = {})
         : TExpr(std::move(loc), std::move(type))
         , Name(std::move(name))
-        , Bounds(std::move(bounds))
-    { }
+    {
+        Operands.reserve(BoundsOffset + 2 * bounds.size());
+        Operands.emplace_back();
+        for (auto& [lower, upper] : bounds) {
+            Operands.push_back(std::move(lower));
+            Operands.push_back(std::move(upper));
+        }
+    }
+
+    // for (var name = expr) form; type inferred from Init
+    auto& Init(this auto& self) { return self.Operands[0]; }
+
+    auto Bounds(this auto& self) {
+        auto* slots = self.Operands.data() + BoundsOffset;
+        using TSlot = decltype((*slots));
+        return std::views::iota(size_t{0}, (self.Operands.size() - BoundsOffset) / 2)
+            | std::views::transform([slots](size_t i) {
+                return std::pair<TSlot, TSlot>(slots[2 * i], slots[2 * i + 1]);
+            });
+    }
+
+    void AddBound(const TExprPtr& lower, const TExprPtr& upper) {
+        Operands.push_back(lower);
+        Operands.push_back(upper);
+    }
 
     const std::string_view NodeName() const override {
         return NodeId;
     }
 
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> result;
-        if (Init) { result.push_back(Init); }
-        for (const auto& b : Bounds) {
-            result.push_back(b.first);
-            result.push_back(b.second);
-        }
-        return result;
+    std::span<const TExprPtr> Children() const override {
+        return std::span(Operands).subspan(Operands[0] ? 0 : BoundsOffset);
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        if (Init) { result.push_back(&Init); }
-        for (auto& b : Bounds) {
-            result.push_back(&b.first);
-            result.push_back(&b.second);
-        }
-        return result;
+    std::span<TExprPtr> MutableChildren() override {
+        return std::span(Operands).subspan(Operands[0] ? 0 : BoundsOffset);
     }
 
     const std::string ToString() const override {
@@ -652,17 +653,12 @@ struct TVarsBlockExpr : TExpr {
         , Vars(std::move(vars))
     { }
 
-    std::vector<TExprPtr> Children() const override {
+    std::span<const TExprPtr> Children() const override {
         return Vars;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(Vars.size());
-        for (auto& var : Vars) {
-            result.push_back(&var);
-        }
-        return result;
+    std::span<TExprPtr> MutableChildren() override {
+        return Vars;
     }
 
     const std::string_view NodeName() const override {
@@ -693,8 +689,7 @@ struct TFunDecl : TExpr {
     std::string MangledName;
     std::vector<TGenericParam> GenericParams;
     std::vector<TParam> Params;
-    TExprPtrOf<TBlockExpr> Body;
-    TExprPtrOf<TExpr> LastAssert = nullptr; // last assert in function body, executed before return
+    std::array<TExprPtr, 2> Operands; // Body, LastAssert (optional, executed before return)
     using TPacked = uint64_t(*)(const uint64_t* args, size_t argCount);
     TPacked Packed = nullptr; // packed thunk for built-in functions
     using TInlineFactory = std::function<TExprPtr(std::vector<TExprPtr>)>;
@@ -725,32 +720,28 @@ struct TFunDecl : TExpr {
         , Name(std::move(name))
         , GenericParams(std::move(genericParams))
         , Params(std::move(args))
-        , Body(body)
+        , Operands{body, nullptr}
         , RetType(std::move(type))
     { }
+
+    TBlockExpr* Body() const { return static_cast<TBlockExpr*>(Operands[0].Get()); }
+    auto& BodyExpr(this auto& self) { return self.Operands[0]; }
+    auto& LastAssert(this auto& self) { return self.Operands[1]; }
 
     // A mangled/link symbol marks an external function, except a cacheable one
     // which carries a MangledName (its emit symbol) yet still has a body.
     // Bodyless but NOT external: inline/intrinsic builtins (InlineFactory/Packed,
     // no MangledName) - expanded at the call site, so nothing to lower or link.
     bool IsExternal() const {
-        return !MangledName.empty() && !(Cacheable && Body);
+        return !MangledName.empty() && !(Cacheable && Body());
     }
 
-    std::vector<TExprPtr> Children() const override {
-        if (LastAssert == nullptr) {
-            return { Body };
-        } else {
-            return { Body, LastAssert };
-        }
+    std::span<const TExprPtr> Children() const override {
+        return std::span(Operands).first(Operands[1] ? 2 : 1);
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        if (LastAssert == nullptr) {
-            return { reinterpret_cast<TExprPtr*>(&Body) };
-        } else {
-            return { reinterpret_cast<TExprPtr*>(&Body), reinterpret_cast<TExprPtr*>(&LastAssert) };
-        }
+    std::span<TExprPtr> MutableChildren() override {
+        return std::span(Operands).first(Operands[1] ? 2 : 1);
     }
 
     const std::string_view NodeName() const override {
@@ -784,32 +775,26 @@ struct TFunDecl : TExpr {
 struct TCallExpr : TExpr {
     static constexpr const char* NodeId = "Call";
 
-    TExprPtr Callee; // should evaluate to a function
-    std::vector<TExprPtr> Args;
+    static constexpr size_t ArgsOffset = 1;
+    std::vector<TExprPtr> Operands; // Callee, Args...
     TCallExpr(TLocation loc, const TExprPtr& c, std::vector<TExprPtr>&& a)
         : TExpr(std::move(loc))
-        , Callee(c)
-        , Args(std::move(a))
-    { }
-
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> result;
-        result.reserve(1 + Args.size());
-        result.push_back(Callee);
-        for (const auto& arg : Args) {
-            result.push_back(arg);
-        }
-        return result;
+    {
+        Operands.reserve(ArgsOffset + a.size());
+        Operands.push_back(c);
+        Operands.insert(Operands.end(), std::make_move_iterator(a.begin()), std::make_move_iterator(a.end()));
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(1 + Args.size());
-        result.push_back(&Callee);
-        for (auto& arg : Args) {
-            result.push_back(&arg);
-        }
-        return result;
+    // should evaluate to a function
+    auto& Callee(this auto& self) { return self.Operands[0]; }
+    auto Args(this auto& self) { return std::span(self.Operands).subspan(ArgsOffset); }
+
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
+    }
+
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     const std::string_view NodeName() const override {
@@ -828,12 +813,12 @@ struct TAwaitExpr : TExpr {
         , Operand(operand)
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Operand };
+    std::span<const TExprPtr> Children() const override {
+        return { &Operand, 1 };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Operand };
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Operand, 1 };
     }
 
     const std::string_view NodeName() const override {
@@ -855,22 +840,12 @@ struct TInputExpr : TExpr {
         Type = types.Make<TVoidType>();
     }
 
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> result;
-        result.reserve(Args.size());
-        for (const auto& arg : Args) {
-            result.push_back(arg);
-        }
-        return result;
+    std::span<const TExprPtr> Children() const override {
+        return Args;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(Args.size());
-        for (auto& arg : Args) {
-            result.push_back(&arg);
-        }
-        return result;
+    std::span<TExprPtr> MutableChildren() override {
+        return Args;
     }
 
     const std::string_view NodeName() const override {
@@ -887,45 +862,60 @@ struct TOutputArg {
     TExprPtr Precision; // optional precision expression
 };
 
+struct TOutputArgRef {
+    TExprPtr& Expr;
+    TExprPtr Width; // null if absent
+    TExprPtr Precision; // null if absent
+};
+
 struct TOutputExpr : TExpr {
     static constexpr const char* NodeId = "Output";
 
-    std::vector<TOutputArg> Args;
+    // Only set slots are stored: Expr, then Width, then Precision of each argument.
+    // Precision implies Width.
+    std::vector<TExprPtr> Operands;
+    std::vector<size_t> Starts; // Starts[i] = offset of argument i in Operands; one extra end entry
+
     TOutputExpr(TLocation loc, std::vector<TOutputArg>&& a, TTypeFactory& types)
         : TExpr(std::move(loc))
-        , Args(std::move(a))
     {
         Type = types.Make<TVoidType>();
-    }
-
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> result;
-        result.reserve(Args.size());
-        for (const auto& arg : Args) {
-            result.push_back(arg.Expr);
+        Operands.reserve(3 * a.size());
+        Starts.reserve(a.size() + 1);
+        for (auto& arg : a) {
+            Starts.push_back(Operands.size());
+            Operands.push_back(std::move(arg.Expr));
             if (arg.Width) {
-                result.push_back(arg.Width);
-            }
-            if (arg.Precision) {
-                result.push_back(arg.Precision);
+                Operands.push_back(std::move(arg.Width));
+                if (arg.Precision) {
+                    Operands.push_back(std::move(arg.Precision));
+                }
             }
         }
-        return result;
+        Starts.push_back(Operands.size());
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(Args.size());
-        for (auto& arg : Args) {
-            result.push_back(&arg.Expr);
-            if (arg.Width) {
-                result.push_back(&arg.Width);
-            }
-            if (arg.Precision) {
-                result.push_back(&arg.Precision);
-            }
-        }
-        return result;
+    auto Args() {
+        auto* slots = Operands.data();
+        const auto* starts = Starts.data();
+        return std::views::iota(size_t{0}, Starts.size() - 1)
+            | std::views::transform([slots, starts](size_t i) {
+                const size_t n = starts[i + 1] - starts[i];
+                auto* arg = slots + starts[i];
+                return TOutputArgRef{
+                    arg[0],
+                    n > 1 ? arg[1] : TExprPtr(),
+                    n > 2 ? arg[2] : TExprPtr(),
+                };
+            });
+    }
+
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
+    }
+
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     const std::string_view NodeName() const override {
@@ -947,14 +937,12 @@ struct TCastExpr : public TExpr {
         Type = target;
     }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Operand };
+    std::span<const TExprPtr> Children() const override {
+        return { &Operand, 1 };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.push_back(&Operand);
-        return result;
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Operand, 1 };
     }
 
     const std::string ToString() const override {
@@ -980,12 +968,12 @@ struct TBitcastExpr : public TExpr {
         Type = std::move(target);
     }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Operand };
+    std::span<const TExprPtr> Children() const override {
+        return { &Operand, 1 };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Operand };
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Operand, 1 };
     }
 
     const std::string_view NodeName() const override {
@@ -1002,21 +990,22 @@ inline TExprPtr MakeCast(const TExprPtr& e, const TTypePtr& to) {
 struct TIndexExpr : public TExpr {
     static constexpr const char* NodeId = "Index";
 
-    TExprPtr Collection;
-    TExprPtr Index;
+    std::array<TExprPtr, 2> Operands; // Collection, Index
 
     TIndexExpr(TLocation loc, const TExprPtr& collection, const TExprPtr& index)
         : TExpr(std::move(loc))
-        , Collection(collection)
-        , Index(index)
+        , Operands{collection, index}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Collection, Index };
+    auto& Collection(this auto& self) { return self.Operands[0]; }
+    auto& Index(this auto& self) { return self.Operands[1]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Collection, &Index };
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     const std::string_view NodeName() const override {
@@ -1029,33 +1018,26 @@ struct TIndexExpr : public TExpr {
 struct TMultiIndexExpr : public TExpr {
     static constexpr const char* NodeId = "MultiIndex";
 
-    TExprPtr Collection;
-    std::vector<TExprPtr> Indices;
+    static constexpr size_t IndicesOffset = 1;
+    std::vector<TExprPtr> Operands; // Collection, Indices...
 
     TMultiIndexExpr(TLocation loc, const TExprPtr& collection, std::vector<TExprPtr>&& indices)
         : TExpr(std::move(loc))
-        , Collection(collection)
-        , Indices(std::move(indices))
-    { }
-
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> result;
-        result.reserve(1 + Indices.size());
-        result.push_back(Collection);
-        for (const auto& index : Indices) {
-            result.push_back(index);
-        }
-        return result;
+    {
+        Operands.reserve(IndicesOffset + indices.size());
+        Operands.push_back(collection);
+        Operands.insert(Operands.end(), std::make_move_iterator(indices.begin()), std::make_move_iterator(indices.end()));
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(1 + Indices.size());
-        result.push_back(&Collection);
-        for (auto& index : Indices) {
-            result.push_back(&index);
-        }
-        return result;
+    auto& Collection(this auto& self) { return self.Operands[0]; }
+    auto Indices(this auto& self) { return std::span(self.Operands).subspan(IndicesOffset); }
+
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
+    }
+
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     const std::string_view NodeName() const override {
@@ -1068,23 +1050,23 @@ struct TMultiIndexExpr : public TExpr {
 struct TSliceExpr : public TExpr {
     static constexpr const char* NodeId = "Slice";
 
-    TExprPtr Collection;
-    TExprPtr Start;
-    TExprPtr End;
+    std::array<TExprPtr, 3> Operands; // Collection, Start, End
 
     TSliceExpr(TLocation loc, const TExprPtr& collection, const TExprPtr& start, const TExprPtr& end)
         : TExpr(std::move(loc))
-        , Collection(collection)
-        , Start(start)
-        , End(end)
+        , Operands{collection, start, end}
     { }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Collection, Start, End };
+    auto& Collection(this auto& self) { return self.Operands[0]; }
+    auto& Start(this auto& self) { return self.Operands[1]; }
+    auto& End(this auto& self) { return self.Operands[2]; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Collection, &Start, &End };
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     const std::string_view NodeName() const override {
@@ -1130,12 +1112,12 @@ public:
         return NodeId;
     }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Expr };
+    std::span<const TExprPtr> Children() const override {
+        return { &Expr, 1 };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Expr };
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Expr, 1 };
     }
 
     void Accept(IVisitor& visitor) override;
@@ -1159,9 +1141,6 @@ public:
         return NodeId;
     }
 
-    std::vector<TExprPtr> Children() const override { return {}; }
-    std::vector<TExprPtr*> MutableChildren() override { return {}; }
-
     void Accept(IVisitor& visitor) override;
 };
 
@@ -1182,12 +1161,12 @@ public:
         return NodeId;
     }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Object };
+    std::span<const TExprPtr> Children() const override {
+        return { &Object, 1 };
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Object };
+    std::span<TExprPtr> MutableChildren() override {
+        return { &Object, 1 };
     }
 
     void Accept(IVisitor& visitor) override;
@@ -1211,13 +1190,8 @@ public:
 
     const std::string_view NodeName() const override { return NodeId; }
 
-    std::vector<TExprPtr> Children() const override { return Fields; }
-
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> r;
-        for (auto& f : Fields) r.push_back(&f);
-        return r;
-    }
+    std::span<const TExprPtr> Children() const override { return Fields; }
+    std::span<TExprPtr> MutableChildren() override { return Fields; }
 
     void Accept(IVisitor& visitor) override;
 };
@@ -1225,28 +1199,29 @@ public:
 class TFieldAssignExpr : public TExpr {
 public:
     static constexpr const char* NodeId = "FieldAssign";
-    TExprPtr Object;
+    std::array<TExprPtr, 2> Operands; // Object, Value
     std::string FieldName;
     int FieldIndex = -1;
-    TExprPtr Value;
 
     TFieldAssignExpr(TLocation loc, const TExprPtr& object, const std::string& fieldName, const TExprPtr& value)
         : TExpr(std::move(loc))
-        , Object(object)
+        , Operands{object, value}
         , FieldName(std::move(fieldName))
-        , Value(value)
     { }
+
+    auto& Object(this auto& self) { return self.Operands[0]; }
+    auto& Value(this auto& self) { return self.Operands[1]; }
 
     const std::string_view NodeName() const override {
         return NodeId;
     }
 
-    std::vector<TExprPtr> Children() const override {
-        return { Object, Value };
+    std::span<const TExprPtr> Children() const override {
+        return Operands;
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        return { &Object, &Value };
+    std::span<TExprPtr> MutableChildren() override {
+        return Operands;
     }
 
     void Accept(IVisitor& visitor) override;
@@ -1264,8 +1239,8 @@ struct TRetainExpr : TExpr {
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
-    std::vector<TExprPtr> Children() const override { return { Value }; }
-    std::vector<TExprPtr*> MutableChildren() override { return { &Value }; }
+    std::span<const TExprPtr> Children() const override { return { &Value, 1 }; }
+    std::span<TExprPtr> MutableChildren() override { return { &Value, 1 }; }
     void Accept(IVisitor& visitor) override;
 };
 
@@ -1280,8 +1255,8 @@ struct TOwnLiteralExpr : TExpr {
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
-    std::vector<TExprPtr> Children() const override { return { Value }; }
-    std::vector<TExprPtr*> MutableChildren() override { return { &Value }; }
+    std::span<const TExprPtr> Children() const override { return { &Value, 1 }; }
+    std::span<TExprPtr> MutableChildren() override { return { &Value, 1 }; }
     void Accept(IVisitor& visitor) override;
 };
 
@@ -1296,8 +1271,8 @@ struct TMoveExpr : TExpr {
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
-    std::vector<TExprPtr> Children() const override { return { Value }; }
-    std::vector<TExprPtr*> MutableChildren() override { return { &Value }; }
+    std::span<const TExprPtr> Children() const override { return { &Value, 1 }; }
+    std::span<TExprPtr> MutableChildren() override { return { &Value, 1 }; }
     void Accept(IVisitor& visitor) override;
 };
 
@@ -1312,37 +1287,32 @@ struct TBorrowExpr : TExpr {
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
-    std::vector<TExprPtr> Children() const override { return { Value }; }
-    std::vector<TExprPtr*> MutableChildren() override { return { &Value }; }
+    std::span<const TExprPtr> Children() const override { return { &Value, 1 }; }
+    std::span<TExprPtr> MutableChildren() override { return { &Value, 1 }; }
     void Accept(IVisitor& visitor) override;
 };
 
 struct TDestroyExpr : TExpr {
     static constexpr const char* NodeId = "Destroy";
 
-    TExprPtr Value;
-    TExprPtr Aux;
+    std::array<TExprPtr, 2> Bodies; // Value, Aux
 
     TDestroyExpr(TLocation loc, const TExprPtr& value, TTypeFactory& types, const TExprPtr& aux = nullptr)
         : TExpr(std::move(loc), types.Make<TVoidType>())
-        , Value(value)
-        , Aux(aux)
+        , Bodies{value, aux}
     { }
+
+    auto& Value(this auto& self) { return self.Bodies[0]; }
+    auto& Aux(this auto& self) { return self.Bodies[1]; }
 
     const std::string_view NodeName() const override { return NodeId; }
 
-    std::vector<TExprPtr> Children() const override {
-        if (Aux) {
-            return { Value, Aux };
-        }
-        return { Value };
+    std::span<const TExprPtr> Children() const override {
+        return std::span(Bodies).first(Bodies[1] ? 2 : 1);
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        if (Aux) {
-            return { &Value, &Aux };
-        }
-        return { &Value };
+    std::span<TExprPtr> MutableChildren() override {
+        return std::span(Bodies).first(Bodies[1] ? 2 : 1);
     }
 
     void Accept(IVisitor& visitor) override;
@@ -1351,18 +1321,26 @@ struct TDestroyExpr : TExpr {
 struct TReplaceExpr : TExpr {
     static constexpr const char* NodeId = "Replace";
 
-    TExprPtr Target;
-    TExprPtr Value;
+    std::array<TExprPtr, 2> Bodies; // Target, Value
 
     TReplaceExpr(TLocation loc, const TExprPtr& target, const TExprPtr& value, TTypeFactory& types)
         : TExpr(std::move(loc), types.Make<TVoidType>())
-        , Target(target)
-        , Value(value)
+        , Bodies{target, value}
     { }
 
+    auto& Target(this auto& self) { return self.Bodies[0]; }
+    auto& Value(this auto& self) { return self.Bodies[1]; }
+
     const std::string_view NodeName() const override { return NodeId; }
-    std::vector<TExprPtr> Children() const override { return { Target, Value }; }
-    std::vector<TExprPtr*> MutableChildren() override { return { &Target, &Value }; }
+
+    std::span<const TExprPtr> Children() const override {
+        return Bodies;
+    }
+
+    std::span<TExprPtr> MutableChildren() override {
+        return Bodies;
+    }
+
     void Accept(IVisitor& visitor) override;
 };
 
@@ -1375,9 +1353,9 @@ enum class ECleanupExitKind {
 struct TCleanupExitExpr : TExpr {
     static constexpr const char* NodeId = "CleanupExit";
 
+    static constexpr size_t CleanupsOffset = 1;
     ECleanupExitKind Kind;
-    TExprPtr Value;
-    std::vector<TExprPtr> Cleanups;
+    std::vector<TExprPtr> Operands; // Value (optional), Cleanups...
 
     TCleanupExitExpr(
         TLocation loc,
@@ -1387,32 +1365,23 @@ struct TCleanupExitExpr : TExpr {
         TTypeFactory& types)
         : TExpr(std::move(loc), types.Make<TVoidType>())
         , Kind(kind)
-        , Value(value)
-        , Cleanups(std::move(cleanups))
-    { }
+    {
+        Operands.reserve(CleanupsOffset + cleanups.size());
+        Operands.push_back(value);
+        Operands.insert(Operands.end(), std::make_move_iterator(cleanups.begin()), std::make_move_iterator(cleanups.end()));
+    }
+
+    auto& Value(this auto& self) { return self.Operands[0]; }
+    auto Cleanups(this auto& self) { return std::span(self.Operands).subspan(CleanupsOffset); }
 
     const std::string_view NodeName() const override { return NodeId; }
 
-    std::vector<TExprPtr> Children() const override {
-        std::vector<TExprPtr> result;
-        result.reserve(Cleanups.size() + (Value ? 1 : 0));
-        if (Value) {
-            result.push_back(Value);
-        }
-        result.insert(result.end(), Cleanups.begin(), Cleanups.end());
-        return result;
+    std::span<const TExprPtr> Children() const override {
+        return std::span(Operands).subspan(Operands[0] ? 0 : CleanupsOffset);
     }
 
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(Cleanups.size() + (Value ? 1 : 0));
-        if (Value) {
-            result.push_back(&Value);
-        }
-        for (auto& cleanup : Cleanups) {
-            result.push_back(&cleanup);
-        }
-        return result;
+    std::span<TExprPtr> MutableChildren() override {
+        return std::span(Operands).subspan(Operands[0] ? 0 : CleanupsOffset);
     }
 
     void Accept(IVisitor& visitor) override;
@@ -1429,16 +1398,8 @@ struct TGlobalCleanupExpr : TExpr {
     { }
 
     const std::string_view NodeName() const override { return NodeId; }
-    std::vector<TExprPtr> Children() const override { return Cleanups; }
-
-    std::vector<TExprPtr*> MutableChildren() override {
-        std::vector<TExprPtr*> result;
-        result.reserve(Cleanups.size());
-        for (auto& cleanup : Cleanups) {
-            result.push_back(&cleanup);
-        }
-        return result;
-    }
+    std::span<const TExprPtr> Children() const override { return Cleanups; }
+    std::span<TExprPtr> MutableChildren() override { return Cleanups; }
 
     void Accept(IVisitor& visitor) override;
 };
@@ -1499,9 +1460,9 @@ bool TransformAst(TExprPtr& result, TExprPtr node, TransformFunctor f, FilterFun
     if (!node) return false;
     if (!filter(node)) return false;
     bool changed = false;
-    for (auto* child : node->MutableChildren()) {
-        if (*child) {
-            changed |= TransformAst(*child, *child, f, filter);
+    for (auto& child : node->MutableChildren()) {
+        if (child) {
+            changed |= TransformAst(child, child, f, filter);
         }
     }
     result = f(node);
@@ -1517,9 +1478,9 @@ bool PreorderTransformAst(TExprPtr& result, TExprPtr node, TransformFunctor f, F
     changed |= result != node;
     if (!changed) {
         // no change, recurse into children of the original node
-        for (auto* child : result->MutableChildren()) {
-            if (*child) {
-                changed |= PreorderTransformAst(*child, *child, f, filter);
+        for (auto& child : result->MutableChildren()) {
+            if (child) {
+                changed |= PreorderTransformAst(child, child, f, filter);
             }
         }
     }

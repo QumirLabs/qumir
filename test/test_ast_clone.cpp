@@ -37,13 +37,13 @@ TEST(AstClone, LifetimeAndHiddenChildrenAreDeeplyCloned) {
 
     auto variable = MakeIntrusive<TVarStmt>(
         loc, "variable", NQumir::NTest::TestTypes().MakeInteger());
-    variable->Init = ident("variable_init");
+    variable->Init() = ident("variable_init");
     auto vars = MakeIntrusive<TVarsBlockExpr>(
         loc, std::vector<TExprPtr>{variable});
 
     auto parameter = MakeIntrusive<TVarStmt>(
         loc, "parameter", NQumir::NTest::TestTypes().MakeInteger());
-    parameter->Init = ident("parameter_init");
+    parameter->Init() = ident("parameter_init");
     auto function = MakeIntrusive<TFunDecl>(
         loc,
         "function",

@@ -110,7 +110,7 @@ TCallExpr* FindCallWithCalleePrefix(const TExprPtr& expr, const std::string& pre
         return nullptr;
     }
     if (auto call = TMaybeNode<TCallExpr>(expr).Cast()) {
-        if (auto callee = TMaybeNode<TIdentExpr>(call->Callee).Cast();
+        if (auto callee = TMaybeNode<TIdentExpr>(call->Callee()).Cast();
             callee && callee->Name.rfind(prefix, 0) == 0)
         {
             return call;
@@ -246,9 +246,9 @@ TEST(PostNameResolutionTransform, WrapsOnlyBareZeroArgumentFunctionIdentifiers) 
 
     auto wrappedBare = TMaybeNode<TCallExpr>(callerBody->Stmts[0]).Cast();
     ASSERT_NE(wrappedBare, nullptr);
-    EXPECT_EQ(wrappedBare->Callee, bareIdent);
+    EXPECT_EQ(wrappedBare->Callee(), bareIdent);
     EXPECT_EQ(callerBody->Stmts[1], explicitCall);
-    EXPECT_EQ(explicitCall->Callee, explicitIdent);
+    EXPECT_EQ(explicitCall->Callee(), explicitIdent);
 }
 
 TEST(KumirPipeline, InjectsCoroutineAnnotationAfterTypeAnnotation) {
@@ -278,7 +278,7 @@ TEST(KumirPipeline, ParserEmitsDistinctPowerOperator) {
     ASSERT_NE(root, nullptr);
     auto function = TMaybeNode<TFunDecl>(root->Stmts.front()).Cast();
     ASSERT_NE(function, nullptr);
-    auto assignment = TMaybeNode<TAssignExpr>(function->Body->Stmts[1]).Cast();
+    auto assignment = TMaybeNode<TAssignExpr>(function->Body()->Stmts[1]).Cast();
     ASSERT_NE(assignment, nullptr);
     auto power = TMaybeNode<TBinaryExpr>(assignment->Value).Cast();
     ASSERT_NE(power, nullptr);
@@ -385,10 +385,10 @@ TEST(KumirPipeline, ExpandsPowerWithoutReusingCoreOperator) {
     EXPECT_TRUE(*result);
     auto call = TMaybeNode<TCallExpr>(ast).Cast();
     ASSERT_NE(call, nullptr);
-    auto callee = TMaybeNode<TIdentExpr>(call->Callee).Cast();
+    auto callee = TMaybeNode<TIdentExpr>(call->Callee()).Cast();
     ASSERT_NE(callee, nullptr);
     EXPECT_EQ(callee->Name, "fpow");
-    EXPECT_EQ(call->Args.size(), 2u);
+    EXPECT_EQ(call->Args().size(), 2u);
 }
 
 TEST(KumirPipeline, ExpandsFloatPowerToPow) {
@@ -410,7 +410,7 @@ TEST(KumirPipeline, ExpandsFloatPowerToPow) {
     ASSERT_TRUE(result.has_value()) << result.error().ToString();
     auto call = TMaybeNode<TCallExpr>(ast).Cast();
     ASSERT_NE(call, nullptr);
-    auto callee = TMaybeNode<TIdentExpr>(call->Callee).Cast();
+    auto callee = TMaybeNode<TIdentExpr>(call->Callee()).Cast();
     ASSERT_NE(callee, nullptr);
     EXPECT_EQ(callee->Name, "pow");
 }
@@ -451,7 +451,7 @@ TEST(ReturnNormalization, PreservesDirectAndFullyTerminatingBranchReturns) {
         NQumir::NTest::TestTypes().MakeInteger());
     auto assertCondition = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{1}, NQumir::NTest::TestTypes());
     assertCondition->Type = NQumir::NTest::TestTypes().Make<TBoolType>();
-    directFunction->LastAssert = MakeIntrusive<TAssertStmt>(
+    directFunction->LastAssert() = MakeIntrusive<TAssertStmt>(
         TLocation{},
         assertCondition);
 
@@ -516,7 +516,7 @@ TEST(FinalSemanticPipeline, ResolvesAndAnnotatesInsertedNestedBlock) {
         TLocation{},
         syntheticName,
         NQumir::NTest::TestTypes().MakeInteger());
-    syntheticVar->Init = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{7}, NQumir::NTest::TestTypes());
+    syntheticVar->Init() = MakeIntrusive<TNumberExpr>(TLocation{}, int64_t{7}, NQumir::NTest::TestTypes());
     auto syntheticUse = MakeIntrusive<TIdentExpr>(TLocation{}, syntheticName);
     auto nested = MakeRoot({syntheticVar, syntheticUse});
     body->Stmts.push_back(nested);

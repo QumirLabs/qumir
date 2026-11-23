@@ -19,9 +19,9 @@ bool AlwaysReturns(const NAst::TExprPtr& expr) {
         return false;
     }
     if (auto ifExpr = NAst::TMaybeNode<NAst::TIfExpr>(expr)) {
-        return ifExpr.Cast()->Else
-            && AlwaysReturns(ifExpr.Cast()->Then)
-            && AlwaysReturns(ifExpr.Cast()->Else);
+        return ifExpr.Cast()->Else()
+            && AlwaysReturns(ifExpr.Cast()->Then())
+            && AlwaysReturns(ifExpr.Cast()->Else());
     }
     return false;
 }

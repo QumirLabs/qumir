@@ -148,7 +148,7 @@ TEST(LifetimeAnnotation, CleanupReturnChecksFunctionReturnType) {
 
 TEST(LifetimeValidator, AcceptsValidOwnershipGraph) {
     auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
-    value->Init = OwnedLiteral("initial");
+    value->Init() = OwnedLiteral("initial");
     auto replace = MakeIntrusive<TReplaceExpr>(
         TLocation{},
         Ident("value"),
@@ -236,7 +236,7 @@ TEST(LifetimeValidator, RejectsUnresolvedSyntheticVariable) {
 
 TEST(LifetimeValidator, RejectsRawLiteralInOwnedStorage) {
     auto value = Variable("value", NQumir::NTest::TestTypes().Make<TStringType>());
-    value->Init = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "raw", NQumir::NTest::TestTypes());
+    value->Init() = MakeIntrusive<TStringLiteralExpr>(TLocation{}, "raw", NQumir::NTest::TestTypes());
     auto marker = MakeIntrusive<TGlobalCleanupExpr>(
         TLocation{},
         std::vector<TExprPtr>{}, NQumir::NTest::TestTypes());

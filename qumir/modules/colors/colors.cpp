@@ -129,7 +129,7 @@ ColorsModule::ColorsModule(NAst::TTypeFactory& types) {
             std::vector<NAst::TExprPtr> stmts;
             auto addVar = [&](const std::string& name, const NAst::TExprPtr& value) {
                 auto var = MakeIntrusive<NAst::TVarStmt>(loc, name, nullptr);
-                var->Init = value;
+                var->Init() = value;
                 stmts.push_back(std::move(var));
             };
             addVar("$$c", args[0]);
@@ -162,7 +162,7 @@ ColorsModule::ColorsModule(NAst::TTypeFactory& types) {
                 std::vector<NAst::TExprPtr> stmts;
                 for (auto& [name, value] : vars) {
                     auto var = MakeIntrusive<NAst::TVarStmt>(loc, std::move(name), nullptr);
-                    var->Init = std::move(value);
+                    var->Init() = std::move(value);
                     stmts.push_back(std::move(var));
                 }
                 stmts.push_back(body);
@@ -256,7 +256,7 @@ ColorsModule::ColorsModule(NAst::TTypeFactory& types) {
                 std::vector<NAst::TExprPtr> stmts;
                 for (auto& [name, value] : vars) {
                     auto var = MakeIntrusive<NAst::TVarStmt>(loc, std::move(name), nullptr);
-                    var->Init = std::move(value);
+                    var->Init() = std::move(value);
                     stmts.push_back(std::move(var));
                 }
                 stmts.push_back(body);
@@ -337,23 +337,23 @@ ColorsModule::ColorsModule(NAst::TTypeFactory& types) {
             }
             if (auto maybeIndex = NAst::TMaybeNode<NAst::TIndexExpr>(target)) {
                 auto index = maybeIndex.Cast();
-                auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection);
+                auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection());
                 if (maybeCollection) {
                     return MakeIntrusive<NAst::TArrayAssignExpr>(
                         target->Location,
                         maybeCollection.Cast()->Name,
-                        std::vector<NAst::TExprPtr>{index->Index},
+                        std::vector<NAst::TExprPtr>{index->Index()},
                         value);
                 }
             }
             if (auto maybeMultiIndex = NAst::TMaybeNode<NAst::TMultiIndexExpr>(target)) {
                 auto index = maybeMultiIndex.Cast();
-                auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection);
+                auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection());
                 if (maybeCollection) {
                     return MakeIntrusive<NAst::TArrayAssignExpr>(
                         target->Location,
                         maybeCollection.Cast()->Name,
-                        auto(index->Indices),
+                        std::ranges::to<std::vector>(index->Indices()),
                         value);
                 }
             }
@@ -402,21 +402,21 @@ ColorsModule::ColorsModule(NAst::TTypeFactory& types) {
                     }
                     if (auto maybeIndex = NAst::TMaybeNode<NAst::TIndexExpr>(target)) {
                         auto index = maybeIndex.Cast();
-                        if (auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection)) {
+                        if (auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection())) {
                             return MakeIntrusive<NAst::TArrayAssignExpr>(
                                 target->Location,
                                 maybeCollection.Cast()->Name,
-                                std::vector<NAst::TExprPtr>{index->Index},
+                                std::vector<NAst::TExprPtr>{index->Index()},
                                 value);
                         }
                     }
                     if (auto maybeMultiIndex = NAst::TMaybeNode<NAst::TMultiIndexExpr>(target)) {
                         auto index = maybeMultiIndex.Cast();
-                        if (auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection)) {
+                        if (auto maybeCollection = NAst::TMaybeNode<NAst::TIdentExpr>(index->Collection())) {
                             return MakeIntrusive<NAst::TArrayAssignExpr>(
                                 target->Location,
                                 maybeCollection.Cast()->Name,
-                                auto(index->Indices),
+                                std::ranges::to<std::vector>(index->Indices()),
                                 value);
                         }
                     }

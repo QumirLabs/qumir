@@ -659,7 +659,7 @@ TAstTask fun_decl(TParserContext& context, TLocation location) {
             MakeIntrusive<TBlockExpr>(location, std::move(maybeBlock.Cast()->Stmts)),
             returnType);
 
-        funDecl->LastAssert = assertAfter;
+        funDecl->LastAssert() = assertAfter;
 
         std::vector<TTypePtr> paramTypes;
         for (auto& a : funDecl->Params) {
@@ -886,12 +886,12 @@ TAstTask switch_expr(TParserContext& context, TLocation location) {
             rootIf = newIf;
             lastIf = newIf;
         } else {
-            lastIf->Else = newIf;
+            lastIf->Else() = newIf;
             lastIf = newIf;
         }
     }
     if (lastIf) {
-        lastIf->Else = elseBranch;
+        lastIf->Else() = elseBranch;
     }
     if (rootIf) {
         co_return rootIf;

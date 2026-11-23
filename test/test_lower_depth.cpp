@@ -75,7 +75,7 @@ TEST(LowerDepth, DeepExpressionFitsSmallStack) {
     ASSERT_NE(top, nullptr);
     auto* fun = dynamic_cast<TFunDecl*>(top->Stmts.front().Get());
     ASSERT_NE(fun, nullptr);
-    auto& body = fun->Body->Stmts;
+    auto& body = fun->Body()->Stmts;
     body.insert(body.begin() + 1, MakeIntrusive<TAssignExpr>(TLocation{}, "x", NestedIf(Depth)));
 
     auto scope = resolver.GetOrCreateRootScope();
