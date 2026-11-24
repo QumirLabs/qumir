@@ -272,21 +272,27 @@ constexpr std::string_view ImplicitCallees[] = {
     "array_str_destroy", "builtin::record_locator", "__qumir_debug_point",
 };
 
+// Iterative: the walk runs before the passes, and deep ASTs must not overflow the stack.
 template <class TReach>
-void ReachNames(TExpr* expr, TReach& reach) {
-    if (!expr) {
-        return;
-    }
-    if (auto ident = TMaybeNode<TIdentExpr>(expr)) {
-        reach(ident.Cast()->Name);
-    } else if (auto fun = TMaybeNode<TFunDecl>(expr)) {
-        // Parameters are not children, yet their bounds may call functions.
-        for (const auto& param : fun.Cast()->Params) {
-            ReachNames(param.Get(), reach);
+void ReachNames(TExpr* root, TReach& reach) {
+    std::vector<TExpr*> stack{root};
+    while (!stack.empty()) {
+        auto* expr = stack.back();
+        stack.pop_back();
+        if (!expr) {
+            continue;
         }
-    }
-    for (const auto& child : expr->Children()) {
-        ReachNames(child.Get(), reach);
+        if (auto ident = TMaybeNode<TIdentExpr>(expr)) {
+            reach(ident.Cast()->Name);
+        } else if (auto fun = TMaybeNode<TFunDecl>(expr)) {
+            // Parameters are not children, yet their bounds may call functions.
+            for (const auto& param : fun.Cast()->Params) {
+                stack.push_back(param.Get());
+            }
+        }
+        for (const auto& child : expr->Children()) {
+            stack.push_back(child.Get());
+        }
     }
 }
 

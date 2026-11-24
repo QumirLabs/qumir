@@ -8,6 +8,7 @@
 #include <qumir/parser/type.h>
 #include <qumir/runner/runner_llvm.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -187,6 +188,45 @@ TEST(ComposeTest, DropUnreachableModuleFunctions) {
         "Fun:pt_add",
         "Fun:kept",
     }));
+}
+
+TEST(ComposeTest, DropKeepsConservativeCases) {
+    // Literal suffix, generic, function as a value and a parameter bound stay;
+    // a name defined in two modules keeps both definitions.
+    auto m1 = Module("m1", R"((block
+      (pragma language overloads)
+      (fun __sfx ((var x i64)) -> i64 (attrs (literal "z")) (block (return x)))
+      (fun gen [T] ((var x T)) -> T (block (return x)))
+      (fun as_value () -> i64 (block (return 1)))
+      (fun bound () -> i64 (block (return 2)))
+      (fun dup () -> i64 (block (return 3)))
+      (fun gone () -> i64 (block (return 4)))))");
+    auto m2 = Module("m2", R"((block
+      (pragma language overloads)
+      (fun dup () -> i64 (block (return 5)))))");
+    auto main = Parse(R"((block
+      (pragma language overloads)
+      (use m1)
+      (use m2)
+      (fun entry () -> i64
+        (block
+          (var f = as_value)
+          (return (+ (call gen (: 1 i64)) (call dup)))))
+      (fun with_bound ((var a <array i64 1> [0 (call bound)])) -> void (block))))");
+    auto res = Compose({m1.get(), m2.get()}, main.Ast, main.Pragmas, "<main>");
+    ASSERT_TRUE(res) << res.error().ToString();
+
+    EXPECT_EQ(DropUnreachableModuleFunctions(res->Ast, {}), 1u);
+    auto layout = Layout(res->Ast);
+    auto count = [&](const std::string& name) {
+        return std::count(layout.begin(), layout.end(), "Fun:" + name);
+    };
+    EXPECT_EQ(count("__sfx"), 1);
+    EXPECT_EQ(count("gen"), 1);
+    EXPECT_EQ(count("as_value"), 1);
+    EXPECT_EQ(count("bound"), 1);
+    EXPECT_EQ(count("dup"), 2);
+    EXPECT_EQ(count("gone"), 0);
 }
 
 TEST(ComposeTest, KernelSkipsUnreachableModuleFunctions) {
