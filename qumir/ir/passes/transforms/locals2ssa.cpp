@@ -3,6 +3,7 @@
 
 #include <qumir/ir/passes/analysis/cfg.h>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <iostream>
@@ -22,9 +23,16 @@ struct PhiInfo {
     std::vector<std::pair<TOperand, TLabel>> Incoming;
 };
 
+// A phi by block and position, not a TPhi*: appending a phi moves the others of its block,
+// but the pass never erases phis, so the indices stay valid.
+struct TPhiRef {
+    int Block;
+    int Index;
+};
+
 // Implements the sealed-block SSA construction algorithm described by Braun
-// et al., "Simple and Efficient Construction of Static Single Assignment Form":
-// https://c9x.me/compile/bib/braun13cc.pdf
+// et al., "Simple and Efficient Construction of Static Single Assignment Form", CC 2013,
+// doi:10.1007/978-3-642-37051-9_6: https://c9x.me/compile/bib/braun13cc.pdf
 struct TSSABuilder {
     TSSABuilder(TModule& module, TFunction& function)
         : Module(module)
@@ -77,34 +85,9 @@ struct TSSABuilder {
         return typeId >= 0 && Module.Types.GetKind(typeId) == EKind::Struct;
     }
 
-    void ReplaceTmpEverywhere(TOperand fromTmp, TOperand toTmp) {
-        for (auto& block : Function.Blocks) {
-            ReplaceTmpInBlock(block.Label, fromTmp, toTmp);
-        }
-    }
-
-    void ReplaceTmpInBlock(TLabel blockLabel, TOperand fromTmp, TOperand toTmp) {
-        auto& block = Function.Blocks[Function.GetBlockIdx(blockLabel)];
-        auto replace = [&](auto& instrs) {
-            for (auto& inst : instrs) {
-                if (inst.Dest == fromTmp) {
-                    inst.Clear();
-                    continue;
-                }
-                for (int i = 0; i < inst.Size(); ++i) {
-                    auto& op = inst.Operands[i];
-                    if (op == fromTmp) {
-                        op = toTmp;
-                    }
-                }
-            }
-        };
-        replace(block.Phis);
-        replace(block.Instrs);
-    }
-
     TPhi* MaterializePhiInstr(TLabel blockLabel, const PhiInfo& ph) {
-        auto& block = Function.Blocks[Function.GetBlockIdx(blockLabel)];
+        const int blockIdx = Function.GetBlockIdx(blockLabel);
+        auto& block = Function.Blocks[blockIdx];
         TPhi instr = {"phi"_op};
         instr.Dest = ph.DstTmp;
         // Args: [ (arg0, pred0), (arg1, pred1), ... ]
@@ -136,19 +119,53 @@ struct TSSABuilder {
                 }
             }
         }
-        return &block.Phis.emplace_back(instr);
+        auto& phi = block.Phis.emplace_back(instr);
+        AddPhiUsers(blockIdx, (int)block.Phis.size() - 1);
+        return &phi;
     }
 
-    // Follows removed trivial phis to the value that replaced them.
-    TOperand Resolve(TOperand value) const {
-        while (value.Type == TOperand::EType::Tmp) {
-            auto it = RemovedPhis.find(value.Tmp.Idx);
-            if (it == RemovedPhis.end()) {
+    void AddPhiUsers(int blockIdx, int phiIdx) {
+        for (const auto& op : Function.Blocks[blockIdx].Phis[phiIdx].Operands) {
+            // The operand may already be replaced: register under its current value, or the
+            // phi would never be rechecked when that value is replaced in turn.
+            auto resolved = Resolve(op);
+            if (resolved.Type == TOperand::EType::Tmp) {
+                PhiUsers[resolved.Tmp.Idx].push_back({blockIdx, phiIdx});
+            }
+        }
+    }
+
+    // Follows removed trivial phis and promoted loads to the value that replaced them.
+    // Path compression keeps repeated lookups cheap.
+    TOperand Resolve(TOperand value) {
+        auto root = value;
+        while (root.Type == TOperand::EType::Tmp) {
+            auto it = Replaced.find(root.Tmp.Idx);
+            if (it == Replaced.end()) {
                 break;
             }
-            value = it->second;
+            root = it->second;
         }
-        return value;
+        while (!(value == root)) {
+            value = std::exchange(Replaced.find(value.Tmp.Idx)->second, root);
+        }
+        return root;
+    }
+
+    // Braun et al. 2013 (doi:10.1007/978-3-642-37051-9_6) reroute all uses at once through def-use
+    // chains. Without them, Resolve() follows the replacement, phi users move to `to` for rechecks,
+    // and Run() rewrites all operands at the end.
+    std::vector<TPhiRef> Replace(TTmp from, TOperand to) {
+        Replaced[from.Idx] = to;
+        auto users = PhiUsers.extract(from.Idx);
+        if (users.empty()) {
+            return {};
+        }
+        if (to.Type == TOperand::EType::Tmp) {
+            auto& toUsers = PhiUsers[to.Tmp.Idx];
+            toUsers.insert(toUsers.end(), users.mapped().begin(), users.mapped().end());
+        }
+        return std::move(users.mapped());
     }
 
     std::optional<TOperand> MaybeCurrent(int localIdx, TLabel blockLabel) {
@@ -156,7 +173,7 @@ struct TSSABuilder {
         if (it != CurrentDef.end()) {
             auto it2 = it->second.find(blockLabel);
             if (it2 != it->second.end()) {
-                return it2->second;
+                return Resolve(it2->second);
             }
         }
         return {};
@@ -223,7 +240,7 @@ struct TSSABuilder {
     TOperand tryRemoveTrivialPhi(TPhi& phi) {
         std::optional<TOperand> same;
         for (int i = 0; i < (int)phi.Operands.size(); ++i) {
-            auto& op = phi.Operands[i];
+            auto op = Resolve(phi.Operands[i]);
             if (op.Type == TOperand::EType::Label) {
                 continue;
             }
@@ -245,75 +262,20 @@ struct TSSABuilder {
             // undef: TODO
             same = TOperand{TImm{0, Module.Types.I(EKind::Undef)}};
         }
-        //
-        auto [users, phiUsers] = GetUsers(phi.Dest);
-        // Reroute all uses of phi to same and remove phi
-        for (auto* use : users) {
-            for (int i = 0; i < use->OperandCount; ++i) {
-                if (use->Operands[i] == TOperand{phi.Dest}) {
-                    use->Operands[i] = *same;
-                }
-            }
-        }
-        for (auto* use : phiUsers) {
-            if (use == &phi) {
-                continue;
-            }
-            for (int i = 0; i < (int)use->Operands.size(); ++i) {
-                if (use->Operands[i] == TOperand{phi.Dest}) {
-                    use->Operands[i] = *same;
-                }
-            }
-        }
-        for (auto& [loc, byBlock] : CurrentDef) {
-            for (auto& [b, val] : byBlock) {
-                if (val == TOperand{phi.Dest}) {
-                    val = *same;
-                }
-            }
-        }
 
         // Removed before its users: a user that becomes trivial can lead back
         // here, and `same` itself can be removed on the way.
-        RemovedPhis[phi.Dest.Idx] = *same;
+        auto phiUsers = Replace(phi.Dest, *same);
         phi.Clear();
 
         // Try to recursively remove all phi users, which might have become trivial
-        for (auto* use : phiUsers) {
-            if (use == &phi) {
-                continue;
-            }
-            if (use->Op == "phi"_op) {
-                tryRemoveTrivialPhi(*use);
+        for (auto [blockIdx, phiIdx] : phiUsers) {
+            auto& use = Function.Blocks[blockIdx].Phis[phiIdx];
+            if (use.Op == "phi"_op) {
+                tryRemoveTrivialPhi(use);
             }
         }
         return Resolve(*same);
-    }
-
-    // TODO: optimize by caching users per tmp
-    std::pair<std::vector<TInstr*>,std::vector<TPhi*>> GetUsers(TTmp tmp) {
-        std::vector<TInstr*> users;
-        std::vector<TPhi*> phiUsers;
-        for (int i = 0; i < (int)Function.Blocks.size(); ++i) {
-            auto& block = Function.Blocks[i];
-            for (auto& phi : block.Phis) {
-                for (int j = 0; j < (int)phi.Operands.size(); ++j) {
-                    if (phi.Operands[j].Type == TOperand::EType::Tmp &&
-                        phi.Operands[j].Tmp == tmp) {
-                        phiUsers.push_back(&phi);
-                    }
-                }
-            }
-            for (auto& instr : block.Instrs) {
-                for (int j = 0; j < instr.OperandCount; ++j) {
-                    if (instr.Operands[j].Type == TOperand::EType::Tmp &&
-                        instr.Operands[j].Tmp == tmp) {
-                        users.push_back(&instr);
-                    }
-                }
-            }
-        }
-        return {users, phiUsers};
     }
 
     void SealBlock(TLabel blockLabel) {
@@ -336,6 +298,12 @@ struct TSSABuilder {
         BuildCfg(Function);
         auto rpo = ComputeRPO(Function);
         ReachableBlocks.insert(rpo.begin(), rpo.end());
+        // Phis that exist before the pass (if-expressions, short-circuit operators) are users too.
+        for (int b = 0; b < (int)Function.Blocks.size(); ++b) {
+            for (int i = 0; i < (int)Function.Blocks[b].Phis.size(); ++i) {
+                AddPhiUsers(b, i);
+            }
+        }
         std::vector<int> openPredCount(Function.Blocks.size());
         for (auto& block : Function.Blocks) {
             openPredCount[block.Label.Idx] = block.Pred.size();
@@ -362,11 +330,11 @@ struct TSSABuilder {
                         int localIdx = instr.Operands[0].Local.Idx;
                         if (localIdx >= Function.ArgLocals.size() &&
                             (localIdx < (int)LocalPromotable.size() && LocalPromotable[localIdx])) {
-                            if (IsStructLocal(localIdx) && !IsStructValueOperand(instr.Operands[1])) {
+                            auto valueTmp = Resolve(instr.Operands[1]);
+                            if (IsStructLocal(localIdx) && !IsStructValueOperand(valueTmp)) {
                                 // Pointer-backed struct stores stay in memory.
                                 break;
                             }
-                            auto valueTmp = instr.Operands[1];
                             instr.Clear();
                             WriteVariable(localIdx, blockLabel, valueTmp);
                         }
@@ -388,7 +356,7 @@ struct TSSABuilder {
                             auto valueTmp = ReadVariable(localIdx, blockLabel);
                             auto oldDest = instr.Dest;
                             instr.Clear();
-                            ReplaceTmpEverywhere(TOperand{oldDest}, valueTmp); // TODO: check replace
+                            Replace(oldDest, valueTmp);
                             CurrentDef[localIdx][blockLabel] = valueTmp;
                         }
                         break;
@@ -415,6 +383,20 @@ struct TSSABuilder {
         for (auto& block : Function.Blocks) {
             SealBlock(block.Label);
         }
+
+        // One linear rewrite of all operands instead of a function scan per replacement.
+        for (auto& block : Function.Blocks) {
+            for (auto& phi : block.Phis) {
+                for (auto& op : phi.Operands) {
+                    op = Resolve(op);
+                }
+            }
+            for (auto& instr : block.Instrs) {
+                for (int i = 0; i < instr.OperandCount; ++i) {
+                    instr.Operands[i] = Resolve(instr.Operands[i]);
+                }
+            }
+        }
     }
 
     TModule& Module;
@@ -428,12 +410,12 @@ struct TSSABuilder {
     std::set<TLabel> SealedBlocks;
     // Blocks reachable from entry
     std::set<TLabel> ReachableBlocks;
-    // Deferred tmp replacements collected while processing blocks (from tmp -> to operand)
-    std::vector<std::pair<TOperand, TOperand>> GlobalPendingReplacements;
     // Locals that are safe to promote (no address taken)
     std::vector<char> LocalPromotable;
-    // Removed trivial phi -> the operand that replaced it
-    std::unordered_map<int, TOperand> RemovedPhis;
+    // Removed trivial phi or promoted load -> the operand that replaced it
+    std::unordered_map<int, TOperand> Replaced;
+    // Tmp -> phis that use it, rechecked when the tmp is replaced
+    std::unordered_map<int, std::vector<TPhiRef>> PhiUsers;
 };
 
 } // anonymous namespace
