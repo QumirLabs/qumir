@@ -6,7 +6,9 @@
 #include <qumir/parser/core/parser.h>
 #include <qumir/parser/core/printer.h>
 #include <qumir/parser/type.h>
+#include <qumir/runner/runner_llvm.h>
 
+#include <cstdint>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -125,6 +127,86 @@ TEST(ComposeTest, IncompatiblePragmas) {
     auto res = Compose({a.get()}, main.Ast, main.Pragmas, "<main>");
     ASSERT_FALSE(res);
     EXPECT_NE(res.error().ToString().find("несовместимые прагмы"), std::string::npos);
+}
+
+// A module with reachable, unreachable and implicitly called functions.
+const char* ReachModule = R"((block
+  (pragma language overloads)
+  (type Pt <struct (X i64)>)
+  (var origin = (call from_global))
+  (fun from_global () -> i64 (block (return 0)))
+  (fun helper () -> i64 (block (return 1)))
+  (fun reached () -> i64 (block (return (+ (call helper) (call shared)))))
+  (fun shared () -> i64 (block (return 2)))
+  (fun shared ((var x i64)) -> i64 (block (return x)))
+  (fun from_aux () -> i64 (block (return 3)))
+  (fun from_root () -> i64 (block (return 4)))
+  (fun pt_add ((var a <named Pt>) (var b <named Pt>)) -> <named Pt> (attrs (operator "+"))
+    (block (return (cast (struct ((X (+ (field a X) (field b X))))) <named Pt>))))
+  (fun kept () -> void (attrs used) (block))
+  (fun unreached () -> i64 (block (return (+ (call unreached_callee 1) (call undefined_name)))))
+  (fun unreached_callee ((var x i64)) -> i64 (block (return x)))))";
+
+const char* ReachMain = R"((block
+  (pragma language overloads)
+  (use System)
+  (use m)
+  (fun entry () -> i64
+    (block
+      (assert (== (call reached) 3))
+      (var p <named Pt>)
+      (= p (+ (cast (struct ((X 20))) <named Pt>) (cast (struct ((X 22))) <named Pt>)))
+      (return (field p X))))
+  (fun aux () -> i64 (block (return (call from_aux))))))";
+
+TEST(ComposeTest, DropUnreachableModuleFunctions) {
+    // The passes call __ensure by name: a module that defines it keeps it.
+    auto rt = Module("rt", "(block (pragma language overloads)"
+        " (fun __ensure ((var condition bool) (var message string)) -> void (block)))");
+    auto m = Module("m", ReachModule);
+    auto main = Parse(ReachMain);
+    auto res = Compose({rt.get(), m.get()}, main.Ast, main.Pragmas, "<main>");
+    ASSERT_TRUE(res) << res.error().ToString();
+
+    EXPECT_EQ(DropUnreachableModuleFunctions(res->Ast, {"from_root"}), 2u);
+    EXPECT_EQ(Layout(res->Ast), (std::vector<std::string>{
+        "Use:System",
+        "Use:m",
+        "Type:Pt",
+        "Var",
+        "Fun:entry",
+        "Fun:aux",
+        "Fun:__ensure",
+        "Fun:from_global",
+        "Fun:helper",
+        "Fun:reached",
+        "Fun:shared",
+        "Fun:shared",
+        "Fun:from_aux",
+        "Fun:from_root",
+        "Fun:pt_add",
+        "Fun:kept",
+    }));
+}
+
+TEST(ComposeTest, KernelSkipsUnreachableModuleFunctions) {
+    // `unreached` calls an undefined name: the kernel compiles because nothing reaches it.
+    auto m = Module("m", ReachModule);
+    auto main = Parse(ReachMain);
+    auto res = Compose({m.get()}, main.Ast, main.Pragmas, "<main>");
+    ASSERT_TRUE(res) << res.error().ToString();
+
+    TLLVMRunner runner({
+        .NativeCode = true,
+        .CoreInput = true,
+        .ResolveCoreInput = true,
+        .OptLevel = 2,
+    }, nullptr, &NQumir::NTest::TestTypes());
+    std::string error;
+    auto* entry = reinterpret_cast<int64_t (*)()>(
+        runner.CompileKernelAst(std::move(*res), "entry", &error));
+    ASSERT_NE(entry, nullptr) << error;
+    EXPECT_EQ(entry(), 42);
 }
 
 } // namespace
