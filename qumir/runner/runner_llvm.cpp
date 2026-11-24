@@ -246,6 +246,8 @@ bool TLLVMRunner::LowerKernelAst(
         ast = std::move(composed->Ast);
         Resolver.ApplyPragmas(composed->Pragmas);
     }
+    // Kernels keep only the module functions their entries reach: the rest skip the semantics.
+    NFrontend::DropUnreachableModuleFunctions(ast, entryNames);
 
     // Contract: an entrypoint is looked up by its source name, so its emit symbol
     // must equal that name - never mangle/cache it, whatever flags it carries.

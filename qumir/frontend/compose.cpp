@@ -3,6 +3,7 @@
 #include <qumir/frontend/source_module_loader.h>
 
 #include <algorithm>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -251,6 +252,106 @@ std::expected<TComposeResult, TError> LoadAndCompose(
         }
     }
     return LoadAndCompose(loader, mainAst, corePragmas);
+}
+
+namespace {
+
+// Functions that the passes and the IR lowering call by name with no call in the source.
+// A module may define or replace one of them, so such module functions are roots.
+// A pass that starts calling a function by name must list it here.
+constexpr std::string_view ImplicitCallees[] = {
+    // transform.cpp: assert, string operations, input and output statements
+    "__ensure", "str_concat", "str_compare", "str_replace_sym", "str_symbol_at", "str_slice",
+    "str_from_unicode", "str_input", "input_set_file", "input_reset_file", "input_double",
+    "input_int64", "output_set_file", "output_reset_file", "output_double", "output_int64",
+    "output_bool", "output_string", "output_symbol",
+    // kumir/pipeline.cpp: `**`
+    "pow", "fpow",
+    // lower_ast.cpp: string and array lifetimes, external call locators, debug points
+    "str_retain", "str_release", "str_from_lit", "array_create", "array_destroy",
+    "array_str_destroy", "builtin::record_locator", "__qumir_debug_point",
+};
+
+// Iterative: the walk runs before the passes, and deep ASTs must not overflow the stack.
+template <class TReach>
+void ReachNames(TExpr* root, TReach& reach) {
+    std::vector<TExpr*> stack{root};
+    while (!stack.empty()) {
+        auto* expr = stack.back();
+        stack.pop_back();
+        if (!expr) {
+            continue;
+        }
+        if (auto ident = TMaybeNode<TIdentExpr>(expr)) {
+            reach(ident.Cast()->Name);
+        } else if (auto fun = TMaybeNode<TFunDecl>(expr)) {
+            // Parameters are not children, yet their bounds may call functions.
+            for (const auto& param : fun.Cast()->Params) {
+                stack.push_back(param.Get());
+            }
+        }
+        for (const auto& child : expr->Children()) {
+            stack.push_back(child.Get());
+        }
+    }
+}
+
+} // namespace
+
+size_t DropUnreachableModuleFunctions(
+    const TExprPtr& composedAst,
+    const std::vector<std::string>& roots)
+{
+    auto block = TMaybeNode<TBlockExpr>(composedAst);
+    if (!block) {
+        return 0;
+    }
+    auto& stmts = block.Cast()->Stmts;
+
+    // A name reaches all module functions of that name, so overloads stay together.
+    std::unordered_map<std::string_view, std::vector<TExpr*>> unreached;
+    std::unordered_set<const TExpr*> reached;
+    std::vector<TExpr*> work;
+    for (const auto& stmt : stmts) {
+        auto fun = TMaybeNode<TFunDecl>(stmt);
+        if (!fun || !stmt->Origin) {
+            work.push_back(stmt.Get());
+            continue;
+        }
+        const auto* decl = fun.Cast();
+        unreached[decl->Name].push_back(stmt.Get());
+        if (decl->OperatorName || decl->LiteralSuffix || decl->Used
+            || std::ranges::find(ImplicitCallees, std::string_view(decl->Name)) != std::end(ImplicitCallees))
+        {
+            reached.insert(stmt.Get());
+            work.push_back(stmt.Get());
+        }
+    }
+
+    auto reach = [&](std::string_view name) {
+        auto it = unreached.find(name);
+        if (it == unreached.end()) {
+            return;
+        }
+        for (auto* fun : it->second) {
+            if (reached.insert(fun).second) {
+                work.push_back(fun);
+            }
+        }
+        unreached.erase(it);
+    };
+    for (const auto& root : roots) {
+        reach(root);
+    }
+    while (!work.empty()) {
+        auto* node = work.back();
+        work.pop_back();
+        ReachNames(node, reach);
+    }
+
+    return std::erase_if(stmts, [&](const TExprPtr& stmt) {
+        return stmt->Origin && TMaybeNode<TFunDecl>(stmt) && !reached.contains(stmt.Get());
+    });
 }
 
 } // namespace NFrontend

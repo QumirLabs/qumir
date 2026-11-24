@@ -55,5 +55,12 @@ std::expected<TComposeResult, TError> LoadAndCompose(
     const std::vector<std::string>& searchPaths,
     const std::vector<std::string>& explicitModules = {});
 
+// Drops the source-module functions (with Origin) that no root reaches by name, so the
+// semantic passes skip them. Roots: `roots`, every other statement, and module operators,
+// literal suffixes, `used` functions and implicit callees of the passes. Returns the count.
+size_t DropUnreachableModuleFunctions(
+    const NAst::TExprPtr& composedAst,
+    const std::vector<std::string>& roots);
+
 } // namespace NFrontend
 } // namespace NQumir
