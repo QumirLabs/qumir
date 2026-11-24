@@ -31,8 +31,8 @@ struct TPhiRef {
 };
 
 // Implements the sealed-block SSA construction algorithm described by Braun
-// et al., "Simple and Efficient Construction of Static Single Assignment Form":
-// https://c9x.me/compile/bib/braun13cc.pdf
+// et al., "Simple and Efficient Construction of Static Single Assignment Form", CC 2013,
+// doi:10.1007/978-3-642-37051-9_6: https://c9x.me/compile/bib/braun13cc.pdf
 struct TSSABuilder {
     TSSABuilder(TModule& module, TFunction& function)
         : Module(module)
@@ -126,8 +126,11 @@ struct TSSABuilder {
 
     void AddPhiUsers(int blockIdx, int phiIdx) {
         for (const auto& op : Function.Blocks[blockIdx].Phis[phiIdx].Operands) {
-            if (op.Type == TOperand::EType::Tmp) {
-                PhiUsers[op.Tmp.Idx].push_back({blockIdx, phiIdx});
+            // The operand may already be replaced: register under its current value, or the
+            // phi would never be rechecked when that value is replaced in turn.
+            auto resolved = Resolve(op);
+            if (resolved.Type == TOperand::EType::Tmp) {
+                PhiUsers[resolved.Tmp.Idx].push_back({blockIdx, phiIdx});
             }
         }
     }
@@ -407,8 +410,6 @@ struct TSSABuilder {
     std::set<TLabel> SealedBlocks;
     // Blocks reachable from entry
     std::set<TLabel> ReachableBlocks;
-    // Deferred tmp replacements collected while processing blocks (from tmp -> to operand)
-    std::vector<std::pair<TOperand, TOperand>> GlobalPendingReplacements;
     // Locals that are safe to promote (no address taken)
     std::vector<char> LocalPromotable;
     // Removed trivial phi or promoted load -> the operand that replaced it
