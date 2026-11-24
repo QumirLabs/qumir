@@ -9,7 +9,11 @@
 #include <qumir/ir/passes/analysis/cfg.h>
 #include <qumir/ir/passes/transforms/locals2ssa.h>
 #include <qumir/ir/passes/transforms/de_ssa.h>
+#include <qumir/ir/passes/transforms/pipeline.h>
+#include <qumir/ir/eval.h>
 
+#include <algorithm>
+#include <chrono>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -133,6 +137,55 @@ struct TLocalsFunction {
     const int I64 = Module.Types.I(EKind::I64);
     const int I1 = Module.Types.I(EKind::I1);
 };
+
+// A chain of if-else diamonds over `locals` locals, local 0 is the argument. Each diamond
+// changes one of two locals, so most phis at the joins are trivial.
+void EmitDiamonds(TLocalsFunction& f, int locals, int diamonds) {
+    auto& b = f.Builder;
+    for (int i = 1; i < locals; ++i) {
+        f.Store(i, f.Op("+"_op, f.Load(0), f.Imm(i)));
+    }
+    for (int k = 0; k < diamonds; ++k) {
+        const int x = 1 + k % (locals - 1);
+        const int y = 1 + (k * 7 + 3) % (locals - 1);
+        const TLabel left = b.NewLabel(), right = b.NewLabel(), join = b.NewLabel();
+        f.Cmp(f.Op("=="_op, f.Op("&"_op, f.Load(x), f.Imm(1)), f.Imm(0), true), left, right);
+        f.Begin(left);
+        f.Store(x, f.Op("&"_op, f.Op("+"_op, f.Load(x), f.Load(y)), f.Imm(1023)));
+        f.Jmp(join);
+        f.Begin(right);
+        f.Store(y, f.Op("&"_op, f.Op("+"_op, f.Load(y), f.Imm(k)), f.Imm(1023)));
+        f.Jmp(join);
+        f.Begin(join);
+    }
+    TOperand sum = f.Load(1);
+    for (int i = 2; i < locals; ++i) {
+        sum = f.Op("+"_op, sum, f.Load(i));
+    }
+    b.Emit0("ret"_op, {sum});
+}
+
+// What the function from EmitDiamonds returns for `arg`.
+int64_t DiamondsResult(int locals, int diamonds, int64_t arg) {
+    std::vector<int64_t> values(locals);
+    for (int i = 1; i < locals; ++i) {
+        values[i] = arg + i;
+    }
+    for (int k = 0; k < diamonds; ++k) {
+        const int x = 1 + k % (locals - 1);
+        const int y = 1 + (k * 7 + 3) % (locals - 1);
+        if ((values[x] & 1) == 0) {
+            values[x] = (values[x] + values[y]) & 1023;
+        } else {
+            values[y] = (values[y] + k) & 1023;
+        }
+    }
+    int64_t sum = 0;
+    for (int i = 1; i < locals; ++i) {
+        sum += values[i];
+    }
+    return sum;
+}
 
 } // namespace
 
@@ -686,6 +739,44 @@ TEST(CfgTest, PromoteLocalsToSSAUnreachableSinglePredecessorCycles) {
     ASSERT_EQ(ret->OperandCount, 1);
     ASSERT_EQ(ret->Operands[0].Type, TOperand::EType::Imm);
     EXPECT_EQ(module.Types.GetKind(ret->Operands[0].Imm.TypeId), EKind::Undef);
+}
+
+TEST(CfgTest, PromoteLocalsToSSAManyTrivialPhisScaleLinearly) {
+    const int locals = 16;
+    auto promote = [&](int diamonds) {
+        TLocalsFunction f(locals, 1);
+        EmitDiamonds(f, locals, diamonds);
+        const auto start = std::chrono::steady_clock::now();
+        PromoteLocalsToSSA(f.Module.Functions.front(), f.Module);
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    };
+    // Removing a trivial phi used to rescan the whole function: 4x the diamonds took 16x the time.
+    double small = 1e9;
+    double large = 1e9;
+    for (int run = 0; run < 3; ++run) {
+        small = std::min(small, promote(1000));
+        large = std::min(large, promote(4000));
+    }
+    EXPECT_LT(large, 8 * small);
+
+    const int diamonds = 2000;
+    TLocalsFunction f(locals, 1);
+    EmitDiamonds(f, locals, diamonds);
+    auto& function = f.Module.Functions.front();
+    NPasses::Pipeline(function, f.Module);
+    ExpectDefinedTmps(function);
+    for (const auto& block : function.Blocks) {
+        for (const auto& instr : block.Instrs) {
+            EXPECT_FALSE(instr.Op == "stre"_op || (instr.Op == "load"_op && instr.Operands[0].Local.Idx != 0));
+        }
+    }
+    TVMCompiler compiler(f.Module);
+    std::ostringstream out;
+    std::istringstream in;
+    TInterpreter interpreter(f.Module, compiler, out, in);
+    for (int64_t arg : {0, 5, 100}) {
+        EXPECT_EQ(interpreter.EvalRaw(function, {arg}, {}), DiamondsResult(locals, diamonds, arg));
+    }
 }
 
 int main(int argc, char** argv) {
