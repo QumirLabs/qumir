@@ -538,6 +538,7 @@ const std::vector<std::string>& TrickyIdentifiers() {
         "\xD0\xB6 \xD1\x8B", "x\ry", "foo", "my_var", "$x", "\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82",
         "|", "||", "a|b", "|a", "a|", "\\", "\\|", "|\\", "\\n", "\\\\|", " x", ")x", " ", ")", "\tx", "\nx", "\rx", "\vx", "\fx",
         "<<", "<=", ">=", ">>", "a\\nb", "| |", "|)|", " |)\t\n\r\\|", "x |y\\z| w",
+        "true", "\xD0\xBD\xD1\x86", "\xD0\xB8\xD0\xBB\xD0\xB8", "\xD0\xBD\xD0\xB5",
     };
     return names;
 }
