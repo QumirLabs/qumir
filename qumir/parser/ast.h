@@ -1210,7 +1210,7 @@ struct TCleanupExitExpr : TExpr {
     static constexpr TExprNodeId NodeId{"ClnExit"};
 
     static constexpr size_t CleanupsOffset = 1;
-    ECleanupExitKind Kind;
+    ECleanupExitKind ExitKind;
     std::vector<TExprPtr> Operands; // Value (optional), Cleanups...
 
     TCleanupExitExpr(
@@ -1220,7 +1220,7 @@ struct TCleanupExitExpr : TExpr {
         std::vector<TExprPtr>&& cleanups,
         TTypeFactory& types)
         : TExpr(std::move(loc), types.Make<TVoidType>(), NodeId)
-        , Kind(kind)
+        , ExitKind(kind)
     {
         Operands.reserve(CleanupsOffset + cleanups.size());
         Operands.push_back(value);

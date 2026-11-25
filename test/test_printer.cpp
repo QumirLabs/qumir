@@ -164,7 +164,9 @@ TEST(PrinterCustomNodes, NestedCustomNodes) {
 
 TEST(PrinterCustomNodes, UnknownNodeThrows) {
     struct TUnknown : TExpr {
-        TUnknown() : TExpr(TExprNodeId{"Unknown"}) {}
+        TUnknown()
+            : TExpr(TExprNodeId{"Unknown"})
+        {}
         void Accept(IVisitor& v) override { v.VisitOtherwise(*this); }
     };
     auto expr = MakeIntrusive<TUnknown>();

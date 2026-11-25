@@ -984,7 +984,7 @@ TTask AnnotateCleanupExit(
     NSemantics::TNameResolver& context,
     NSemantics::TScopeId scopeId)
 {
-    if (exit->Kind == ECleanupExitKind::Return) {
+    if (exit->ExitKind == ECleanupExitKind::Return) {
         auto scope = context.GetScope(scopeId);
         auto funcScope = scope->FuncScope;
         if (!funcScope || !funcScope->RetType) {

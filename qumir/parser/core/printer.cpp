@@ -1049,7 +1049,7 @@ struct TPrintExpr : public IVisitor {
     void Visit(TCleanupExitExpr& node) override {
         *Out << "(cleanup-exit";
         Printer.Separator(Frame.Level + 1);
-        *Out << '(' << CleanupExitKindName(node.Kind);
+        *Out << '(' << CleanupExitKindName(node.ExitKind);
         if (node.Value()) {
             Printer.Separator(Frame.Level + 2);
             Printer.PrintExpr(node.Value(), true, Frame.Level + 2);

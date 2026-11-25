@@ -1028,7 +1028,7 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
 
 TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::LowerCleanupExit(TCleanupExitExpr* exit, const TBlockScope& scope) {
     TInstrEmitter emitter{Builder, InstDebugInfo(exit->Location, scope.Id.Id), DebugPoints_, Module.DebugOptions.EmitDebugInfo};
-    if (exit->Kind == ECleanupExitKind::Return) {
+    if (exit->ExitKind == ECleanupExitKind::Return) {
         if (!scope.ReturnLabel) {
             co_return TError(exit->Location, TErrorString::Get<EErrorId::RETURN_OUTSIDE_FUNCTION>());
         }
@@ -1058,12 +1058,12 @@ TExpectedTask<TAstLowerer::TValueWithBlock, TError, TLocation> TAstLowerer::Lowe
         co_return TValueWithBlock{std::nullopt, Builder.CurrentBlockLabel()};
     }
 
-    const auto target = exit->Kind == ECleanupExitKind::Break
+    const auto target = exit->ExitKind == ECleanupExitKind::Break
         ? scope.BreakLabel
         : scope.ContinueLabel;
     if (!target) {
         co_return TError(exit->Location,
-            exit->Kind == ECleanupExitKind::Break
+            exit->ExitKind == ECleanupExitKind::Break
                 ? TErrorString::Get<EErrorId::BREAK_NOT_IN_LOOP>()
                 : TErrorString::Get<EErrorId::CONTINUE_NOT_IN_LOOP>());
     }

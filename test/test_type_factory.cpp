@@ -40,7 +40,33 @@ concept CanMakeCustom = requires(TTypeFactory& types, TArgs... args) {
     types.MakeCustom<T>(args...);
 };
 
+template<typename T>
+concept CanPackLabel = requires {
+    typename std::integral_constant<uint64_t, TTypeId(T::Label).Value>;
+};
+
+struct TLabel8 {
+    static constexpr std::string_view Label = "Continue";
+};
+
+struct TLabel9 {
+    static constexpr std::string_view Label = "Continue!";
+};
+
+template<typename A, typename B>
+concept CanCompare = requires(A a, B b) {
+    a == b;
+};
+
 } // namespace
+
+// A kind label packs at most 8 bytes: a longer constant one would lose its head.
+static_assert(CanPackLabel<TLabel8>);
+static_assert(!CanPackLabel<TLabel9>);
+// A kind label is not a width: a stale `Kind == TFloatType::F32` must not compile.
+static_assert(!CanCompare<TTypeId, TFloatType::EKind>);
+static_assert(!CanCompare<TIntegerType::EKind, TTypeId>);
+static_assert(CanCompare<TTypeId, TTypeId>);
 
 // MakeCustom takes unknown kinds only: a built-in kind made there would not be interned.
 static_assert(CanMakeCustom<TCustomType>);
