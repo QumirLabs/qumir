@@ -295,6 +295,10 @@ bool IsPlainIdentifier(std::string_view name) {
         && std::ranges::all_of(name.substr(1), IsIdentContinue);
 }
 
+bool StartsPlainIdentifier(std::string_view name) {
+    return !name.empty() && IsIdentStart(name.front());
+}
+
 TTokenStream::TTokenStream(std::istream& in)
     : ITokenStream(in)
 { }
