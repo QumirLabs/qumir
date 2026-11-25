@@ -577,6 +577,21 @@ TEST(CoreIdentifierQuotingTest, PlainIdentifiersMatchTheLexer) {
     }
 }
 
+// The printer quotes such names without reading them back.
+TEST(CoreIdentifierQuotingTest, NamesThatStartLikeIdentifiersReadBackOnlyWhenPlain) {
+    for (const auto& name : TrickyIdentifiers()) {
+        if (!StartsPlainIdentifier(name)) {
+            continue;
+        }
+        SCOPED_TRACE(name);
+        std::istringstream input("(" + name + ")");
+        TTokenStream tokens(input);
+        tokens.Next();
+        auto ident = tokens.Next();
+        EXPECT_EQ(ident.Type == TToken::Identifier && ident.Name == name, IsPlainIdentifier(name));
+    }
+}
+
 TEST(CoreIdentifierQuotingTest, StructFieldNamesRoundTrip) {
     for (const auto& name : TrickyIdentifiers()) {
         SCOPED_TRACE(name);

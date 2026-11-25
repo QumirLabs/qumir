@@ -26,6 +26,10 @@ private:
 // the lexer reads such a name as this one identifier wherever it stands.
 bool IsPlainIdentifier(std::string_view name);
 
+// True if `name` starts with a letter, '_', '$' or non-ASCII byte: the lexer reads it as an
+// identifier up to the first character that cannot continue one.
+bool StartsPlainIdentifier(std::string_view name);
+
 } // namespace NCore
 } // namespace NAst
 } // namespace NQumir
