@@ -107,7 +107,7 @@ std::optional<TError> CollectInterface(const fs::path& path, TSourceModule& modu
             module.Exports.push_back({var.Cast()->Name, EExportKind::Global, stmt->Location});
         } else {
             return Diag(path, stmt->Location,
-                "недопустимое верхнеуровневое выражение в модуле: `" + std::string(stmt->NodeName()) + "'");
+                "недопустимое верхнеуровневое выражение в модуле: `" + stmt->Kind.ToString() + "'");
         }
     }
     return std::nullopt;

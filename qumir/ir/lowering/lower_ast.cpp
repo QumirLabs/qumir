@@ -27,7 +27,7 @@ namespace {
 // LLVM read it the same way as a stored f32 value.
 TImm FloatImm(const TNumberExpr& num, TTypeTable& types) {
     auto floatType = TMaybeType<TFloatType>(num.Type);
-    if (floatType && floatType.Cast()->Kind == TFloatType::F32) {
+    if (floatType && floatType.Cast()->Width == TFloatType::F32) {
         return TImm{
             .Value = static_cast<int64_t>(std::bit_cast<uint32_t>(static_cast<float>(num.FloatValue))),
             .TypeId = types.I(EKind::F32),

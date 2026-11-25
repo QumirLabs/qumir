@@ -8,6 +8,8 @@
 #include <vector>
 #include <optional>
 
+#include "operator.h"
+
 namespace NQumir {
 namespace NAst {
 
@@ -20,6 +22,8 @@ struct TAccess {
     bool operator==(const TAccess&) const = default;
 };
 
+using TTypeId = TOperator;
+
 // Only TTypeFactory creates types (their constructors are private), owns and interns
 // them. Types are never copied: equal types are one object. The built-in kinds are
 // final: a subclass could reach a private constructor through an inherited one.
@@ -28,10 +32,13 @@ struct TType {
     TType& operator=(const TType&) = delete;
     virtual ~TType() = default;
     virtual std::string ToString() const { return ""; }
-    virtual const std::string_view TypeName() const = 0;
+
+    TTypeId Kind;
 
 protected:
-    TType() = default;
+    TType(TTypeId kind)
+        : Kind(kind)
+    { }
 };
 
 // A type lives as long as its factory, so a plain pointer to const is enough.
@@ -97,7 +104,7 @@ struct TGenericArg {
 template<typename T>
 struct TMaybeType {
     TMaybeType(const TType* type)
-        : Type(type && std::string_view(T::TypeId) == type->TypeName()
+        : Type(type && T::TypeId == type->Kind
             ? static_cast<const T*>(type)
             : nullptr)
     { }
@@ -111,7 +118,7 @@ struct TMaybeType {
 };
 
 struct TIntegerType final : TType {
-    static constexpr const char* TypeId = "Int";
+    static constexpr TTypeId TypeId{"Int"};
 
     enum EKind {
         I8,
@@ -124,19 +131,22 @@ struct TIntegerType final : TType {
         U32,
         U64,
         U128,
-    } Kind = I64;
+    } Width = I64;
 
 private:
     friend class TTypeFactory;
 
-    TIntegerType() = default;
+    TIntegerType()
+        : TType(TypeId)
+    {}
     explicit TIntegerType(EKind kind)
-        : Kind(kind)
+        : TType(TypeId)
+        , Width(kind)
     {}
 
 public:
     int BitWidth() const {
-        switch (Kind) {
+        switch (Width) {
             case I8:
             case U8:
                 return 8;
@@ -157,7 +167,7 @@ public:
     }
 
     bool IsSigned() const {
-        switch (Kind) {
+        switch (Width) {
             case I8:
             case I16:
             case I32:
@@ -175,7 +185,7 @@ public:
     }
 
     std::string ToString() const override {
-        switch (Kind) {
+        switch (Width) {
             case I8: return "i8";
             case I16: return "i16";
             case I32: return "i32";
@@ -189,96 +199,83 @@ public:
         }
         return "i64";
     }
-
-    const std::string_view TypeName() const override {
-        return TIntegerType::TypeId;
-    }
 };
 
 struct TFloatType final : TType {
-    static constexpr const char* TypeId = "Float";
+    static constexpr TTypeId TypeId{"Float"};
 
     enum EKind {
         F32,
         F64,
-    } Kind = F64;
+    } Width = F64;
 
 private:
     friend class TTypeFactory;
 
-    TFloatType() = default;
+    TFloatType()
+        : TType(TypeId)
+    {}
     explicit TFloatType(EKind kind)
-        : Kind(kind)
+        : TType(TypeId)
+        , Width(kind)
     {}
 
 public:
     int BitWidth() const {
-        return Kind == F32 ? 32 : 64;
+        return Width == F32 ? 32 : 64;
     }
 
     std::string ToString() const override {
-        return Kind == F32 ? "f32" : "f64";
-    }
-
-    const std::string_view TypeName() const override {
-        return TFloatType::TypeId;
+        return Width == F32 ? "f32" : "f64";
     }
 };
 
 struct TBoolType final : TType {
-    static constexpr const char* TypeId = "Bool";
-
-    const std::string_view TypeName() const override {
-        return TBoolType::TypeId;
-    }
+    static constexpr TTypeId TypeId{"Bool"};
 
 private:
     friend class TTypeFactory;
 
-    TBoolType() = default;
+    TBoolType()
+        : TType(TypeId)
+    {}
 };
 
 struct TStringType final : TType {
-    static constexpr const char* TypeId = "String";
-
-    const std::string_view TypeName() const override {
-        return TStringType::TypeId;
-    }
+    static constexpr TTypeId TypeId{"String"};
 
 private:
     friend class TTypeFactory;
 
-    TStringType() = default;
+    TStringType()
+        : TType(TypeId)
+    {}
 };
 
 struct TSymbolType final : TType {
-    static constexpr const char* TypeId = "Char";
-
-    const std::string_view TypeName() const override {
-        return TSymbolType::TypeId;
-    }
+    static constexpr TTypeId TypeId{"Char"};
 
 private:
     friend class TTypeFactory;
 
-    TSymbolType() = default;
+    TSymbolType()
+        : TType(TypeId)
+    {}
 };
 
 struct TVoidType final : TType {
-    static constexpr const char* TypeId = "Void";
-
-    const std::string_view TypeName() const override {
-        return TVoidType::TypeId;
-    }
+    static constexpr TTypeId TypeId{"Void"};
 
 private:
     friend class TTypeFactory;
 
-    TVoidType() = default;
+    TVoidType()
+        : TType(TypeId)
+    {}
 };
 
 struct TFunctionType final : TType {
-    static constexpr const char* TypeId = "Fun";
+    static constexpr TTypeId TypeId{"Fun"};
 
     std::vector<TTypePtr> ParamTypes;
     TTypePtr ReturnType = nullptr;
@@ -287,7 +284,8 @@ private:
     friend class TTypeFactory;
 
     TFunctionType(std::vector<TTypePtr>&& params, const TTypePtr& ret)
-        : ParamTypes(std::move(params))
+        : TType(TypeId)
+        , ParamTypes(std::move(params))
         , ReturnType(ret)
     {}
 
@@ -295,23 +293,19 @@ public:
     std::string ToString() const override {
         std::string s = "(";
         for (size_t i = 0; i < ParamTypes.size(); ++i) {
-            s += ParamTypes[i] ? ParamTypes[i]->TypeName() : "unknown";
+            s += ParamTypes[i] ? ParamTypes[i]->Kind.ToString() : "unknown";
             if (i < ParamTypes.size() - 1) {
                 s += ", ";
             }
         }
         s += ") -> ";
-        s += ReturnType ? ReturnType->TypeName() : "unknown";
+        s += ReturnType ? ReturnType->Kind.ToString() : "unknown";
         return s;
-    }
-
-    const std::string_view TypeName() const override {
-        return TFunctionType::TypeId;
     }
 };
 
 struct TFutureType final : TType {
-    static constexpr const char* TypeId = "Future";
+    static constexpr TTypeId TypeId{"Future"};
 
     TTypePtr ResultType = nullptr;
 
@@ -319,21 +313,18 @@ private:
     friend class TTypeFactory;
 
     explicit TFutureType(const TTypePtr& result)
-        : ResultType(result)
+        : TType(TypeId)
+        , ResultType(result)
     {}
 
 public:
     std::string ToString() const override {
         return "Future<" + (ResultType ? ResultType->ToString() : std::string("unknown")) + ">";
     }
-
-    const std::string_view TypeName() const override {
-        return TFutureType::TypeId;
-    }
 };
 
 struct TArrayType final : TType {
-    static constexpr const char* TypeId = "Array";
+    static constexpr TTypeId TypeId{"Array"};
 
     TTypePtr ElementType = nullptr;
     int Arity{0}; // 0 - scalar, 1 - 1D, 2 - 2D, etc.
@@ -341,26 +332,25 @@ struct TArrayType final : TType {
 private:
     friend class TTypeFactory;
 
-    TArrayType() = default;
+    TArrayType()
+        : TType(TypeId)
+    {}
 
     explicit TArrayType(const TTypePtr& et, int arity)
-        : ElementType(et)
+        : TType(TypeId)
+        , ElementType(et)
         , Arity(arity)
     {}
 
 public:
     std::string ToString() const override {
-        return "[" + (ElementType ? std::string(ElementType->TypeName()) : "unknown") + "; " +
+        return "[" + (ElementType ? ElementType->Kind.ToString() : "unknown") + "; " +
                (Arity > 0 ? std::to_string(Arity) : "?") + "]";
-    }
-
-    const std::string_view TypeName() const override {
-        return TArrayType::TypeId;
     }
 };
 
 struct TPointerType final : TType {
-    static constexpr const char* TypeId = "Ptr";
+    static constexpr TTypeId TypeId{"Ptr"};
 
     TTypePtr PointeeType = nullptr;
 
@@ -368,21 +358,18 @@ private:
     friend class TTypeFactory;
 
     explicit TPointerType(const TTypePtr& pt)
-        : PointeeType(pt)
+        : TType(TypeId)
+        , PointeeType(pt)
     {}
 
 public:
     std::string ToString() const override {
-        return "*" + (PointeeType ? std::string(PointeeType->TypeName()) : "unknown");
-    }
-
-    const std::string_view TypeName() const override {
-        return TPointerType::TypeId;
+        return "*" + (PointeeType ? PointeeType->Kind.ToString() : "unknown");
     }
 };
 
 struct TReferenceType final : TType {
-    static constexpr const char* TypeId = "Ref";
+    static constexpr TTypeId TypeId{"Ref"};
 
     TTypePtr ReferencedType = nullptr;
 
@@ -390,21 +377,18 @@ private:
     friend class TTypeFactory;
 
     explicit TReferenceType(const TTypePtr& rt)
-        : ReferencedType(rt)
+        : TType(TypeId)
+        , ReferencedType(rt)
     {}
 
 public:
     std::string ToString() const override {
-        return "&" + (ReferencedType ? std::string(ReferencedType->TypeName()) : "unknown");
-    }
-
-    const std::string_view TypeName() const override {
-        return TReferenceType::TypeId;
+        return "&" + (ReferencedType ? ReferencedType->Kind.ToString() : "unknown");
     }
 };
 
 struct TNamedType final : TType {
-    static constexpr const char* TypeId = "Named";
+    static constexpr TTypeId TypeId{"Named"};
     std::string Name;
     std::vector<TGenericArg> TypeArgs;
 
@@ -437,10 +421,6 @@ struct TNamedType final : TType {
         return result;
     }
 
-    const std::string_view TypeName() const override {
-        return TNamedType::TypeId; // "Named" - consistent with TMaybeType contract
-    }
-
 private:
     friend class TTypeFactory;
 
@@ -451,7 +431,8 @@ private:
         const TTypePtr& underlying,
         std::vector<TGenericArg>&& typeArgs = {},
         std::optional<std::string> reference = std::nullopt)
-        : Name(name)
+        : TType(TypeId)
+        , Name(name)
         , TypeArgs(std::move(typeArgs))
         , UnderlyingType_(underlying)
         , Reference_(std::move(reference))
@@ -465,7 +446,7 @@ private:
 };
 
 struct TStructType final : TType {
-    static constexpr const char* TypeId = "Struct";
+    static constexpr TTypeId TypeId{"Struct"};
 
     std::vector<std::pair<std::string, TTypePtr>> Fields;
 
@@ -473,21 +454,18 @@ private:
     friend class TTypeFactory;
 
     explicit TStructType(std::vector<std::pair<std::string, TTypePtr>>&& fields)
-        : Fields(std::move(fields))
+        : TType(TypeId)
+        , Fields(std::move(fields))
     {}
 
 public:
     std::string ToString() const override {
         std::string s = "struct { ";
         for (const auto& [name, type] : Fields) {
-            s += name + ": " + (type ? std::string(type->TypeName()) : "unknown") + "; ";
+            s += name + ": " + (type ? type->Kind.ToString() : "unknown") + "; ";
         }
         s += "}";
         return s;
-    }
-
-    const std::string_view TypeName() const override {
-        return TStructType::TypeId;
     }
 };
 
@@ -528,7 +506,7 @@ public:
 // - <vec type N> >  <vec type N>  => <vec i1 N>
 // - <vec type N> >= <vec type N>  => <vec i1 N>
 struct TVectorType final : TType {
-    static constexpr const char* TypeId = "Vector";
+    static constexpr TTypeId TypeId{"Vector"};
 
     TTypePtr ElementType = nullptr;
     int Size{0};
@@ -539,7 +517,8 @@ private:
     friend class TTypeFactory;
 
     TVectorType(const TTypePtr& et, int size, std::string sizeParam = {})
-        : ElementType(et)
+        : TType(TypeId)
+        , ElementType(et)
         , Size(size)
         , SizeParam(std::move(sizeParam))
     {}
@@ -562,18 +541,14 @@ public:
     }
 
     std::string ToString() const override {
-        return (ElementType ? std::string(ElementType->TypeName()) : "unknown") + "x" + SizeText();
-    }
-
-    const std::string_view TypeName() const override {
-        return TVectorType::TypeId;
+        return (ElementType ? ElementType->Kind.ToString() : "unknown") + "x" + SizeText();
     }
 };
 
 // simd tensor type, e.g. f32x4x4, i32x8x8, etc.
 // examples: <tensor f32 4 4>, <tensor i32 8 8>
 struct TTensorType final : TType {
-    static constexpr const char* TypeId = "Tensor";
+    static constexpr TTypeId TypeId{"Tensor"};
 
     TTypePtr ElementType = nullptr;
     std::vector<int> Shape;
@@ -581,24 +556,23 @@ struct TTensorType final : TType {
 private:
     friend class TTypeFactory;
 
-    TTensorType() = default;
+    TTensorType()
+        : TType(TypeId)
+    {}
 
     explicit TTensorType(const TTypePtr& et, std::vector<int>&& shape)
-        : ElementType(et)
+        : TType(TypeId)
+        , ElementType(et)
         , Shape(std::move(shape))
     {}
 
 public:
     std::string ToString() const override {
-        std::string s = (ElementType ? std::string(ElementType->TypeName()) : "unknown");
+        std::string s = (ElementType ? ElementType->Kind.ToString() : "unknown");
         for (int dim : Shape) {
             s += "x" + std::to_string(dim);
         }
         return s;
-    }
-
-    const std::string_view TypeName() const override {
-        return TTensorType::TypeId;
     }
 };
 
@@ -721,7 +695,7 @@ inline std::string TypeDiagnosticName(const TTypePtr& type) {
         }
         return result;
     }
-    return std::string(type->TypeName());
+    return type->Kind.ToString();
 }
 
 // Stable string key for a type, used in cast/operator maps.
@@ -781,7 +755,7 @@ inline std::string TypeKey(const TTypePtr& t) {
         }
         return key;
     }
-    return std::string(t->TypeName());
+    return t->Kind.ToString();
 }
 
 inline std::string TypeMangleKey(const TTypePtr& t);
@@ -845,7 +819,7 @@ inline std::string TypeMangleKey(const TTypePtr& t) {
         }
         return key;
     }
-    return std::string(t->TypeName());
+    return t->Kind.ToString();
 }
 
 inline std::string MangleFunctionSignature(

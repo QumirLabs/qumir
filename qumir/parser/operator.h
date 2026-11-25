@@ -3,6 +3,7 @@
 #include <string>
 #include <string_view>
 #include <cstdint>
+#include <functional>
 
 namespace NQumir {
 namespace NAst {
@@ -59,3 +60,10 @@ inline TOperator operator""_op(const char* s, size_t) {
 
 } // namespace NAst
 } // namespace NQumir
+
+template<>
+struct std::hash<NQumir::NAst::TOperator> {
+    size_t operator()(NQumir::NAst::TOperator op) const noexcept {
+        return std::hash<uint64_t>{}(op.Value);
+    }
+};

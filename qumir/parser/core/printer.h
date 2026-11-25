@@ -35,12 +35,12 @@ struct TPrintFrame {
 };
 
 using TNodePrinter = std::function<void(TExpr&, TPrinter&, TPrintFrame)>;
-using TPrintExprFactory = std::unordered_map<std::string_view, TNodePrinter>;
+using TPrintExprFactory = std::unordered_map<TExprNodeId, TNodePrinter>;
 
-// Prints a type unknown to the core printer, found by TypeName(). To stay parseable,
+// Prints a type unknown to the core printer, found by Kind. To stay parseable,
 // emit "<named Name [args]>" with TPrinter::PrintNamedType.
 using TTypePrinter = std::function<void(const TType&, TPrinter&, int level)>;
-using TPrintTypeFactory = std::unordered_map<std::string_view, TTypePrinter>;
+using TPrintTypeFactory = std::unordered_map<TTypeId, TTypePrinter>;
 
 struct TPrintOptions {
     ETypePrintMode TypeMode = ETypePrintMode::Required;

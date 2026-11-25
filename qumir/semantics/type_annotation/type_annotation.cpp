@@ -212,7 +212,7 @@ bool IntegerLiteralFits(int64_t value, const TIntegerType& type) {
         return false;
     }
 
-    switch (type.Kind) {
+    switch (type.Width) {
         case TIntegerType::I8:
             return value >= std::numeric_limits<int8_t>::min()
                 && value <= std::numeric_limits<int8_t>::max();
@@ -3483,7 +3483,7 @@ TTask DoAnnotate(TExprPtr expr, NSemantics::TNameResolver& context, NSemantics::
         if (!expr->Type) {
             // if expr->Type => node was annotated on construction
             co_return TError(expr->Location,
-                "Не удалось определить тип выражения для аннотации типов: '" + std::string(expr->NodeName()) + "'.\n"
+                "Не удалось определить тип выражения для аннотации типов: '" + expr->Kind.ToString() + "'.\n"
                 "Возможно, это неизвестный или некорректный вид выражения.\n"
                 "Проверьте корректность синтаксиса и структуры кода.\n"
                 "\nПример: выражение типа ??? не поддерживается.\n"

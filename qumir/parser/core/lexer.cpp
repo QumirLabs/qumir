@@ -12,7 +12,7 @@ AST node forms:
 
   Literals:
       integer, float, boolean literal -> Number
-      "string"                        -> StringLiteral
+      "string"                        -> StrLit
       'c'                             -> Number with Char type
 
   name // token with identifier type
@@ -22,7 +22,7 @@ AST node forms:
       TAssignExpr, NodeId = "Assign".
 
   (= name [index1 ... indexN] value)
-      TArrayAssignExpr, NodeId = "ArrayAssign".
+      TArrayAssignExpr, NodeId = "ArrayAsg".
 
   (+ operand) // 1 operand after operator
       TUnaryExpr, NodeId = "Unary".
@@ -48,16 +48,16 @@ AST node forms:
       TIfExpr, NodeId = "IfExpr".
 
   (while cond body)
-      TWhileStmtExpr, NodeId = "WhileStmt".
+      TWhileStmtExpr, NodeId = "While".
 
   (repeat body cond)
-      TRepeatStmtExpr, NodeId = "RepeatStmt".
+      TRepeatStmtExpr, NodeId = "Repeat".
 
   (for name from to step body)
       TForStmtExpr, NodeId = "ForStmt"; step is nil when omitted.
 
   (times count body)
-      TTimesStmtExpr, NodeId = "TimesStmt".
+      TTimesStmtExpr, NodeId = "Times".
 
   break // treat as a keyword
       TBreakStmt, NodeId = "Break".
@@ -70,7 +70,7 @@ AST node forms:
       TVarStmt, NodeId = "Var".
 
   (vars var1 var2 ... varN)
-      TVarsBlockExpr, NodeId = "VarsBlock".
+      TVarsBlockExpr, NodeId = "VarsBlk".
 
   (fun name return_type (param1 ... paramN) (attr1 ... attrM) body)
       TFunDecl, NodeId = "FunDecl".
@@ -110,7 +110,7 @@ AST node forms:
       TIndexExpr, NodeId = "Index".
 
   (index collection [index1 index2 ... indexN])
-      TMultiIndexExpr, NodeId = "MultiIndex".
+      TMultiIndexExpr, NodeId = "MultiIdx".
 
   (slice collection [start end])
       TSliceExpr, NodeId = "Slice".
@@ -122,13 +122,13 @@ AST node forms:
       TAssertStmt, NodeId = "Assert".
 
   (field field_name object)
-      TFieldAccessExpr, NodeId = "FieldAccess".
+      TFieldAccessExpr, NodeId = "FieldAcc".
 
   (struct ((name1 field1) (name2 field2) ... (nameN fieldN)))
-      TStructConstructExpr, NodeId = "StructConstruct".
+      TStructConstructExpr, NodeId = "Struct".
 
   (field_assign object field_name value)
-      TFieldAssignExpr, NodeId = "FieldAssign".
+      TFieldAssignExpr, NodeId = "FieldAsg".
 
   (: ast_node type)
       Type annotation for any AST node; sets TExpr::Type.

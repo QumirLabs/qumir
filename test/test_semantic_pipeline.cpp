@@ -599,7 +599,7 @@ TEST(ParametricTypes, GenericFunctionInstantiatesParametricNamedType) {
     ASSERT_TRUE(instantiatedCall);
     auto callType = TMaybeType<TIntegerType>(instantiatedCall->Type).Cast();
     ASSERT_TRUE(callType);
-    EXPECT_EQ(callType->Kind, TIntegerType::I64);
+    EXPECT_EQ(callType->Width, TIntegerType::I64);
 }
 
 TEST(ParametricTypes, RejectsParameterizedGenericPlaceholder) {
@@ -682,7 +682,7 @@ TEST(ParametricTypes, PrefersParametricGenericOverBareGenericOverload) {
     ASSERT_TRUE(instantiatedCall);
     auto callType = TMaybeType<TIntegerType>(instantiatedCall->Type).Cast();
     ASSERT_TRUE(callType);
-    EXPECT_EQ(callType->Kind, TIntegerType::I64);
+    EXPECT_EQ(callType->Width, TIntegerType::I64);
 }
 
 TEST(ParametricTypes, RetypesIntegerLiteralToExistingFloatGenericBinding) {

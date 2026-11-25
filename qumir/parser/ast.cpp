@@ -146,7 +146,8 @@ TExprPtr DeepCloneExpr(const TExprPtr& node) {
     if (clone == node) {
         throw std::logic_error(
             "DeepCloneExpr does not support AST node "
-            + std::string(node->NodeName()));
+            + node->Kind.ToString()
+        );
     }
     if (auto block = TMaybeNode<TBlockExpr>(clone)) {
         block.Cast()->Scope = -1;

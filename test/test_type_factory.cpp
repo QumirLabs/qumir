@@ -25,14 +25,14 @@ namespace {
 
 // A type kind Qumir does not know.
 struct TCustomType : TType {
-    const std::string_view TypeName() const override {
-        return "Custom";
-    }
+    static constexpr TTypeId TypeId{"Custom"};
 
 private:
     friend class NQumir::NAst::TTypeFactory;
 
-    TCustomType() = default;
+    TCustomType()
+        : TType(TypeId)
+    {}
 };
 
 template<typename T, typename... TArgs>
