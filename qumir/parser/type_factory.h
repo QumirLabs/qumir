@@ -47,7 +47,7 @@ public:
     template<typename T>
     requires (!std::is_same_v<T, TIntegerType> && !std::is_same_v<T, TFloatType>)
     TConcreteTypePtr<T> Make() {
-        return Intern<T, &TTypeFactory::Types_>(std::string_view(T::TypeId));
+        return Intern<T, &TTypeFactory::Types_>(T::TypeId);
     }
 
     TConcreteTypePtr<TIntegerType> MakeInteger(TIntegerType::EKind kind = TIntegerType::I64) {
@@ -209,7 +209,7 @@ private:
     std::shared_ptr<const TTypeFactory> Base_;
     bool Frozen_ = false;
     std::vector<std::unique_ptr<TType>> Owned_;
-    std::unordered_map<std::string_view, TTypePtr> Types_;
+    std::unordered_map<TTypeId, TTypePtr> Types_;
     std::unordered_map<TIntegerType::EKind, TConcreteTypePtr<TIntegerType>> IntegerTypes_;
     std::unordered_map<TFloatType::EKind, TConcreteTypePtr<TFloatType>> FloatTypes_;
     std::map<std::pair<std::vector<TTypePtr>, TTypePtr>, TConcreteTypePtr<TFunctionType>> FunctionTypes_;

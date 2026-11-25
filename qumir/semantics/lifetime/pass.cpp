@@ -143,7 +143,7 @@ std::expected<EValueOwnership, TError> ClassifyOwnership(const TExprPtr& expr) {
     return std::unexpected(TError(
         expr->Location,
         "Cannot determine ownership of string expression '"
-            + std::string(expr->NodeName()) + "'."));
+            + expr->Kind.ToString() + "'."));
 }
 
 std::expected<TExprPtr, TError> RequireOwned(const TExprPtr& value) {

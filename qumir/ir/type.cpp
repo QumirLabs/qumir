@@ -124,7 +124,7 @@ int FromAstType(const NAst::TTypePtr& t, TTypeTable& tt) {
     }
     if (auto i = NAst::TMaybeType<NAst::TIntegerType>(t)) {
         using K = NAst::TIntegerType::EKind;
-        switch (i.Cast()->Kind) {
+        switch (i.Cast()->Width) {
             case K::I8: return tt.I(EKind::I8);
             case K::I16: return tt.I(EKind::I16);
             case K::I32: return tt.I(EKind::I32);
@@ -138,7 +138,7 @@ int FromAstType(const NAst::TTypePtr& t, TTypeTable& tt) {
         }
     }
     if (auto f = NAst::TMaybeType<NAst::TFloatType>(t)) {
-        return tt.I(f.Cast()->Kind == NAst::TFloatType::F32 ? EKind::F32 : EKind::F64);
+        return tt.I(f.Cast()->Width == NAst::TFloatType::F32 ? EKind::F32 : EKind::F64);
     }
 
     if (NAst::TMaybeType<NAst::TBoolType>(t)) {

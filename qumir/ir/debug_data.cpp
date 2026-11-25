@@ -28,7 +28,7 @@ void Location(std::ostream& out, const TLocation& loc) {
 
 void Type(std::ostream& out, const NAst::TTypePtr& namedType) {
     const auto& type = NAst::UnwrapNamedType(namedType);
-    out << "{\"kind\":" << Quote(type ? type->TypeName() : "unknown");
+    out << "{\"kind\":" << Quote(type ? type->Kind.ToString() : "unknown");
     if (auto integer = NAst::TMaybeType<NAst::TIntegerType>(type)) {
         out << ",\"bits\":" << integer.Cast()->BitWidth()
             << ",\"signed\":" << (integer.Cast()->IsSigned() ? "true" : "false");

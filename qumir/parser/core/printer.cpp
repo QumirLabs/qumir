@@ -41,9 +41,9 @@ bool TPrinter::FitsOneLine(const TExprPtr& expr, bool allowTypeWrap, int level) 
 }
 
 bool TPrinter::ForceMultiline(const TExprPtr& expr) const {
-    return expr->NodeName() == TBlockExpr::NodeId
-        || expr->NodeName() == TVarsBlockExpr::NodeId
-        || expr->NodeName() == TFunDecl::NodeId;
+    return expr->Kind == TBlockExpr::NodeId
+        || expr->Kind == TVarsBlockExpr::NodeId
+        || expr->Kind == TFunDecl::NodeId;
 }
 
 void TPrinter::PrintCompact(const TExprPtr& expr, bool allowTypeWrap, int level) {
@@ -99,10 +99,10 @@ bool TPrinter::IsNonDefaultNumberLiteral(const TExprPtr& expr) const {
         return false;
     }
     if (auto floatType = TMaybeType<TFloatType>(expr->Type)) {
-        return floatType.Cast()->Kind != TFloatType::F64;
+        return floatType.Cast()->Width != TFloatType::F64;
     }
     auto integerType = TMaybeType<TIntegerType>(expr->Type);
-    return integerType && integerType.Cast()->Kind != TIntegerType::I64;
+    return integerType && integerType.Cast()->Width != TIntegerType::I64;
 }
 
 void TPrinter::PrintGenericParams(const std::vector<TGenericParam>& params, int level) {
@@ -192,10 +192,10 @@ void TPrinter::PrintType(const TTypePtr& type, int level) {
         PrintNamedType(named->Name, named->TypeArgs, named->UnderlyingType(), level);
     } else if (auto t = TMaybeType<TStructType>(type)) {
         PrintStructType(*t.Cast(), level);
-    } else if (auto it = Options.TypePrinters.find(type->TypeName()); it != Options.TypePrinters.end()) {
+    } else if (auto it = Options.TypePrinters.find(type->Kind); it != Options.TypePrinters.end()) {
         it->second(*type, *this, level);
     } else {
-        throw std::runtime_error("unsupported type for core print: " + std::string(type->TypeName()));
+        throw std::runtime_error("unsupported type for core print: " + type->Kind.ToString());
     }
 }
 
@@ -1050,7 +1050,7 @@ struct TPrintExpr : public IVisitor {
     void Visit(TCleanupExitExpr& node) override {
         *Out << "(cleanup-exit";
         Printer.Separator(Frame.Level + 1);
-        *Out << '(' << CleanupExitKindName(node.Kind);
+        *Out << '(' << CleanupExitKindName(node.ExitKind);
         if (node.Value()) {
             Printer.Separator(Frame.Level + 2);
             Printer.PrintExpr(node.Value(), true, Frame.Level + 2);
@@ -1071,12 +1071,12 @@ struct TPrintExpr : public IVisitor {
     }
 
     void VisitOtherwise(TExpr& node) override {
-        auto it = Printer.Options.NodePrinters.find(node.NodeName());
+        auto it = Printer.Options.NodePrinters.find(node.Kind);
         if (it != Printer.Options.NodePrinters.end()) {
             it->second(node, Printer, Frame);
             return;
         }
-        throw std::runtime_error("unsupported AST node for core print: " + std::string(node.NodeName()));
+        throw std::runtime_error("unsupported AST node for core print: " + node.Kind.ToString());
     }
 
     void PrintLifetimeUnary(std::string_view head, const TExprPtr& value) {

@@ -56,7 +56,7 @@ std::vector<std::string> Layout(const TExprPtr& root) {
         } else if (auto fun = TMaybeNode<TFunDecl>(stmt)) {
             result.push_back("Fun:" + fun.Cast()->Name);
         } else {
-            result.push_back(std::string(stmt->NodeName()));
+            result.push_back(stmt->Kind.ToString());
         }
     }
     return result;

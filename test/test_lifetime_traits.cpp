@@ -16,16 +16,14 @@ using namespace NQumir::NSemantics;
 namespace {
 
 struct TUnknownManagedType : TType {
-    static constexpr const char* TypeId = "UnknownManaged";
-
-    const std::string_view TypeName() const override {
-        return TypeId;
-    }
+    static constexpr TTypeId TypeId{"Unknown"};
 
 private:
     friend class NQumir::NAst::TTypeFactory;
 
-    TUnknownManagedType() = default;
+    TUnknownManagedType()
+        : TType(TypeId)
+    {}
 };
 
 void ExpectTraits(

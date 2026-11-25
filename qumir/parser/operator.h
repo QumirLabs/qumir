@@ -3,6 +3,9 @@
 #include <string>
 #include <string_view>
 #include <cstdint>
+#include <functional>
+#include <stdexcept>
+#include <type_traits>
 
 namespace NQumir {
 namespace NAst {
@@ -19,6 +22,10 @@ struct TOperator {
     constexpr TOperator(const std::string_view& s)
         : Value(0)
     {
+        // Only the last 8 bytes fit: a longer constant label (NodeId, TypeId) must not compile.
+        if (std::is_constant_evaluated() && s.size() > sizeof(Value)) {
+            throw std::length_error("TOperator packs at most 8 bytes");
+        }
         for (char ch : s) {
             Value = (Value << 8) | static_cast<uint64_t>(ch);
         }
@@ -27,6 +34,11 @@ struct TOperator {
     constexpr operator uint64_t() const {
         return Value;
     }
+
+    // The implicit uint64_t would let a stale `type->Kind == TFloatType::F32` compile as always false.
+    template<typename E>
+    requires std::is_enum_v<E>
+    bool operator==(E) const = delete;
 
     constexpr bool operator==(const char* s) const {
         uint64_t v = 0;
@@ -59,3 +71,10 @@ inline TOperator operator""_op(const char* s, size_t) {
 
 } // namespace NAst
 } // namespace NQumir
+
+template<>
+struct std::hash<NQumir::NAst::TOperator> {
+    size_t operator()(NQumir::NAst::TOperator op) const noexcept {
+        return std::hash<uint64_t>{}(op.Value);
+    }
+};

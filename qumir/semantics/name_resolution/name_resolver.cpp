@@ -269,7 +269,7 @@ std::string OverloadTypeKey(
         }
         return key;
     }
-    return std::string(type->TypeName());
+    return type->Kind.ToString();
 }
 
 // Signature-based, order-independent symbol name; uniqueness matches ParamTypesSame.

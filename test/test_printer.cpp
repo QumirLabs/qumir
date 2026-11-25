@@ -17,17 +17,16 @@ namespace {
 
 // Custom node: (tag "label" <child>)
 struct TTagExpr : TExpr {
-    static constexpr const char* NodeId = "Tag";
+    static constexpr TExprNodeId NodeId{"Tag"};
 
     std::string Label;
     TExprPtr Child;
 
     TTagExpr(std::string label, TExprPtr child)
-        : Label(std::move(label))
+        : TExpr(NodeId)
+        , Label(std::move(label))
         , Child(std::move(child))
     {}
-
-    const std::string_view NodeName() const override { return NodeId; }
 
     std::span<const TExprPtr> Children() const override { return { &Child, 1 }; }
 
@@ -36,18 +35,17 @@ struct TTagExpr : TExpr {
 
 // Custom node: (pair <left> <right>)
 struct TPairExpr : TExpr {
-    static constexpr const char* NodeId = "Pair";
+    static constexpr TExprNodeId NodeId{"Pair"};
 
     std::array<TExprPtr, 2> Operands;
 
     TPairExpr(TExprPtr left, TExprPtr right)
-        : Operands{std::move(left), std::move(right)}
+        : TExpr(NodeId)
+        , Operands{std::move(left), std::move(right)}
     {}
 
     auto& Left(this auto& self) { return self.Operands[0]; }
     auto& Right(this auto& self) { return self.Operands[1]; }
-
-    const std::string_view NodeName() const override { return NodeId; }
 
     std::span<const TExprPtr> Children() const override { return Operands; }
 
@@ -166,7 +164,9 @@ TEST(PrinterCustomNodes, NestedCustomNodes) {
 
 TEST(PrinterCustomNodes, UnknownNodeThrows) {
     struct TUnknown : TExpr {
-        const std::string_view NodeName() const override { return "Unknown"; }
+        TUnknown()
+            : TExpr(TExprNodeId{"Unknown"})
+        {}
         void Accept(IVisitor& v) override { v.VisitOtherwise(*this); }
     };
     auto expr = MakeIntrusive<TUnknown>();
@@ -386,17 +386,16 @@ namespace {
 
 // Custom type: <named Opt [T]>
 struct TOptType : TType {
-    static constexpr const char* TypeId = "Opt";
+    static constexpr TTypeId TypeId{"Opt"};
 
     TTypePtr Inner = nullptr;
-
-    const std::string_view TypeName() const override { return TypeId; }
 
 private:
     friend class NQumir::NAst::TTypeFactory;
 
     explicit TOptType(TTypePtr inner)
-        : Inner(std::move(inner))
+        : TType(TypeId)
+        , Inner(std::move(inner))
     {}
 };
 

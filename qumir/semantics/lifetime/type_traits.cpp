@@ -84,7 +84,7 @@ TLifetimeTraits Classify(
     }
 
     throw std::invalid_argument(
-        "unsupported type in lifetime classification: " + std::string(type->TypeName()));
+        "unsupported type in lifetime classification: " + type->Kind.ToString());
 }
 
 } // namespace
