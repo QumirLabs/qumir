@@ -6,8 +6,12 @@
 #include <qumir/parser/core/parser.h>
 #include <qumir/runner/runner_llvm.h>
 
+#include <unistd.h>
+
 #include <array>
 #include <cstdint>
+#include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -104,6 +108,45 @@ TEST(KernelAst, LoadsU64FromPointerIndex) {
 
     EXPECT_EQ(wordHash(data.data(), static_cast<int64_t>(data.size())),
         INT64_C(5922767304251906895));
+}
+
+// The LLVM perf loader has one jitdump per process, mapped as the marker for perf
+// record. JITs alive at the same time must share it, not reopen it under each other.
+TEST(KernelAst, PerfJitsShareOneJitdump) {
+#ifndef __linux__
+    GTEST_SKIP() << "perf support exists only on Linux";
+#endif
+    const NQumir::TLLVMRunnerOptions options{
+        .NativeCode = true,
+        .CoreInput = true,
+        .ResolveCoreInput = true,
+        .EnablePerfJitEventListener = true,
+        .OptLevel = 1,
+    };
+    NQumir::TLLVMRunner first(options);
+    NQumir::TLLVMRunner second(options);
+    for (auto* runner : {&first, &second}) {
+        std::istringstream input(RootsSource);
+        NQumir::NAst::NCore::TTokenStream tokens(input);
+        NQumir::NAst::NCore::TParser parser(runner->TypeFactory());
+        auto parsed = parser.Parse(tokens);
+        ASSERT_TRUE(parsed) << parsed.error().ToString();
+        std::string error;
+        void* entry = runner->CompileKernelAst(*parsed, "kernel", &error);
+        ASSERT_NE(entry, nullptr) << error;
+        EXPECT_EQ(reinterpret_cast<int64_t(*)(int64_t)>(entry)(41), 42);
+    }
+
+    const auto dump = "/jit-" + std::to_string(::getpid()) + ".dump";
+    std::set<std::string> dumps;
+    std::ifstream maps("/proc/self/maps");
+    std::string line;
+    while (std::getline(maps, line)) {
+        if (line.find(dump) != std::string::npos) {
+            dumps.insert(line.substr(line.find('/')));
+        }
+    }
+    EXPECT_EQ(dumps.size(), 1u);
 }
 
 TEST(KernelAst, CompilesOnHostTypeFactory) {
