@@ -134,7 +134,8 @@ bool EnablePerfSupport(llvm::orc::LLJIT& jit, std::string* error) {
         }
         return false;
     }
-    // Never destroyed: a JIT may drop its reference to the plugin after static destructors ran.
+    // A static with the plugin's mutable code-index counter, against the code style: it mirrors
+    // the loader's process-global jitdump. Never destroyed: JITs may drop it after static destructors.
     static auto* const perf = new TPerfSupport();
     objectLayer->addPlugin(perf->Plugin);
     return true;
