@@ -14,6 +14,11 @@
 #include <llvm/Support/MemoryBuffer.h>
 #if defined(__linux__)
 #include <llvm/ExecutionEngine/Orc/Debugging/PerfSupportPlugin.h>
+#if LLVM_VERSION_MAJOR >= 21
+#include <llvm/ExecutionEngine/Orc/SelfExecutorProcessControl.h>
+#else
+#include <llvm/ExecutionEngine/Orc/ExecutorProcessControl.h>
+#endif
 #include <llvm/ExecutionEngine/Orc/TargetProcess/JITLoaderPerf.h>
 #endif
 #include <llvm/TargetParser/Host.h>
@@ -91,6 +96,28 @@ std::optional<T> TakeExpected(llvm::Expected<T> expected, std::string* error) {
     return std::move(*expected);
 }
 
+#if defined(__linux__)
+// The LLVM perf loader has one jitdump per process, which a plugin reopens when
+// created and closes when destroyed, racing with the links of other JITs. One shared
+// plugin opens it once and numbers the code of all JITs; its session takes its errors.
+struct TPerfSupport {
+    TPerfSupport()
+        : Session(llvm::cantFail(llvm::orc::SelfExecutorProcessControl::Create()))
+        , Plugin(std::make_shared<llvm::orc::PerfSupportPlugin>(
+            Session.getExecutorProcessControl(),
+            llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfStart),
+            llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfEnd),
+            llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfImpl),
+            /*EmitDebugInfo=*/true,
+            /*EmitUnwindInfo=*/true))
+    {
+    }
+
+    llvm::orc::ExecutionSession Session;
+    std::shared_ptr<llvm::orc::PerfSupportPlugin> Plugin;
+};
+#endif
+
 bool EnablePerfSupport(llvm::orc::LLJIT& jit, std::string* error) {
 #if defined(__linux__)
     auto* objectLayer = llvm::dyn_cast<llvm::orc::ObjectLinkingLayer>(&jit.getObjLinkingLayer());
@@ -107,14 +134,10 @@ bool EnablePerfSupport(llvm::orc::LLJIT& jit, std::string* error) {
         }
         return false;
     }
-    auto plugin = std::make_shared<llvm::orc::PerfSupportPlugin>(
-        epc,
-        llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfStart),
-        llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfEnd),
-        llvm::orc::ExecutorAddr::fromPtr(&llvm_orc_registerJITLoaderPerfImpl),
-        /*EmitDebugInfo=*/true,
-        /*EmitUnwindInfo=*/true);
-    objectLayer->addPlugin(std::move(plugin));
+    // A static with the plugin's mutable code-index counter, against the code style: it mirrors
+    // the loader's process-global jitdump. Never destroyed: JITs may drop it after static destructors.
+    static auto* const perf = new TPerfSupport();
+    objectLayer->addPlugin(perf->Plugin);
     return true;
 #else
     (void)jit;
